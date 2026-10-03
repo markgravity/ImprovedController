@@ -1,0 +1,16 @@
+## Interface: 16001, 16002, 16003, 16100, 16101, 16200
+## Title: Improved Controller
+## Notes: Quality-of-life tweaks for playing WoW Forever with a controller.
+## Author: markg
+## Version: 0.2.0
+## SavedVariables: ImprovedControllerDB
+## SavedVariablesPerCharacter: ImprovedControllerCharDB
+
+ImprovedController.lua
+Bags.lua
+RingContent.lua
+Ring.lua
+Touchpad.lua
+Probe.lua
+Menu.lua
+Options.lua
