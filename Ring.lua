@@ -135,6 +135,33 @@ trigger:SetScript("PostClick", function(self, button, down)
     end
 end)
 
+-- Key bindings: one button per wheel ("CLICK ImprovedControllerWheel_<key>"
+-- in the game's Key Bindings, Bindings.xml) that opens it, or closes it if
+-- it is already up. Any key or pad button the player binds works, in combat
+-- too.
+IC.WHEEL_BINDING_KEYS = { "buffs", "consumables", "emotes", "my1", "my2", "my3", "my4", "my5", "my6", "my7", "my8" }
+for _, key in ipairs(IC.WHEEL_BINDING_KEYS) do
+    local open = SecureButton("ImprovedControllerWheel_" .. key)
+    open:RegisterForClicks("AnyDown")
+    open:SetAttribute("ic-ring", key)
+    SecureHandlerWrapScript(open, "OnClick", open, [[
+        local ring = self:GetFrameRef("ring")
+        if ring:IsShown() then
+            ring:Hide()
+            return false
+        end
+        local key = self:GetAttribute("ic-ring")
+        local first = ring:GetAttribute("ic-first-" .. key)
+        if not first then
+            return false
+        end
+        ring:SetAttribute("ic-sticky", nil)
+        ring:SetAttribute("ic-active", first)
+        ring:Show()
+        return false
+    ]])
+end
+
 -- Stick directions (as keys): move the sticky pick. A key going down means
 -- the stick just left the middle; a key coming up means it is springing
 -- back, so only a firm reading counts then.
@@ -523,6 +550,10 @@ local function Rebuild()
     wipe(pageOrder)
     wipe(pageInfo)
     wipe(ringData)
+    -- A deleted wheel's key binding opens nothing
+    for _, key in ipairs(IC.WHEEL_BINDING_KEYS) do
+        ring:SetAttribute("ic-first-" .. key, nil)
+    end
     for _, ringKey in ipairs(IC.RINGS) do
         local build = IC.RingBuilders[ringKey]
         if build then

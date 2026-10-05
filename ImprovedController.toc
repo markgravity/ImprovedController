@@ -9,8 +9,11 @@
 ImprovedController.lua
 Bags.lua
 RingContent.lua
+MyWheels.lua
 Ring.lua
 Touchpad.lua
 Probe.lua
+ConfigKit.lua
 Menu.lua
+WheelEditor.lua
 Options.lua

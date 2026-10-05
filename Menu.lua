@@ -1,710 +1,1136 @@
--- A controller-driven settings window, built like Controller Forever's
--- menu: D-pad up / down moves, left / right changes a value, Cross chooses,
--- Circle goes back (or closes), L1 / R1 jump a page in long lists. Its keys
--- live on a secure header that drops them and hides the window the moment
--- combat starts. Open it with /ic, the key binding, or the AddOns options.
+-- The configuration panel, adapted from Easy Controller - Forever's
+-- ConfigWindow (moust4ki, MIT License, see textures/LICENSE-EasyController.md):
+-- 820 x 580, tabs (L1 / R1), each a rail of sections on the left, the
+-- section's settings in the middle and what the focused one does on the
+-- right; the help bar at the bottom shows where the focus is and what the
+-- pad does there. While it is open the pad is bound to hidden buttons of
+-- ours, out of combat only, and released when it closes (or combat starts).
+-- Open it with /ic, the key binding, or the AddOns options.
 local _, IC = ...
+
+local K = IC.ConfigKit
+local KC = K.C
 
 local menu = {}
 IC.Menu = menu
 
-local state = { page = "main", selected = 1, offset = 0, open = false }
-
-local THEME = {
-    bg = { 0.045, 0.05, 0.065, 0.94 },
-    edge = { 0.95, 0.74, 0.28, 0.85 },
-    title = { 1, 1, 1 },
-    accent = { 1, 0.78, 0.3 },
-    text = { 0.9, 0.9, 0.9 },
-    muted = { 0.6, 0.64, 0.72 },
-    font = "Fonts\\FRIZQT__.TTF",
-}
-local VALUE_ON, VALUE_OFF, VALUE_OTHER = { 0.36, 0.9, 0.42 }, { 0.9, 0.38, 0.35 }, { 1, 0.82, 0.35 }
-local ROW_HEIGHT, TOP_PAD, BOTTOM_PAD = 26, 40, 92
-local MAX_VISIBLE_ROWS = 16
-local MENU_WIDTH = 470
-local MAX_BUFFS = 24
+local W, H = 820, 580
+local RAIL_W, LIST_W, DETAIL_W, GAP, BODY_H = 150, 380, 230, 12, 424
+local BUDGET = 420
+local HEIGHT = { header = 32, check = 36, choice = 36, slider = 36, stat = 36, button = 42 }
+local FOCUSABLE = { check = true, choice = true, slider = true, button = true }
 local ICON = "Interface\\Icons\\"
 
-local function Cross() return IC.Glyph("Gamepad-PS-Cross-Normal", "|cff7fb2ffX|r", 16) end
-local function Circle() return IC.Glyph("Gamepad-PS-Circle-Normal", "|cffff6060O|r", 16) end
-local function Dpad() return IC.Glyph("Gamepad-PS-DpadAll-Normal", "|cffc9a84cD-pad|r", 16) end
-
-local function OnOff(value)
-    return value and "On" or "Off"
+local function resolve(v)
+    if type(v) == "function" then return v() end
+    return v
 end
 
 ---------------------------------------------------------------------------
--- Entries
+-- What the tabs hold
 ---------------------------------------------------------------------------
 
--- A section title the selection skips.
-local function header(text)
-    return { header = true, name = text }
-end
-
--- An option row. name / value / desc / icon may be strings or functions.
---   activate()       Cross
---   adjust(delta)    D-pad left / right
---   page = "name"    Cross opens that page
---   keep             stay open after activate (default: close)
-local function opt(spec)
-    local function get(field)
-        local value = spec[field]
-        if type(value) == "function" then
-            local ok, result = pcall(value)
-            return ok and result or nil
-        end
-        return value
-    end
-    spec.getName = function() return get("name") or "" end
-    spec.getValue = function() return get("value") end
-    spec.getDesc = function() return get("desc") end
-    spec.getIcon = function() return get("icon") end
-    return spec
-end
-
-local backEntry = opt({ back = true, name = "Back", desc = "Back to the main page." })
-
-local function NextRing(current, step)
-    for index, ring in ipairs(IC.RINGS) do
-        if ring == current then
-            return IC.RINGS[(index - 1 + step) % #IC.RINGS + 1]
-        end
-    end
-    return IC.RINGS[1]
-end
-
-local function ComboEntry(combo)
-    local function change(step)
-        IC.SetComboRing(combo, NextRing(IC.GetComboRing(combo), step))
-    end
-    return opt({
-        name = IC.COMBO_LABELS[combo],
-        value = function() return IC.RING_LABELS[IC.GetComboRing(combo)] end,
-        desc = "Which ring " .. IC.COMBO_LABELS[combo] .. " opens. Native leaves the game's own R3 action"
-            .. " (Look Here) for this combo.",
-        adjust = change,
-        activate = function() change(1) end,
-        keep = true,
-    })
-end
-
-local function BuffCount()
-    return #IC.GetBuffList()
-end
-
-local function CopyBuffList()
-    local list = {}
-    for _, name in ipairs(IC.GetBuffList()) do
-        list[#list + 1] = name
-    end
-    return list
-end
-
-local function IndexOf(list, name)
-    for index, value in ipairs(list) do
-        if value == name then
-            return index
-        end
-    end
-end
-
-local function SetBuffList(list)
-    IC.charDB.buffs = list
-    IC.RefreshRings()
-end
-
-local function ToggleBuff(name)
-    local list = CopyBuffList()
-    local index = IndexOf(list, name)
-    if index then
-        table.remove(list, index)
-    elseif #list >= MAX_BUFFS then
-        IC.Print("the Buffs ring holds " .. MAX_BUFFS .. " spells at most.")
-        return
-    else
-        list[#list + 1] = name
-    end
-    SetBuffList(list)
-end
-
-local function MoveBuff(name, delta)
-    local list = CopyBuffList()
-    local index = IndexOf(list, name)
-    local target = index and index + delta
-    if not target or target < 1 or target > #list then
-        return
-    end
-    list[index], list[target] = list[target], list[index]
-    SetBuffList(list)
-end
-
-local function BuffEntry(spell)
-    return opt({
-        name = function()
-            return spell.inBook and spell.name or ("|cff8a93a6" .. spell.name .. " (not in spellbook)|r")
-        end,
-        icon = spell.icon or (ICON .. "INV_Misc_QuestionMark"),
-        value = function()
-            local index = IndexOf(IC.GetBuffList(), spell.name)
-            return index and ("Slot " .. index) or nil
-        end,
-        desc = function()
-            if IndexOf(IC.GetBuffList(), spell.name) then
-                return "On the Buffs ring. Cross removes it; D-pad left / right moves it a slot earlier / later."
-            end
-            return "Cross puts " .. spell.name .. " on the Buffs ring (next free slot, clockwise from the top)."
-        end,
-        activate = function() ToggleBuff(spell.name) end,
-        adjust = function(delta) MoveBuff(spell.name, delta) end,
-        keep = true,
-    })
-end
-
-menu.pages = {
-    main = {
-        title = "Improved Controller",
-        entries = {
-            header("Bags"),
-            opt({
-                name = "L3 Cleans Up Bags", icon = ICON .. "INV_Misc_Bag_08",
-                value = function() return OnOff(IC.db.bagSort ~= false) end,
-                desc = "On: while any bag is open, L3 (left stick click) sorts your bags.",
-                activate = function()
-                    IC.db.bagSort = IC.db.bagSort == false
-                    IC.UpdateBagBinding()
+menu.TABS = {
+    {
+        key = "home", label = "Home",
+        sections = {
+            {
+                key = "bags", label = "Bags",
+                tip = "Bag shortcuts while your bags are open.",
+                rows = function(b)
+                    b.header("Bags")
+                    b.check({
+                        id = "bagSort", label = "L3 cleans up bags",
+                        get = function() return IC.db.bagSort ~= false end,
+                        set = function(on)
+                            IC.db.bagSort = on
+                            IC.UpdateBagBinding()
+                        end,
+                        tip = "While any bag is open, L3 (left stick click) sorts your bags. L3 does its usual"
+                            .. " job again once the bags close.",
+                    })
                 end,
-                keep = true,
-            }),
-            header("R3 Rings"),
-            ComboEntry("R3"),
-            ComboEntry("L1"),
-            ComboEntry("L2"),
-            ComboEntry("R1"),
-            ComboEntry("R2"),
-            opt({
-                page = "buffs", name = "Buffs Ring", icon = ICON .. "Spell_Holy_WordFortitude",
-                value = function() return BuffCount() .. " spells" end,
-                desc = "Choose which spells go on the Buffs ring, and in what order (this character).",
-            }),
-            header("Touchpad"),
-            opt({
-                page = "touch", name = "Touchpad Click", icon = ICON .. "INV_Misc_Map_01",
-                value = function() return OnOff(IC.Touch.GetSettings().enabled ~= false) end,
-                desc = "Click the PS5 touchpad to open a window; where your finger is picks which (map, quest log, bags...).",
-            }),
-            opt({ name = "Close", desc = "Close this menu.", activate = function() end }),
+            },
+            {
+                key = "about", label = "About",
+                tip = "Improved Controller: quality of life for WoW Forever with a controller.",
+                rows = function(b)
+                    b.header("Improved Controller")
+                    b.info("Wheels (buffs, consumables, emotes and your own) opened with an R3 combo or any key, touchpad clicks that open windows, and L3"
+                        .. " to clean up your bags. L1 / R1 switch tabs here; open this panel with /ic or a key"
+                        .. " binding (Key Bindings > AddOns).")
+                    b.info("Panel design adapted from Easy Controller - Forever by moust4ki (MIT License).")
+                end,
+            },
         },
     },
-    touch = {
-        title = "Touchpad Click",
-        build = function()
-            local touch = IC.Touch
-            local settings = touch.GetSettings()
-            local entries = {
-                opt({
-                    name = "Touchpad Click",
-                    value = function() return OnOff(settings.enabled ~= false) end,
-                    desc = "On: clicking the PS5 touchpad opens a window, picked by where your finger is on the"
-                        .. " pad (top, bottom, left, right, centre). Works in combat.",
-                    activate = function()
-                        settings.enabled = settings.enabled == false
-                        touch.Apply()
-                    end,
-                    keep = true,
-                }),
-                opt({
-                    name = "Centre Size",
-                    value = function() return math.floor(settings.centre * 100 + 0.5) .. "%" end,
-                    desc = "How big the centre region is. Clicks outside it count as top / bottom / left / right,"
-                        .. " whichever side the finger is nearest.",
-                    adjust = function(delta) touch.SetCentre(settings.centre + delta * 0.05) end,
-                    keep = true,
-                }),
-                header("Regions"),
-            }
-            for _, region in ipairs(touch.REGIONS) do
-                entries[#entries + 1] = opt({
-                    name = touch.REGION_LABELS[region],
-                    value = function() return touch.ActionLabel(settings.regions[region]) end,
-                    desc = "What a click with the finger at the " .. touch.REGION_LABELS[region]:lower()
-                        .. " opens. Only windows this client has a button for are offered.",
-                    adjust = function(delta) touch.CycleAction(region, delta) end,
-                    activate = function() touch.CycleAction(region, 1) end,
-                    keep = true,
-                })
-            end
-            entries[#entries + 1] = header("Troubleshooting")
-            entries[#entries + 1] = opt({
-                name = "Debug",
-                value = function() return OnOff(settings.debug) end,
-                desc = "On: each touchpad click prints its region and what it opened to chat.",
-                activate = function() settings.debug = not settings.debug end,
-                keep = true,
-            })
-            entries[#entries + 1] = backEntry
-            return entries
-        end,
+    {
+        key = "wheels", label = "Wheels",
+        -- WheelEditor.lua's page: the rail of wheels and the selected one's editor
+        sections = {},
     },
-    buffs = {
-        title = "Buffs Ring",
-        -- Rebuilt each time the page opens: the spellbook changes.
-        build = function()
-            local entries = {
-                opt({
-                    name = "Class Defaults", icon = ICON .. "INV_Misc_Book_09",
-                    value = function() return IC.charDB.buffs == nil and "In use" or nil end,
-                    desc = "Go back to your class's usual buffs.",
-                    activate = function() SetBuffList(nil) end,
-                    keep = true,
-                }),
-                opt({
-                    name = "Clear All", icon = ICON .. "Spell_Shadow_SacrificialShield",
-                    desc = "Empty the Buffs ring.",
-                    activate = function() SetBuffList({}) end,
-                    keep = true,
-                }),
-                header("Spellbook"),
-            }
-            local spells = IC.GetSpellbookSpells()
-            local inBook = {}
-            for _, spell in ipairs(spells) do
-                spell.inBook = true
-                inBook[spell.name] = true
-            end
-            -- Picked spells that left the spellbook still show, so they can go.
-            for _, name in ipairs(IC.GetBuffList()) do
-                if not inBook[name] then
-                    table.insert(spells, 1, { name = name })
-                end
-            end
-            for _, spell in ipairs(spells) do
-                entries[#entries + 1] = BuffEntry(spell)
-            end
-            entries[#entries + 1] = backEntry
-            return entries
-        end,
+    {
+        key = "touchpad", label = "Touchpad",
+        sections = {
+            {
+                key = "click", label = "Touchpad Click",
+                tip = "Click the PS5 touchpad to open a window; where your finger is on the pad picks which.",
+                rows = function(b)
+                    local touch = IC.Touch
+                    local settings = touch.GetSettings()
+                    b.header("Touchpad Click")
+                    b.check({
+                        id = "touchOn", label = "Touchpad click",
+                        get = function() return settings.enabled ~= false end,
+                        set = function(on)
+                            settings.enabled = on
+                            touch.Apply()
+                        end,
+                        tip = "Clicking the touchpad opens a window, picked by where your finger is (top, bottom,"
+                            .. " left, right, centre). Works in combat.",
+                    })
+                    b.slider({
+                        id = "touchCentre", label = "Centre size", min = 0.1, max = 0.8, stepSize = 0.05,
+                        get = function() return settings.centre end,
+                        set = function(v) touch.SetCentre(v) end,
+                        fmt = function(v) return math.floor(v * 100 + 0.5) .. "%" end,
+                        tip = "How big the centre region is. Clicks outside it count as whichever side the"
+                            .. " finger is nearest.",
+                    })
+                    b.header("Regions")
+                    for _, region in ipairs(touch.REGIONS) do
+                        b.choice({
+                            id = "region" .. region, label = touch.REGION_LABELS[region],
+                            text = function() return touch.ActionLabel(settings.regions[region]) end,
+                            step = function(delta) touch.CycleAction(region, delta) end,
+                            tip = "What a click with the finger at the " .. touch.REGION_LABELS[region]:lower()
+                                .. " opens. Only windows this client has a button for are offered.",
+                        })
+                    end
+                end,
+            },
+            {
+                key = "debug", label = "Troubleshooting",
+                tip = "Checks for when a touchpad click doesn't do what you expect.",
+                rows = function(b)
+                    local settings = IC.Touch.GetSettings()
+                    b.header("Troubleshooting")
+                    b.check({
+                        id = "touchDebug", label = "Print clicks to chat",
+                        get = function() return settings.debug end,
+                        set = function(on) settings.debug = on end,
+                        tip = "Each touchpad click prints its region and what it opened to chat.",
+                    })
+                    b.info("/ic padtest prints every gamepad button the game passes on, for 15 seconds."
+                        .. " /ic touchprobe records what the controller reports.")
+                end,
+            },
+        },
     },
 }
 
 ---------------------------------------------------------------------------
--- Selection
+-- A tab: a rail of sections, the section's list, a detail panel
 ---------------------------------------------------------------------------
+local Page = {}
+Page.__index = Page
 
-local function Entries()
-    return state.entries or {}
+local function NewPage(def)
+    return setmetatable({ def = def, zone = "list", section = 1, focusId = {}, focusIndex = {}, focusNext = {},
+        focusPrev = {}, start = {} }, Page)
 end
 
-local function IsSelectable(entry)
-    return entry and not entry.header
-end
-
-local function NextSelectable(index, step)
-    local entries = Entries()
-    local count = #entries
-    for _ = 1, count do
-        index = (index - 1) % count + 1
-        if IsSelectable(entries[index]) then
-            return index
+-- The rows of a section: b.header(text), b.info(text), b.check{...},
+-- b.choice{...}, b.slider{...}, b.button{...}, b.stat{...}
+local function Builder()
+    local rows, b = {}, {}
+    local function add(row)
+        rows[#rows + 1] = row
+        row.id = row.id or (row.kind .. #rows)
+        return row
+    end
+    function b.header(label) return add({ kind = "header", label = label }) end
+    function b.info(text) return add({ kind = "info", label = text }) end
+    for _, kind in ipairs({ "check", "choice", "slider", "button", "stat" }) do
+        b[kind] = function(o)
+            o.kind = kind
+            return add(o)
         end
-        index = index + step
     end
-    return 1
+    return rows, b
+end
+
+local function Focusable(row)
+    return row and FOCUSABLE[row.kind] and not resolve(row.disabled) or false
+end
+
+function Page:Section()
+    return self.def.sections[self.section] or self.def.sections[1]
+end
+
+function Page:Rebuild()
+    local rows, b = Builder()
+    local sec = self:Section()
+    if sec and sec.rows then sec.rows(b, self) end
+    self.rows = rows
+end
+
+-- The row with the focus: the one last focused in this section (by its id),
+-- else the row after it or before it, else near its place, else the first
+function Page:FocusIndex()
+    local rows, key = self.rows, self:Section().key
+    for _, id in ipairs({ self.focusId[key], self.focusNext[key], self.focusPrev[key] }) do
+        for i, row in ipairs(rows) do
+            if row.id == id and Focusable(row) then return i end
+        end
+    end
+    local near = self.focusIndex[key]
+    if near then
+        for i = math.min(near, #rows), 1, -1 do
+            if Focusable(rows[i]) then return i end
+        end
+    end
+    for i, row in ipairs(rows) do
+        if Focusable(row) then return i end
+    end
+end
+
+function Page:SetFocus(i)
+    local rows = self.rows
+    local row = rows[i]
+    if not row then return end
+    local key = self:Section().key
+    self.focusId[key], self.focusIndex[key] = row.id, i
+    local function neighbour(step)
+        local j = i + step
+        while rows[j] and not Focusable(rows[j]) do j = j + step end
+        return rows[j] and rows[j].id
+    end
+    self.focusNext[key], self.focusPrev[key] = neighbour(1), neighbour(-1)
+end
+
+function Page:RowHeight(row)
+    if row.kind == "info" then return row.height or 44 end
+    return HEIGHT[row.kind] or 36
+end
+
+local function Arrow(parent, text, page, row, delta)
+    local a = K.NewFrame("Button", nil, parent)
+    a:SetSize(22, 22)
+    a.box = K.Box(a, 4, 1, "ARTWORK")
+    a.box:SetPoints(a)
+    a.text = K.Text(a, 13, KC.dimGold)
+    a.text:SetPoint("CENTER", 0, 0)
+    a.text:SetJustifyH("CENTER")
+    a.text:SetText(text)
+    a:SetScript("OnClick", function() page:ClickRow(row, delta) end)
+    return a
+end
+
+local function NewRow(page, n)
+    local r = K.NewFrame("Button", nil, page.list)
+    r:SetWidth(LIST_W)
+    r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    r.sel = K.NineSlice(r, "ck_select", 128, 32, 10, 10, "ARTWORK")
+    -- A section's title
+    r.head = K.Text(r, 15, KC.title)
+    r.head:SetPoint("BOTTOMLEFT", 2, 7)
+    r.headLine = K.Solid(r, KC.line2, 1, "BORDER")
+    r.headLine:SetHeight(1)
+    r.headLine:SetPoint("BOTTOMLEFT", 0, 2)
+    r.headLine:SetPoint("BOTTOMRIGHT", 0, 2)
+    -- An explanation
+    r.info = K.ChatText(r, 14, KC.help)
+    r.info:SetPoint("TOPLEFT", 10, -8)
+    r.info:SetWidth(LIST_W - 20)
+    r.info:SetWordWrap(true)
+    r.info:SetSpacing(6)
+    -- A setting: its icon, its label, its control on the right
+    r.icon = r:CreateTexture(nil, "ARTWORK")
+    r.icon:SetSize(24, 24)
+    r.icon:SetPoint("LEFT", 12, 0)
+    r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    r.label = K.Text(r, 16, KC.cream)
+    r.status = K.ChatText(r, 13, KC.grey)
+    r.status:SetJustifyH("RIGHT")
+    r.stat = K.Text(r, 16, KC.focus)
+    r.stat:SetJustifyH("RIGHT")
+    -- < value >
+    r.choice = K.NewFrame("Frame", nil, r)
+    r.choice:SetHeight(22)
+    r.left = Arrow(r.choice, "<", page, r, -1)
+    r.left:SetPoint("LEFT")
+    r.right = Arrow(r.choice, ">", page, r, 1)
+    r.right:SetPoint("RIGHT")
+    r.value = K.Text(r.choice, 15, KC.cream)
+    r.value:SetPoint("LEFT", r.left, "RIGHT", 4, 0)
+    r.value:SetPoint("RIGHT", r.right, "LEFT", -4, 0)
+    r.value:SetJustifyH("CENTER")
+    -- The tick box, always on the right
+    r.box = K.NewFrame("Button", nil, r)
+    r.box:SetSize(24, 24)
+    r.box.frame = K.Box(r.box, 3, 2, "ARTWORK")
+    r.box.frame:SetPoints(r.box)
+    r.box.tick = r.box:CreateTexture(nil, "OVERLAY")
+    r.box.tick:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+    r.box.tick:SetPoint("CENTER", 0, 0)
+    r.box.tick:SetSize(26, 26)
+    r.box.tick:SetVertexColor(KC.focus[1], KC.focus[2], KC.focus[3])
+    r.box:SetScript("OnClick", function() page:ClickRow(r) end)
+    -- A slider: its track, the filled part, the handle, the value
+    r.slider = K.NewFrame("Button", nil, r)
+    r.slider:SetHeight(16)
+    r.slider.value = K.Text(r.slider, 15, KC.cream)
+    r.slider.value:SetPoint("RIGHT")
+    r.slider.value:SetWidth(40)
+    r.slider.value:SetJustifyH("RIGHT")
+    r.slider.track = K.NewFrame("Frame", nil, r.slider)
+    r.slider.track:SetPoint("LEFT")
+    r.slider.track:SetPoint("RIGHT", -48, 0)
+    r.slider.track:SetHeight(8)
+    r.slider.trackBox = K.Box(r.slider.track, 4, 1, "ARTWORK")
+    r.slider.trackBox:SetPoints(r.slider.track)
+    r.slider.fill = K.Solid(r.slider.track, KC.fill, 1, "ARTWORK", 3)
+    r.slider.fill:SetPoint("TOPLEFT", 1, -1)
+    r.slider.fill:SetPoint("BOTTOMLEFT", 1, 1)
+    r.slider.handle = K.Solid(r.slider.track, KC.dimGold, 1, "OVERLAY")
+    r.slider.handle:SetSize(14, 16)
+    r.slider:SetScript("OnMouseDown", function(self)
+        local x = GetCursorPosition() / self:GetEffectiveScale()
+        local left, width = self.track:GetLeft(), self.track:GetWidth()
+        if left and width and width > 0 then page:SlideRow(r, (x - left) / width) end
+    end)
+    -- A button row's button
+    r.btn = K.Button(r, 15)
+    r.btn:SetScript("OnClick", function() page:ClickRow(r) end)
+    r:SetScript("OnClick", function(self, button)
+        page:ClickRow(self, button == "RightButton" and -1 or nil)
+    end)
+    page.rowsUI[n] = r
+    return r
+end
+
+function Page:Build(parent)
+    local f = K.NewFrame("Frame", nil, parent)
+    f:SetAllPoints()
+    f:Hide()
+    self.frame = f
+    local page = self
+
+    -- The rail of sections
+    local rail = K.NewFrame("Frame", nil, f)
+    rail:SetPoint("TOPLEFT")
+    rail:SetSize(RAIL_W, BODY_H)
+    local line = K.Solid(rail, KC.line3, 1, "BORDER")
+    line:SetPoint("TOPRIGHT")
+    line:SetPoint("BOTTOMRIGHT")
+    line:SetWidth(1)
+    self.railEntries = {}
+    for i in ipairs(self.def.sections) do
+        local e = K.NewFrame("Button", nil, rail)
+        e:SetSize(RAIL_W - 11, 38)
+        e:SetPoint("TOPLEFT", 0, -2 - (i - 1) * 42)
+        e.sel = K.NineSlice(e, "ck_select", 128, 32, 10, 10, "ARTWORK")
+        e.diamond = e:CreateTexture(nil, "OVERLAY")
+        e.diamond:SetTexture(K.TEX .. "ck_diamond")
+        e.diamond:SetSize(7, 7)
+        e.diamond:SetPoint("LEFT", 10, 0)
+        e.diamond:SetVertexColor(KC.title[1], KC.title[2], KC.title[3])
+        e.label = K.Text(e, 16, KC.rail)
+        e.label:SetPoint("LEFT", 25, 0)
+        e.label:SetWidth(RAIL_W - 11 - 29)
+        e:SetScript("OnClick", function() page:SetSection(i, "rail") end)
+        self.railEntries[i] = e
+    end
+
+    -- The section's list
+    local list = K.NewFrame("Frame", nil, f)
+    list:SetPoint("TOPLEFT", RAIL_W + GAP, 0)
+    list:SetSize(LIST_W, BODY_H)
+    list:EnableMouseWheel(true)
+    list:SetScript("OnMouseWheel", function(_, delta)
+        page.zone = "list"
+        page:MoveFocus(delta > 0 and -1 or 1, 3)
+    end)
+    self.list = list
+    self.rowsUI = {}
+    self.moreUp = list:CreateTexture(nil, "OVERLAY")
+    self.moreUp:SetTexture(K.TEX .. "ck_tri")
+    self.moreUp:SetTexCoord(0, 1, 1, 0)
+    self.moreUp:SetSize(11, 11)
+    self.moreUp:SetPoint("TOPRIGHT", list, "TOPRIGHT", -4, 10)
+    self.moreDown = list:CreateTexture(nil, "OVERLAY")
+    self.moreDown:SetTexture(K.TEX .. "ck_tri")
+    self.moreDown:SetSize(11, 11)
+    self.moreDown:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", -4, -8)
+    for _, t in ipairs({ self.moreUp, self.moreDown }) do t:SetVertexColor(KC.dimGold[1], KC.dimGold[2], KC.dimGold[3]) end
+    -- Sections drawn their own way (the wheels' cards) in the list's place
+    for _, sec in ipairs(self.def.sections) do
+        if sec.view then sec.view:Build(list, self) end
+    end
+
+    -- The detail panel
+    self.detail = K.Detail(f, DETAIL_W)
+    self.detail:SetPoint("TOPRIGHT")
+    self.detail:SetHeight(BODY_H)
+end
+
+function Page:Show()
+    local saved = IC.db.menuSection
+    local i = saved and saved[self.def.key]
+    if i and self.def.sections[i] then self.section = i end
+    self.zone = "list"
+    self.frame:Show()
+end
+
+function Page:Hide()
+    self.frame:Hide()
+end
+
+function Page:SetSection(i, zone)
+    if not self.def.sections[i] then return end
+    if i ~= self.section then menu.Disarm() end
+    self.section = i
+    if zone then self.zone = zone end
+    IC.db.menuSection = IC.db.menuSection or {}
+    IC.db.menuSection[self.def.key] = i
+    menu.Render()
 end
 
 ---------------------------------------------------------------------------
--- Frame
+-- Drawing
 ---------------------------------------------------------------------------
+local function SetShownParts(r, parts)
+    r.head:SetShown(parts.head or false)
+    r.headLine:SetShown(parts.head or false)
+    r.info:SetShown(parts.info or false)
+    r.icon:SetShown(parts.icon or false)
+    r.label:SetShown(parts.label or false)
+    r.status:SetShown(parts.status or false)
+    r.stat:SetShown(parts.stat or false)
+    r.choice:SetShown(parts.choice or false)
+    r.box:SetShown(parts.box or false)
+    r.slider:SetShown(parts.slider or false)
+    r.btn:SetShown(parts.btn or false)
+end
 
-local NAV = {
-    { key = "PADDUP", action = "Up" },
-    { key = "PADDDOWN", action = "Down" },
-    { key = "PADDLEFT", action = "Left" },
-    { key = "PADDRIGHT", action = "Right" },
-    { key = "PAD1", action = "Activate" },
-    { key = "PAD2", action = "Close" },
-    { key = "PADLSHOULDER", action = "PageUp" },
-    { key = "PADRSHOULDER", action = "PageDown" },
-}
-
-local headerFrame, frame
-local rows = {}
-
-local function ThemeWindow(window, title)
-    window:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    window:SetBackdropColor(unpack(THEME.bg))
-    window:SetBackdropBorderColor(unpack(THEME.edge))
-    local shade = window:CreateTexture(nil, "BACKGROUND", nil, 1)
-    shade:SetPoint("TOPLEFT", 1, -1)
-    shade:SetPoint("BOTTOMRIGHT", -1, 1)
-    shade:SetColorTexture(1, 1, 1, 1)
-    if shade.SetGradient and CreateColor then
-        pcall(shade.SetGradient, shade, "VERTICAL", CreateColor(0, 0, 0, 0.35), CreateColor(0.12, 0.14, 0.2, 0.25))
-    else
-        shade:SetColorTexture(0, 0, 0, 0)
+function Page:LayoutRow(r, row, focused)
+    r.row = row
+    r.sel:SetShown(false)
+    local kind = row.kind
+    if kind == "header" then
+        SetShownParts(r, { head = true })
+        r.head:SetText(row.label)
+        return
     end
-    local band = window:CreateTexture(nil, "BORDER")
-    band:SetPoint("TOPLEFT", 1, -1)
-    band:SetPoint("TOPRIGHT", -1, -1)
-    band:SetHeight(26)
-    band:SetColorTexture(1, 1, 1, 1)
-    if band.SetGradient and CreateColor then
-        pcall(band.SetGradient, band, "VERTICAL", CreateColor(0.08, 0.085, 0.11, 1), CreateColor(0.17, 0.16, 0.14, 1))
-    else
-        band:SetColorTexture(0.11, 0.12, 0.16, 1)
+    if kind == "info" then
+        SetShownParts(r, { info = true })
+        r.info:SetText(resolve(row.label))
+        return
     end
-    local line = window:CreateTexture(nil, "ARTWORK")
-    line:SetPoint("TOPLEFT", band, "BOTTOMLEFT", 0, 0)
-    line:SetPoint("TOPRIGHT", band, "BOTTOMRIGHT", 0, 0)
+    local disabled = resolve(row.disabled)
+    if kind == "button" then
+        SetShownParts(r, { btn = true })
+        r.btn:ClearAllPoints()
+        r.btn:SetPoint("TOPLEFT", 0, -5)
+        r.btn:SetPoint("BOTTOMRIGHT", 0, 5)
+        local armed = menu.IsArmed(row.id)
+        r.btn.label:SetText(armed and row.armedLabel or resolve(row.label))
+        r.btn:SetState({ focus = focused, armed = armed, disabled = disabled })
+        return
+    end
+
+    -- A setting's row
+    r.sel:SetShown(focused)
+    local right = LIST_W - 8
+    local controlLeft = right
+    local parts = { label = true }
+    if kind == "check" then
+        parts.box = true
+        r.box:ClearAllPoints()
+        r.box:SetPoint("RIGHT", r, "LEFT", right, 0)
+        local on = resolve(row.get)
+        r.box.frame:SetColors(KC.boxBg, 1, disabled and KC.boxOff or (on and KC.slot or KC.boxEdge), 1)
+        r.box.tick:SetShown(on and true or false)
+        controlLeft = right - 24
+    elseif kind == "choice" then
+        parts.choice = true
+        local w = 176
+        r.choice:SetWidth(w)
+        r.choice:ClearAllPoints()
+        r.choice:SetPoint("RIGHT", r, "LEFT", right, 0)
+        local arrowColor = disabled and KC.arrowOff or (focused and KC.focus or KC.dimGold)
+        for _, a in ipairs({ r.left, r.right }) do
+            a.text:SetTextColor(unpack(arrowColor))
+            a.box:SetColors(a.pressed and KC.pressed or KC.controlBg, 1, KC.control, 1)
+        end
+        r.value:SetText(resolve(row.text) or "")
+        r.value:SetTextColor(unpack(disabled and KC.disabled or KC.cream))
+        controlLeft = right - w
+    elseif kind == "slider" then
+        parts.slider = true
+        r.slider:SetWidth(176)
+        r.slider:ClearAllPoints()
+        r.slider:SetPoint("RIGHT", r, "LEFT", right, 0)
+        local v, lo, hi = resolve(row.get), row.min, row.max
+        local frac = hi > lo and math.max(0, math.min(1, (v - lo) / (hi - lo))) or 0
+        local trackW = 176 - 48
+        r.slider.fill:SetWidth(math.max(0.01, (trackW - 2) * frac))
+        r.slider.handle:ClearAllPoints()
+        r.slider.handle:SetPoint("CENTER", r.slider.track, "LEFT", (trackW - 14) * frac + 7, 0)
+        r.slider.trackBox:SetColors(KC.controlBg, 1, focused and KC.slot or KC.control, 1)
+        local hc = focused and KC.focus or KC.dimGold
+        r.slider.handle:SetColorTexture(hc[1], hc[2], hc[3], 1)
+        r.slider.value:SetText(row.fmt and row.fmt(v) or tostring(v))
+        r.slider:SetAlpha(disabled and 0.4 or 1)
+        controlLeft = right - 176
+    elseif kind == "stat" then
+        parts.stat = true
+        r.stat:ClearAllPoints()
+        r.stat:SetPoint("RIGHT", r, "LEFT", right, 0)
+        r.stat:SetText(resolve(row.text) or "")
+        controlLeft = right - r.stat:GetStringWidth()
+    end
+    local status = resolve(row.status)
+    if status and kind == "check" then
+        parts.status = true
+        r.status:ClearAllPoints()
+        r.status:SetPoint("RIGHT", r, "LEFT", controlLeft - 10, 0)
+        r.status:SetText(status)
+        controlLeft = controlLeft - 10 - r.status:GetStringWidth()
+    end
+    local x = 14
+    if row.icon then
+        parts.icon = true
+        r.icon:SetTexture(resolve(row.icon))
+        x = 44
+    end
+    SetShownParts(r, parts)
+    r.label:ClearAllPoints()
+    r.label:SetPoint("LEFT", r, "LEFT", x, 0)
+    r.label:SetWidth(math.max(20, controlLeft - 10 - x))
+    r.label:SetText(resolve(row.label))
+    r.label:SetTextColor(unpack(disabled and KC.disabled or (focused and KC.focusText or KC.cream)))
+end
+
+function Page:Render()
+    -- The rail
+    for i, e in ipairs(self.railEntries) do
+        local active = i == self.section
+        e.label:SetText(self.def.sections[i].label)
+        e.label:SetTextColor(unpack(active and KC.focus or KC.rail))
+        e.diamond:SetShown(active)
+        e.sel:SetShown(active and self.zone == "rail")
+    end
+    -- A section drawn its own way
+    local sec = self:Section()
+    for _, other in ipairs(self.def.sections) do
+        if other.view then other.view.frame:SetShown(other == sec) end
+    end
+    if sec.view then
+        self.rows = {}
+        for _, r in ipairs(self.rowsUI) do r:Hide() end
+        self.moreUp:Hide()
+        self.moreDown:Hide()
+        sec.view:Render(self, self.zone == "list")
+        self.detail:Set(self.zone == "rail" and { title = sec.label, body = resolve(sec.tip) } or sec.view:Detail(self))
+        return
+    end
+    -- The list, windowed on the focus (the section title above it kept)
+    self:Rebuild()
+    local rows = self.rows
+    for _, row in ipairs(rows) do
+        if row.kind == "info" then
+            local probe = self.rowsUI[1] or NewRow(self, 1)
+            probe.info:SetText(resolve(row.label))
+            row.height = math.floor(probe.info:GetStringHeight() + 16 + 0.5)
+        end
+    end
+    local fi = self:FocusIndex()
+    if fi then self:SetFocus(fi) end
+    local start = math.max(1, math.min(self.start[sec.key] or 1, #rows))
+    local function sum(a, b)
+        local t = 0
+        for j = a, b do t = t + self:RowHeight(rows[j]) end
+        return t
+    end
+    if sum(1, #rows) <= BUDGET then start = 1 end
+    if fi then
+        if fi < start then start = (fi > 1 and rows[fi - 1].kind == "header") and fi - 1 or fi end
+        while start < fi and sum(start, fi) > BUDGET do start = start + 1 end
+    end
+    while start > 1 and sum(start - 1, #rows) <= BUDGET do start = start - 1 end
+    self.start[sec.key] = start
+    local used, n, moreBelow = 0, 0, false
+    for j = start, #rows do
+        local h = self:RowHeight(rows[j])
+        if used + h > BUDGET + 2 then
+            moreBelow = true
+            break
+        end
+        n = n + 1
+        local r = self.rowsUI[n] or NewRow(self, n)
+        r:ClearAllPoints()
+        r:SetPoint("TOPLEFT", self.list, "TOPLEFT", 0, -used)
+        r:SetHeight(h)
+        r.index = j
+        self:LayoutRow(r, rows[j], self.zone == "list" and j == fi)
+        r:Show()
+        used = used + h
+    end
+    for j = n + 1, #self.rowsUI do self.rowsUI[j]:Hide() end
+    self.moreUp:SetShown(start > 1)
+    self.moreDown:SetShown(moreBelow)
+    self.detail:Set(self:Detail())
+end
+
+function Page:Detail()
+    local sec = self:Section()
+    if self.zone == "rail" then return { title = sec.label, body = resolve(sec.tip) } end
+    local row = self.rows[self:FocusIndex() or 0]
+    if not row then return { title = sec.label, body = resolve(sec.tip) } end
+    local tag, tagColor
+    if row.kind == "check" then
+        local on = resolve(row.get)
+        tag, tagColor = on and "On" or "Off", on and KC.slot or KC.grey
+    end
+    return { icon = row.icon and resolve(row.icon), title = resolve(row.title) or resolve(row.label),
+        body = resolve(row.tip), tag = tag, tagColor = tagColor, extra = resolve(row.extra) }
+end
+
+function Page:Crumb()
+    return self.def.label .. " › " .. (self:Section().label or "")
+end
+
+---------------------------------------------------------------------------
+-- The pad, the mouse
+---------------------------------------------------------------------------
+function Page:MoveFocus(delta, count)
+    local rows, i = self.rows, self:FocusIndex()
+    if not i then return menu.Render() end
+    local from = i
+    for _ = 1, count or 1 do
+        local j = i + delta
+        while rows[j] and not Focusable(rows[j]) do j = j + delta end
+        if rows[j] then i = j end
+    end
+    if i ~= from then menu.Disarm() end
+    self:SetFocus(i)
+    menu.Render()
+end
+
+-- A row's action: Cross (or a click), or its value moved (delta)
+function Page:Act(row, delta)
+    if not row or resolve(row.disabled) then return end
+    local kind = row.kind
+    if delta then
+        if kind == "choice" then
+            if row.step then row.step(delta) end
+        elseif kind == "slider" then
+            local v = resolve(row.get) + delta * (row.stepSize or 1)
+            row.set(math.max(row.min, math.min(row.max, v)))
+        end
+        return menu.Render()
+    end
+    if kind == "check" then
+        row.set(not resolve(row.get))
+    elseif kind == "choice" then
+        if row.step then row.step(1) end
+    elseif kind == "button" then
+        if row.danger and not menu.IsArmed(row.id) then
+            menu.Arm(row.id)
+        else
+            menu.Disarm()
+            row.func()
+        end
+    end
+    menu.Render()
+end
+
+function Page:ClickRow(r, delta)
+    if not (r and r.index) then return end
+    local row = self.rows[r.index]
+    if not Focusable(row) then return end
+    if menu.armed and menu.armed ~= row.id then menu.Disarm() end
+    self.zone = "list"
+    self:SetFocus(r.index)
+    if delta and not (row.kind == "choice" or row.kind == "slider") then delta = nil end
+    if delta and row.kind == "choice" and r.left then
+        local a = delta < 0 and r.left or r.right
+        a.pressed = true
+        C_Timer.After(0.1, function()
+            a.pressed = nil
+            if menu.IsOpen() then menu.Render() end
+        end)
+    end
+    self:Act(row, delta)
+end
+
+function Page:SlideRow(r, frac)
+    local row = r.index and self.rows[r.index]
+    if not (row and row.kind == "slider") or resolve(row.disabled) then return end
+    self.zone = "list"
+    self:SetFocus(r.index)
+    local step = row.stepSize or 1
+    row.set(row.min + math.floor((row.max - row.min) * math.max(0, math.min(1, frac)) / step + 0.5) * step)
+    menu.Render()
+end
+
+function Page:Press(name)
+    local sections = self.def.sections
+    if self.zone == "rail" then
+        if name == "UP" or name == "DOWN" then
+            self:SetSection(math.max(1, math.min(#sections, self.section + (name == "UP" and -1 or 1))))
+        elseif name == "A" or name == "RIGHT" then
+            self.zone = "list"
+            menu.repeatName = nil
+            menu.Render()
+        else
+            return false
+        end
+        return true
+    end
+    -- A section drawn its own way: its presses; Circle or an edge back to the rail
+    local view = self:Section().view
+    if view then
+        if view:Press(self, name) then return true end
+        if name == "B" or name == "LEFT" then
+            self.zone = "rail"
+            menu.Render()
+            return true
+        end
+        return false
+    end
+    local row = self.rows[self:FocusIndex() or 0]
+    if name == "UP" or name == "DOWN" then
+        self:MoveFocus(name == "UP" and -1 or 1)
+    elseif name == "LEFT" then
+        if row and (row.kind == "choice" or row.kind == "slider") then
+            self:Act(row, -1)
+        else
+            self.zone = "rail"
+            menu.Render()
+        end
+    elseif name == "RIGHT" then
+        if row and (row.kind == "choice" or row.kind == "slider") then self:Act(row, 1) end
+    elseif name == "A" then
+        if row then self:Act(row) end
+    elseif name == "X" or name == "Y" then
+        local fn = row and row[name == "X" and "onX" or "onY"]
+        if fn then
+            fn()
+            menu.Render()
+        end
+    elseif name == "B" then
+        self.zone = "rail"
+        menu.Render()
+    else
+        return false
+    end
+    return true
+end
+
+function Page:Help()
+    local Hn = K.H
+    local tab = Hn({ "LB", "RB" }, "Tab", "RB")
+    if self.zone == "rail" then
+        return { Hn({ "DPAD" }, "Move"), Hn({ "A" }, "Open", "A"), tab, Hn({ "B" }, "Close", "B") }
+    end
+    local view = self:Section().view
+    if view then return view:Help(self) end
+    local row = self.rows[self:FocusIndex() or 0]
+    if not row then return { tab, Hn({ "B" }, "Back", "B") } end
+    local hints = {}
+    if row.kind == "check" then
+        hints[#hints + 1] = Hn({ "A" }, resolve(row.get) and "Uncheck" or "Check", "A")
+    elseif row.kind == "choice" or row.kind == "slider" then
+        hints[#hints + 1] = Hn({ "DPAD_LR" }, "Change", "RIGHT")
+    elseif row.kind == "button" then
+        hints[#hints + 1] = Hn({ "A" }, row.danger and "Clear" or "Select", "A")
+    end
+    if row.onX then hints[#hints + 1] = Hn({ "X" }, row.xVerb, "X") end
+    if row.onY then hints[#hints + 1] = Hn({ "Y" }, row.yVerb, "Y") end
+    hints[#hints + 1] = tab
+    hints[#hints + 1] = Hn({ "B" }, "Back", "B")
+    return hints
+end
+
+menu.NewPage = NewPage
+
+-- A tab added by another file (WheelEditor.lua), placed before the tab `before`
+function menu.AddTab(def, before)
+    for i, other in ipairs(menu.TABS) do
+        if other.key == before then
+            table.insert(menu.TABS, i, def)
+            return
+        end
+    end
+    menu.TABS[#menu.TABS + 1] = def
+end
+
+---------------------------------------------------------------------------
+-- Transient states: a destructive button armed (a second Cross does it;
+-- Circle, a move or 4 s let it go), a short message in the crumb (1.8 s)
+---------------------------------------------------------------------------
+function menu.Arm(id)
+    menu.armed = id
+    menu.armToken = (menu.armToken or 0) + 1
+    local token = menu.armToken
+    C_Timer.After(4, function()
+        if menu.armToken == token and menu.armed == id then
+            menu.armed = nil
+            menu.Render()
+        end
+    end)
+end
+
+function menu.IsArmed(id)
+    return menu.armed ~= nil and menu.armed == id
+end
+
+function menu.Disarm()
+    menu.armed = nil
+end
+
+function menu.Toast(text, warn)
+    menu.toast = { text = text, color = warn and KC.warn or KC.info }
+    menu.toastToken = (menu.toastToken or 0) + 1
+    local token = menu.toastToken
+    C_Timer.After(1.8, function()
+        if menu.toastToken == token then
+            menu.toast = nil
+            menu.Render()
+        end
+    end)
+    menu.Render()
+end
+
+---------------------------------------------------------------------------
+-- Window: header (40), tabs (44), body (448), help bar (44)
+---------------------------------------------------------------------------
+local frame
+local pages = {}
+menu.pages = pages
+
+function menu.IsOpen()
+    return frame ~= nil and frame:IsShown()
+end
+
+local function CurrentPage()
+    return pages[menu.tab] or pages[menu.TABS[1].key]
+end
+
+local function Build()
+    if frame then return end
+    local f = K.NewFrame("Frame", "ImprovedControllerConfigFrame", UIParent)
+    f:SetSize(W, H)
+    f:SetFrameStrata("DIALOG")
+    f:EnableMouse(true)
+    f:SetClampedToScreen(true)
+    f:SetMovable(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    f:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local point, _, _, x, y = self:GetPoint(1)
+        IC.db.menuPos = { point = point, x = math.floor(x + 0.5), y = math.floor(y + 0.5) }
+    end)
+    local pos = IC.db.menuPos
+    if type(pos) == "table" and pos.point then
+        f:SetPoint(pos.point, UIParent, pos.point, pos.x, pos.y)
+    else
+        f:SetPoint("CENTER", 0, 30)
+    end
+    f:Hide()
+    K.Panel(f)
+    frame = f
+
+    -- Header: the title, the close button
+    local title = K.Text(f, 20, KC.title)
+    title:SetPoint("LEFT", f, "TOPLEFT", 20, -22)
+    title:SetText("Improved Controller")
+    local close = K.Button(f, 14)
+    close:SetSize(30, 26)
+    close:SetPoint("TOPRIGHT", -14, -9)
+    close.label:SetText("X")
+    close.label:SetTextColor(unpack(KC.cream))
+    close:SetScript("OnClick", function() menu.Close() end)
+
+    -- Tabs, centred: L1, the tabs, R1
+    local count = #menu.TABS
+    local tabsW = 34 + 6 + count * 126 + (count - 1) * 6 + 6 + 34
+    local x = math.floor((W - tabsW) / 2)
+    f.lbGlyph = K.Glyph(f, 34)
+    f.lbGlyph:SetPoint("TOPLEFT", x, -47)
+    f.tabs = {}
+    for i, def in ipairs(menu.TABS) do
+        local t = K.Button(f, 16)
+        t:SetSize(126, 32)
+        t:SetPoint("TOPLEFT", x + 40 + (i - 1) * 132, -48)
+        t.key = def.key
+        t.label:SetText(def.label)
+        t:SetScript("OnClick", function() menu.SetTab(def.key) end)
+        f.tabs[i] = t
+    end
+    f.rbGlyph = K.Glyph(f, 34)
+    f.rbGlyph:SetPoint("TOPLEFT", x + 40 + count * 132, -47)
+
+    -- Body: 784 x 424 inside its margins
+    f.body = K.NewFrame("Frame", nil, f)
+    f.body:SetPoint("TOPLEFT", 18, -98)
+    f.body:SetSize(784, 424)
+    for _, def in ipairs(menu.TABS) do
+        -- A tab may bring its own page (the Wheels tab: the rail or the editor)
+        local page = def.page and def.page(NewPage(def)) or NewPage(def)
+        page:Build(f.body)
+        pages[def.key] = page
+    end
+
+    -- Help bar: the crumb on the left, the hints on the right
+    local bar = K.NewFrame("Frame", nil, f)
+    bar:SetPoint("TOPLEFT", 2, -534)
+    bar:SetSize(W - 4, 44)
+    local line = K.Solid(bar, KC.line3, 1, "BORDER")
+    line:SetPoint("TOPLEFT")
+    line:SetPoint("TOPRIGHT")
     line:SetHeight(1)
-    line:SetColorTexture(THEME.accent[1], THEME.accent[2], THEME.accent[3], 0.7)
-    title:SetFont(THEME.font, 14, "")
-    title:SetTextColor(unpack(THEME.title))
-    title:SetShadowColor(0, 0, 0, 1)
-    title:SetShadowOffset(1, -1)
-    title:SetPoint("TOP", window, "TOP", 0, -7)
+    f.bar = bar
+    f.crumb = K.ChatText(bar, 13, KC.grey)
+    f.crumb:SetPoint("LEFT", 18, 0)
+    f.crumb:SetWordWrap(false)
+    f.hints = {}
+
+    f:SetScript("OnUpdate", function() menu.OnUpdate() end)
+    -- The panel takes both sticks while it is open (the camera and the
+    -- character stay still); a page may point with them (the wheel editor)
+    if f.EnableGamePadStick then
+        f:EnableGamePadStick(true)
+        f:SetScript("OnGamePadStick", function(_, stick, x, y, len)
+            local page = CurrentPage()
+            if page and page.OnStick then page:OnStick(stick, x, y, len) end
+        end)
+    end
+    menu.CreateInput()
 end
 
-local function Refresh()
-    if not frame then
-        return
+function menu.SetTab(key)
+    if not pages[key] then return end
+    if key == menu.tab and menu.IsOpen() then
+        CurrentPage().zone = "list"
+        return menu.Render()
     end
-    local entries = Entries()
-    local count = #entries
-    local visible = math.min(count, MAX_VISIBLE_ROWS)
-    -- Keep the selection in view.
-    if state.selected <= state.offset then
-        state.offset = state.selected - 1
-    elseif state.selected > state.offset + visible then
-        state.offset = state.selected - visible
-    end
-    state.offset = math.max(0, math.min(state.offset, count - visible))
-    frame:SetHeight(TOP_PAD + visible * ROW_HEIGHT + BOTTOM_PAD)
+    menu.Disarm()
+    local old = CurrentPage()
+    if old and menu.tab ~= key then old:Hide() end
+    menu.tab = key
+    IC.db.menuTab = key
+    CurrentPage():Show()
+    menu.Render()
+end
 
-    local page = menu.pages[state.page]
-    frame.title:SetText(state.page == "main" and page.title
-        or ("Improved Controller  |cff8a93a6>|r  |cffffc84d" .. page.title .. "|r"))
-    local selectedEntry = entries[state.selected]
-    local hints = { Cross() .. " choose", Circle() .. (state.page == "main" and " close" or " back"), Dpad() .. " move" }
-    if selectedEntry and selectedEntry.adjust then
-        hints[#hints + 1] = "|cffc9a84c<  >|r change"
+function menu.StepTab(delta)
+    local index = 1
+    for i, def in ipairs(menu.TABS) do
+        if def.key == menu.tab then index = i end
     end
-    if count > visible then
-        hints[#hints + 1] = "|cffc9a84cL1 / R1|r page"
-    end
-    frame.hint:SetText(table.concat(hints, "     "))
-    frame.desc:SetText(selectedEntry and selectedEntry.getDesc and selectedEntry.getDesc() or "")
-    frame.scroll:SetText(count > visible
-        and string.format("%d-%d of %d", state.offset + 1, state.offset + visible, count) or "")
+    menu.SetTab(menu.TABS[(index - 1 + delta) % #menu.TABS + 1].key)
+end
 
-    for index, row in ipairs(rows) do
-        local entryIndex = index + state.offset
-        local entry = index <= visible and entries[entryIndex]
-        row.entryIndex = entryIndex
-        if not entry then
-            row:Hide()
-        else
-            row:Show()
-            local selected = entryIndex == state.selected
-            row.highlight:SetShown(selected)
-            row.bar:SetShown(selected)
-            row.value:SetText("")
-            row.pill:Hide()
-            row.icon:Hide()
-            row.text:ClearAllPoints()
-            if entry.header then
-                row.rule:Show()
-                row.text:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 6, 5)
-                row.text:SetFont(THEME.font, 11, "")
-                row.text:SetText(string.upper(entry.name))
-                row.text:SetTextColor(unpack(THEME.accent))
-            else
-                row.rule:Hide()
-                local icon = entry.getIcon()
-                if icon then
-                    row.icon:SetTexture(icon)
-                    row.icon:Show()
-                end
-                row.text:SetPoint("LEFT", row, "LEFT", 32, 0)
-                row.text:SetPoint("RIGHT", row.value, "LEFT", -8, 0)
-                row.text:SetFont(THEME.font, entry.icon and 14 or 13, "")
-                row.text:SetText(entry.getName())
-                if selected then
-                    row.text:SetTextColor(unpack(THEME.title))
-                else
-                    row.text:SetTextColor(THEME.text[1] * 0.85, THEME.text[2] * 0.85, THEME.text[3] * 0.85)
-                end
-                local value = entry.getValue()
-                if entry.page then
-                    row.value:SetText((value and (tostring(value) .. "  ") or "") .. "|cff8a93a6>|r")
-                    row.value:SetTextColor(unpack(VALUE_OTHER))
-                elseif value then
-                    local text = tostring(value)
-                    local color = text == "On" and VALUE_ON or text == "Off" and VALUE_OFF or VALUE_OTHER
-                    if (text == "On" or text == "Off") and not entry.adjust then
-                        row.pill:SetVertexColor(color[1], color[2], color[3], 0.22)
-                        row.pill:Show()
-                    end
-                    if entry.adjust then
-                        text = "|cff8a7a50<|r  " .. text .. "  |cff8a7a50>|r"
-                    end
-                    row.value:SetText(text)
-                    row.value:SetTextColor(unpack(color))
-                end
-            end
+function menu.Render()
+    if not menu.IsOpen() then return end
+    local f = frame
+    f.lbGlyph:Set("LB")
+    f.rbGlyph:Set("RB")
+    for _, t in ipairs(f.tabs) do
+        t:SetState({ active = t.key == menu.tab })
+    end
+    local page = CurrentPage()
+    page:Render()
+
+    -- The help bar
+    local hints = page:Help() or {}
+    if menu.armed then hints = { K.H({ "A" }, "Confirm", "A"), K.H({ "B" }, "Cancel", "B") } end
+    local crumb, color = page:Crumb(), KC.grey
+    if menu.toast then crumb, color = menu.toast.text, menu.toast.color end
+    f.crumb:SetText(crumb)
+    f.crumb:SetTextColor(unpack(color))
+    local x = W - 4 - 18
+    for i = #hints, 1, -1 do
+        local h = f.hints[i]
+        if not h then
+            h = K.Hint(f.bar, menu.Press)
+            f.hints[i] = h
         end
+        h:Set(hints[i])
+        h:ClearAllPoints()
+        h:SetPoint("RIGHT", f.bar, "LEFT", x, 0)
+        x = x - h:GetWidth() - 18
     end
+    for i = #hints + 1, #f.hints do f.hints[i]:Hide() end
+    f.crumb:SetWidth(math.max(10, x - 18))
 end
 
-function menu.SetPage(name, select)
-    local page = menu.pages[name]
-    if not page then
-        return
-    end
-    state.page = name
-    state.entries = page.build and page.build() or page.entries
-    state.offset = 0
-    state.selected = NextSelectable(select or 1, 1)
-    Refresh()
-end
+---------------------------------------------------------------------------
+-- Pad input while open: hidden buttons bound with priority
+---------------------------------------------------------------------------
+local NAV = {
+    PADDUP = "UP", PADDDOWN = "DOWN", PADDLEFT = "LEFT", PADDRIGHT = "RIGHT",
+    PAD1 = "A", PAD2 = "B", PAD3 = "X", PAD4 = "Y",
+    PADLSHOULDER = "LB", PADRSHOULDER = "RB", PADLTRIGGER = "LT", PADRTRIGGER = "RT", ESCAPE = "B",
+}
+-- Held triggers may add modifiers to the keys
+local PREFIXES = { "", "SHIFT-", "CTRL-", "ALT-", "CTRL-SHIFT-", "ALT-SHIFT-", "ALT-CTRL-", "ALT-CTRL-SHIFT-" }
+local REPEAT = { UP = true, DOWN = true, LEFT = true, RIGHT = true }
 
-function menu.Navigate(action)
-    if not state.open then
-        return
-    end
-    local entries = Entries()
-    if action == "Up" then
-        state.selected = NextSelectable(state.selected - 1, -1)
-    elseif action == "Down" then
-        state.selected = NextSelectable(state.selected + 1, 1)
-    elseif action == "PageUp" or action == "PageDown" then
-        local step = action == "PageUp" and -1 or 1
-        local target = math.max(1, math.min(#entries, state.selected + step * MAX_VISIBLE_ROWS))
-        state.selected = NextSelectable(target, step)
-    elseif action == "Left" or action == "Right" then
-        local entry = entries[state.selected]
-        if entry and entry.adjust then
-            entry.adjust(action == "Left" and -1 or 1)
+function menu.Press(name)
+    -- A destructive button armed: Cross does it, Circle cancels, a move lets it go
+    if menu.armed then
+        if name == "B" then
+            menu.Disarm()
+            return menu.Render()
         end
-    elseif action == "Activate" then
-        menu.Activate()
-        return
-    elseif action == "Close" then
-        if state.page ~= "main" then
-            menu.Back()
-        else
-            menu.Close()
-        end
-        return
+        if name == "LB" or name == "RB" then return end
+        if name ~= "A" then menu.Disarm() end
     end
-    Refresh()
-end
-
-function menu.Back()
-    local returnTo = state.returnIndex
-    state.returnIndex = nil
-    menu.SetPage("main", returnTo)
-end
-
-function menu.Activate()
-    local entry = Entries()[state.selected]
-    if not IsSelectable(entry) then
-        return
-    end
-    if entry.page then
-        state.returnIndex = state.selected
-        menu.SetPage(entry.page)
-        return
-    end
-    if entry.back then
-        menu.Back()
-        return
-    end
-    if entry.activate then
-        entry.activate()
-    end
-    if entry.keep then
-        Refresh()
-    else
+    if CurrentPage():Press(name) then return end
+    if name == "LB" or name == "RB" then
+        menu.StepTab(name == "LB" and -1 or 1)
+    elseif name == "B" then
         menu.Close()
     end
 end
 
-local function CreateMenuFrame()
-    -- The header owns the keys and clears them itself when combat starts.
-    headerFrame = CreateFrame("Frame", "ImprovedControllerMenuHeader", UIParent, "SecureHandlerStateTemplate")
-    headerFrame:SetAllPoints(UIParent)
-    headerFrame:SetFrameStrata("DIALOG")
-    headerFrame:EnableMouse(false)
-    headerFrame:Hide()
-    headerFrame:SetAttribute("_onstate-combat", [[
-        if newstate == "1" and self:IsShown() then
-            self:ClearBindings()
-            self:Hide()
-        end
-    ]])
-    RegisterStateDriver(headerFrame, "combat", "[combat] 1; 0")
-
-    frame = CreateFrame("Frame", "ImprovedControllerMenu", headerFrame, "BackdropTemplate")
-    frame:SetSize(MENU_WIDTH, TOP_PAD + MAX_VISIBLE_ROWS * ROW_HEIGHT + BOTTOM_PAD)
-    frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 8, -140)
-    frame:EnableMouse(true)
-    frame:EnableMouseWheel(true)
-    frame:SetScript("OnMouseWheel", function(_, delta)
-        menu.Navigate(delta > 0 and "Up" or "Down")
-    end)
-    frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    ThemeWindow(frame, frame.title)
-    frame.scroll = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    frame.scroll:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -8)
-
-    for index = 1, MAX_VISIBLE_ROWS do
-        local row = CreateFrame("Button", nil, frame)
-        row:SetSize(MENU_WIDTH - 24, ROW_HEIGHT)
-        row:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, -TOP_PAD - (index - 1) * ROW_HEIGHT)
-        row.highlight = row:CreateTexture(nil, "BACKGROUND")
-        row.highlight:SetAllPoints(row)
-        row.highlight:SetColorTexture(1, 1, 1, 1)
-        if row.highlight.SetGradient and CreateColor then
-            pcall(row.highlight.SetGradient, row.highlight, "HORIZONTAL",
-                CreateColor(THEME.accent[1], THEME.accent[2], THEME.accent[3], 0.28),
-                CreateColor(THEME.accent[1], THEME.accent[2], THEME.accent[3], 0.03))
-        else
-            row.highlight:SetColorTexture(THEME.accent[1], THEME.accent[2], THEME.accent[3], 0.14)
-        end
-        row.bar = row:CreateTexture(nil, "ARTWORK")
-        row.bar:SetPoint("TOPLEFT", row, "TOPLEFT", -4, 0)
-        row.bar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", -4, 0)
-        row.bar:SetWidth(3)
-        row.bar:SetColorTexture(THEME.accent[1], THEME.accent[2], THEME.accent[3], 1)
-        row.rule = row:CreateTexture(nil, "ARTWORK")
-        row.rule:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 6, 1)
-        row.rule:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -6, 1)
-        row.rule:SetHeight(1)
-        row.rule:SetColorTexture(THEME.accent[1], THEME.accent[2], THEME.accent[3], 0.25)
-        row.icon = row:CreateTexture(nil, "ARTWORK")
-        row.icon:SetSize(22, 22)
-        row.icon:SetPoint("LEFT", row, "LEFT", 3, 0)
-        row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        row.pill = row:CreateTexture(nil, "ARTWORK")
-        row.pill:SetSize(44, 18)
-        row.pill:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-        row.pill:SetTexture("Interface\\Buttons\\WHITE8X8")
-        row.value = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        row.value:SetPoint("RIGHT", row, "RIGHT", -8, 0)
-        row.value:SetJustifyH("RIGHT")
-        row.value:SetFont(THEME.font, 13, "")
-        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        row.text:SetJustifyH("LEFT")
-        row.text:SetWordWrap(false)
-        row:SetScript("OnEnter", function(self)
-            if IsSelectable(Entries()[self.entryIndex]) then
-                state.selected = self.entryIndex
-                Refresh()
+function menu.CreateInput()
+    for key, name in pairs(NAV) do
+        local b = K.NewFrame("Button", "ImprovedControllerConfigPad" .. key)
+        b:SetSize(1, 1)
+        b:RegisterForClicks("AnyDown", "AnyUp")
+        b:SetScript("OnClick", function(_, _, down)
+            -- Circle acts on release: closing on the press would leave the
+            -- release to the game alone
+            if name == "B" then
+                if down == false then menu.Press(name) end
+                return
             end
-        end)
-        row:SetScript("OnClick", function(self)
-            if IsSelectable(Entries()[self.entryIndex]) then
-                state.selected = self.entryIndex
-                menu.Activate()
+            if down == false then
+                if menu.repeatName == name then menu.repeatName = nil end
+                return
             end
+            if REPEAT[name] then
+                menu.repeatName, menu.repeatKey, menu.repeatAt = name, key, GetTime() + 0.35
+            end
+            menu.Press(name)
         end)
-        rows[index] = row
-    end
-
-    -- What the selected option does, under the list.
-    local descPanel = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
-    descPanel:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 10, 34)
-    descPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, 34)
-    descPanel:SetHeight(50)
-    descPanel:SetColorTexture(0, 0, 0, 0.35)
-    local descLine = frame:CreateTexture(nil, "ARTWORK")
-    descLine:SetPoint("BOTTOMLEFT", descPanel, "TOPLEFT", 0, 0)
-    descLine:SetPoint("BOTTOMRIGHT", descPanel, "TOPRIGHT", 0, 0)
-    descLine:SetHeight(1)
-    descLine:SetColorTexture(THEME.accent[1], THEME.accent[2], THEME.accent[3], 0.35)
-    frame.desc = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    frame.desc:SetPoint("TOPLEFT", descPanel, "TOPLEFT", 10, -7)
-    frame.desc:SetPoint("BOTTOMRIGHT", descPanel, "BOTTOMRIGHT", -10, 5)
-    frame.desc:SetJustifyH("LEFT")
-    frame.desc:SetJustifyV("TOP")
-    frame.desc:SetFont(THEME.font, 12, "")
-    frame.desc:SetTextColor(0.82, 0.82, 0.78)
-    frame.hint = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    frame.hint:SetPoint("BOTTOM", frame, "BOTTOM", 0, 12)
-    frame.hint:SetFont(THEME.font, 11, "")
-    frame.hint:SetTextColor(unpack(THEME.muted))
-
-    -- Covers the combat state driver hiding the header too.
-    frame:SetScript("OnHide", function()
-        state.open = false
-        if not IC.InCombat() then
-            ClearOverrideBindings(headerFrame)
-        end
-    end)
-
-    -- Hidden buttons the navigation keys click.
-    for _, nav in ipairs(NAV) do
-        local button = CreateFrame("Button", "ImprovedControllerMenuNav" .. nav.action, headerFrame)
-        button:SetSize(1, 1)
-        button:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -20, 20)
-        button:RegisterForClicks("AnyDown")
-        button:SetScript("OnClick", function() menu.Navigate(nav.action) end)
-        nav.button = button
     end
 end
 
-function menu.Open()
-    if IC.InCombat() then
-        IC.Print("the menu opens after combat.")
+local function BindKey(key)
+    local name = "ImprovedControllerConfigPad" .. key
+    if key == "ESCAPE" then
+        SetOverrideBindingClick(frame, true, key, name)
+    else
+        for _, prefix in ipairs(PREFIXES) do SetOverrideBindingClick(frame, true, prefix .. key, name) end
+    end
+end
+
+-- A button still held (the one that opened the panel) is taken only once
+-- released: its release belongs to the game, which saw it pressed
+function menu.BindPad()
+    if InCombatLockdown() or not frame then return end
+    ClearOverrideBindings(frame)
+    menu.heldKeys = {}
+    for key in pairs(NAV) do
+        if key ~= "ESCAPE" and IsKeyDown and IsKeyDown(key) then
+            menu.heldKeys[key] = true
+        else
+            BindKey(key)
+        end
+    end
+end
+
+function menu.UnbindPad()
+    menu.heldKeys = nil
+    if frame and not InCombatLockdown() then ClearOverrideBindings(frame) end
+end
+
+function menu.OnUpdate()
+    if menu.heldKeys and next(menu.heldKeys) and not InCombatLockdown() then
+        for key in pairs(menu.heldKeys) do
+            if not IsKeyDown(key) then
+                menu.heldKeys[key] = nil
+                BindKey(key)
+            end
+        end
+    end
+    -- Its release went elsewhere (the game rebound the pad): over
+    if menu.repeatName and IsKeyDown and menu.repeatKey and not IsKeyDown(menu.repeatKey) then
+        menu.repeatName = nil
+    end
+    if menu.repeatName and GetTime() >= menu.repeatAt then
+        menu.repeatAt = GetTime() + 0.08
+        menu.Press(menu.repeatName)
+    end
+end
+
+---------------------------------------------------------------------------
+-- Open / close: back on the last tab and section
+---------------------------------------------------------------------------
+function menu.Open(tab)
+    if InCombatLockdown() then
+        IC.Print("the panel opens after combat.")
         return
     end
-    if not frame then
-        CreateMenuFrame()
+    Build()
+    if menu.IsOpen() then
+        if tab then menu.SetTab(tab) end
+        return
     end
-    state.open = true
-    ClearOverrideBindings(headerFrame)
-    for _, nav in ipairs(NAV) do
-        SetOverrideBindingClick(headerFrame, true, nav.key, nav.button:GetName(), "LeftButton")
-    end
-    headerFrame:Show()
+    local key = tab or IC.db.menuTab
+    if not pages[key or ""] then key = menu.TABS[1].key end
+    menu.tab = key
+    IC.db.menuTab = key
+    menu.Disarm()
     frame:Show()
-    menu.SetPage("main")
+    CurrentPage():Show()
+    menu.BindPad()
+    menu.Render()
     PlaySound(SOUNDKIT.IG_MAINMENU_OPEN)
 end
 
 function menu.Close()
-    if frame and frame:IsShown() then
-        frame:Hide()
-    end
-    if headerFrame and headerFrame:IsShown() and not IC.InCombat() then
-        headerFrame:Hide()
-    end
-    state.open = false
+    if not menu.IsOpen() then return end
+    menu.Disarm()
+    CurrentPage():Hide()
+    menu.UnbindPad()
+    frame:Hide()
+    menu.repeatName = nil
     PlaySound(SOUNDKIT.IG_MAINMENU_CLOSE)
 end
 
 function menu.Toggle()
-    if state.open then
+    if menu.IsOpen() then
         menu.Close()
     else
         menu.Open()
     end
 end
 
--- Target of the "Toggle Improved Controller menu" key binding.
+-- Target of the "Toggle Improved Controller menu" key binding (and the
+-- touchpad's "Improved Controller menu" region)
 local toggle = CreateFrame("Button", "ImprovedControllerMenuToggle", UIParent)
 toggle:SetScript("OnClick", menu.Toggle)
 BINDING_HEADER_IMPROVEDCONTROLLER = "Improved Controller"
 _G["BINDING_NAME_CLICK ImprovedControllerMenuToggle:LeftButton"] = "Toggle Improved Controller menu"
 
--- Bag / spell changes while the buffs page is up.
+-- Combat closes the panel (its bindings can only change out of combat;
+-- PLAYER_REGEN_DISABLED comes just before the lockdown); spellbook and bag
+-- changes redraw it
 local events = CreateFrame("Frame")
+events:RegisterEvent("PLAYER_REGEN_DISABLED")
 events:RegisterEvent("SPELLS_CHANGED")
-events:SetScript("OnEvent", function()
-    if state.open and state.page == "buffs" then
-        local selected = state.selected
-        menu.SetPage("buffs", selected)
+events:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+        return menu.Close()
     end
+    menu.Render()
 end)
