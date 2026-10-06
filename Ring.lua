@@ -172,6 +172,12 @@ SecureHandlerWrapScript(trigger, "OnClick", trigger, [[
             end
         end
     end
+    -- A combo another feature has for now (the bag clean-up panel's, while
+    -- the bags are open): left to it
+    if self:GetAttribute("ic-skip-" .. combo) then
+        self:SetAttribute("ic-mode", nil)
+        return false
+    end
     local key = self:GetAttribute("ic-combo-" .. combo) or "native"
     self:SetAttribute("ic-mode", key)
     if key ~= "native" then
@@ -855,5 +861,14 @@ if EventRegistry and EventRegistry.RegisterCallback then
     EventRegistry:RegisterCallback("Gamepad.HideMainMenu", function()
         ring:SetAlpha(1)
     end, ring)
+end
+
+-- Leave an R3 combo ("L1", "R2"...) to something else for now, or take it
+-- back; out of combat only
+function IC.SuppressCombo(combo, on)
+    if IC.InCombat() then return false end
+    local trigger = _G.ImprovedControllerRingTrigger
+    if trigger then trigger:SetAttribute("ic-skip-" .. combo, on or nil) end
+    return true
 end
 

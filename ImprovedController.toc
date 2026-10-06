@@ -21,4 +21,5 @@ WheelEditor.lua
 TouchEditor.lua
 VibeEditor.lua
 GeneralEditor.lua
+BagCleaner.lua
 Options.lua

@@ -133,6 +133,20 @@ local ITEMS = {
         IC.UpdateBagBinding()
     end, "Bag clean-up")),
     Item({
+        key = "bagClean", group = "misc", label = "Bag clean-up panel",
+        icon = TEX .. "ic_emote_no",
+        tip = "With your bags open, press its buttons to open a panel of what is safe to throw away: junk"
+            .. " and cheap white items no profession, quest or class uses. Cross destroys one (press twice),"
+            .. " hold Square and let go to destroy them all.",
+        bindable = true,
+        binding = function() return IC.BagCleaner.OpenKey() end,
+        keyText = function(size) return IC.BagCleaner.OpenKeyText(size) end,
+        chord = true,
+        bind = function(key) IC.BagCleaner.SetOpenKey(key) end,
+    }, OnOff(function() return IC.BagCleaner.Enabled() end, function(on)
+        IC.db.bagClean = on
+    end, "Bag clean-up panel")),
+    Item({
         key = "about", group = "about", label = "Improved Controller",
         icon = TEX .. "ic_event_wheel",
         tip = "Quality of life for WoW Forever with a controller.",
@@ -231,9 +245,22 @@ function G:Build(parent)
     if capture.EnableGamePadButton then
         -- A button pressed and let go while recording (Square's own release,
         -- from starting it, doesn't count)
-        capture:SetScript("OnGamePadButtonDown", function(self, button) self.held = button end)
+        -- (an item that takes two: a button held while another is pressed)
+        capture:SetScript("OnGamePadButtonDown", function(self, button)
+            if self.held and self.held ~= button and IsKeyDown(self.held) and G:Item().chord then
+                self.chord = self.held .. "+" .. button
+            else
+                self.held, self.chord = button, nil
+            end
+        end)
         capture:SetScript("OnGamePadButtonUp", function(self, button)
-            if button == self.held then G:Recorded(button) end
+            if self.chord then
+                local chord = self.chord
+                self.chord, self.held = nil, nil
+                G:Recorded(chord)
+            elseif button == self.held then
+                G:Recorded(button)
+            end
         end)
     end
     self.capture = capture
@@ -288,12 +315,13 @@ function G:StartCapture()
     if not item.bindable or IC.InCombat() then return end
     self.zone = "capture"
     local c = self.capture
-    c.held = nil
+    c.held, c.chord = nil, nil
     c:Show()
     c:EnableKeyboard(true)
     c:SetPropagateKeyboardInput(false)
     if c.EnableGamePadButton then c:EnableGamePadButton(true) end
-    menu.Toast(IC.PadText(item.label .. ": press a button for it ({B} cancels)"))
+    menu.Toast(IC.PadText(item.label .. ": press a button for it" .. (item.chord and " (or hold one, press another)" or "")
+        .. " ({B} cancels)"))
     self.captureToken = (self.captureToken or 0) + 1
     local token = self.captureToken
     C_Timer.After(10, function()
@@ -324,7 +352,7 @@ function G:Recorded(button)
             menu.Toast(item.label .. ": unchanged")
         elseif not IC.InCombat() then
             item.bind(button)
-            menu.Toast(item.label .. ": " .. IC.ButtonName(button))
+            menu.Toast(item.label .. ": " .. (item.keyText and item.keyText() or IC.ButtonName(button)))
         end
         menu.Render()
     end)
@@ -424,7 +452,8 @@ function G:Render()
     if item.bindable then
         local key = item.binding()
         text = text .. "|n|cffd8ccb0" .. (self.zone == "capture" and "Press a button..."
-            or ("Button: " .. IC.GlyphText(key, 20) .. " " .. IC.ButtonName(key))) .. "|r"
+            or ("Button: " .. (item.keyText and item.keyText(20)
+                or (IC.GlyphText(key, 20) .. " " .. IC.ButtonName(key))))) .. "|r"
     end
     f.value:SetText(text)
     f.note:SetText(Resolve(item.note) or item.tip or "")
