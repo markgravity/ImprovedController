@@ -142,7 +142,7 @@ end
 local function EmoteEntries()
     local entries = {}
     for _, emote in ipairs(IC.EMOTES) do
-        entries[#entries + 1] = { action = "emote:" .. emote[1], name = emote[2], icon = IC.EMOTE_ICON, sub = "/" .. emote[1] }
+        entries[#entries + 1] = { action = "emote:" .. emote[1], name = emote[2], icon = emote[3] or IC.EMOTE_ICON, sub = "/" .. emote[1] }
     end
     return entries
 end

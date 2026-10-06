@@ -34,19 +34,26 @@ local CLASS_BUFFS = {
 }
 
 -- Emotes a slot can take (the slash command is "/" .. token)
+-- { token, name }: each with its own icon in the radial menu's style
+-- (textures/ic_emote_<token>, tools/make_emote_icons.py)
 IC.EMOTES = {
-    { "wave", "Wave" }, { "hello", "Hello" }, { "thank", "Thank" }, { "cheer", "Cheer" },
-    { "dance", "Dance" }, { "laugh", "Laugh" }, { "bow", "Bow" }, { "roar", "Roar" },
-    { "bye", "Bye" }, { "clap", "Clap" }, { "cry", "Cry" }, { "flex", "Flex" },
-    { "kiss", "Kiss" }, { "kneel", "Kneel" }, { "lol", "Lol" }, { "no", "No" },
-    { "yes", "Yes" }, { "point", "Point" }, { "rude", "Rude" }, { "salute", "Salute" },
-    { "sit", "Sit" }, { "sleep", "Sleep" }, { "shy", "Shy" }, { "train", "Train" },
-    { "chicken", "Chicken" }, { "thanks", "Thanks" }, { "followme", "Follow me" }, { "charge", "Charge" },
-    { "attacktarget", "Attack target" }, { "healme", "Heal me" }, { "oom", "Out of mana" }, { "flee", "Flee" },
+    { "wave", "Wave" }, { "hello", "Hello" }, { "thank", "Thank" },
+    { "cheer", "Cheer" }, { "dance", "Dance" }, { "laugh", "Laugh" },
+    { "bow", "Bow" }, { "roar", "Roar" }, { "bye", "Bye" },
+    { "clap", "Clap" }, { "cry", "Cry" }, { "flex", "Flex" },
+    { "kiss", "Kiss" }, { "kneel", "Kneel" }, { "lol", "Lol" },
+    { "no", "No" }, { "yes", "Yes" }, { "point", "Point" },
+    { "rude", "Rude" }, { "salute", "Salute" }, { "sit", "Sit" },
+    { "sleep", "Sleep" }, { "shy", "Shy" }, { "train", "Train" },
+    { "chicken", "Chicken" }, { "thanks", "Thanks" }, { "followme", "Follow me" },
+    { "charge", "Charge" }, { "attacktarget", "Attack target" },
+    { "healme", "Heal me" }, { "oom", "Out of mana" }, { "flee", "Flee" },
 }
-local EMOTE_NAME = {}
+local EMOTE_NAME, EMOTE_ICONS = {}, {}
 for _, emote in ipairs(IC.EMOTES) do
     EMOTE_NAME[emote[1]] = emote[2]
+    emote[3] = "Interface\\AddOns\\ImprovedController\\textures\\ic_emote_" .. emote[1]
+    EMOTE_ICONS[emote[1]] = emote[3]
 end
 IC.EMOTE_ICON = "Interface\\GossipFrame\\GossipGossipIcon"
 local DEFAULT_EMOTES = { "wave", "hello", "thank", "cheer", "dance", "laugh", "bow", "roar" }
@@ -93,7 +100,7 @@ function IC.ActionInfo(action)
         local name, icon = GetMacroInfo(value)
         return name, icon
     elseif kind == "emote" then
-        return EMOTE_NAME[value] or value, IC.EMOTE_ICON
+        return EMOTE_NAME[value] or value, EMOTE_ICONS[value] or IC.EMOTE_ICON
     end
 end
 
