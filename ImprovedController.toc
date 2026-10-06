@@ -20,4 +20,5 @@ Menu.lua
 WheelEditor.lua
 TouchEditor.lua
 VibeEditor.lua
+GeneralEditor.lua
 Options.lua

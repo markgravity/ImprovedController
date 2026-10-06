@@ -33,116 +33,9 @@ end
 
 menu.TABS = {
     {
-        key = "home", label = "Home",
-        sections = {
-            {
-                key = "bags", label = "Bags",
-                tip = "Bag shortcuts while your bags are open.",
-                rows = function(b)
-                    b.header("Bags")
-                    b.check({
-                        id = "bagSort", label = IC.PadText("{LS} cleans up bags"),
-                        get = function() return IC.db.bagSort ~= false end,
-                        set = function(on)
-                            IC.db.bagSort = on
-                            IC.UpdateBagBinding()
-                        end,
-                        tip = IC.PadText("While any bag is open, {LS} (left stick click) sorts your bags. {LS} does"
-                            .. " its usual job again once the bags close."),
-                    })
-                end,
-            },
-            {
-                key = "touchpad", label = "Touchpad",
-                tip = "Clicking a PlayStation controller's touchpad runs the action of the corner your finger is in.",
-                rows = function(b)
-                    local settings = IC.Touch.GetSettings()
-                    b.header("Touchpad")
-                    if IC.PadStyle() ~= "Shapes" then
-                        b.info("Needs a controller with a touchpad (PlayStation DualSense or DualShock 4). This"
-                            .. " one is set up as " .. IC.PAD_STYLE_LABELS[IC.PadStyle()] .. " (Controller section).")
-                    end
-                    b.check({
-                        id = "touchOn", label = "Touchpad click",
-                        get = function() return settings.enabled ~= false end,
-                        set = function(on)
-                            settings.enabled = on
-                            IC.Touch.Apply()
-                        end,
-                        tip = "Clicking the touchpad runs what its corner holds (Touchpad tab): top left, top"
-                            .. " right, bottom left or bottom right. Works in combat.",
-                    })
-                end,
-            },
-            {
-                key = "vibration", label = "Vibration",
-                tip = "The controller vibrates on the events set in the Vibration tab.",
-                rows = function(b)
-                    local settings = IC.Vibe.Settings()
-                    b.header("Vibration")
-                    b.check({
-                        id = "vibeOn", label = "Vibration",
-                        get = function() return settings.enabled end,
-                        set = function(on)
-                            settings.enabled = on
-                            if on then IC.Vibe.Play("pulse") else IC.Vibe.Stop() end
-                        end,
-                        tip = "The controller vibrates when you level up, land a critical hit or take one (each"
-                            .. " with its pattern, or off: Vibration tab).",
-                    })
-                    b.slider({
-                        id = "vibeStrength", label = "Strength", min = 0.1, max = 1, stepSize = 0.1,
-                        get = function() return settings.intensity end,
-                        set = function(v)
-                            settings.intensity = v
-                            IC.Vibe.Play("pulse")
-                        end,
-                        fmt = function(v) return math.floor(v * 100 + 0.5) .. "%" end,
-                        tip = "How strong every vibration is. Changing it plays one so you can feel it.",
-                    })
-                end,
-            },
-            {
-                key = "controller", label = "Controller",
-                tip = "Which controller's buttons the menus and wheels show.",
-                rows = function(b)
-                    b.header("Controller")
-                    local function current() return IC.db.padStyle or "auto" end
-                    b.choice({
-                        id = "padStyle", label = "Buttons shown",
-                        text = function()
-                            local set = current()
-                            if set == "auto" then
-                                return "Auto: " .. IC.PAD_STYLE_LABELS[IC.DetectedPadStyle()]
-                            end
-                            return IC.PAD_STYLE_LABELS[set]
-                        end,
-                        step = function(delta)
-                            local list, at = IC.PAD_STYLES, 1
-                            for i, style in ipairs(list) do
-                                if style == current() then at = i end
-                            end
-                            IC.SetPadStyle(list[(at - 1 + delta) % #list + 1])
-                        end,
-                        tip = "Automatic shows the buttons of the controller in use, as the game's own prompts"
-                            .. " do: PlayStation shapes, Xbox letters (also for other controllers) or Nintendo"
-                            .. " Switch letters. Pick one if it guesses wrong.",
-                    })
-                    b.info(IC.PadText("Now: {A} chooses, {B} goes back, {LB} / {RB} switch tabs, {Y} clears, {X} binds."))
-                end,
-            },
-            {
-                key = "about", label = "About",
-                tip = "Improved Controller: quality of life for WoW Forever with a controller.",
-                rows = function(b)
-                    b.header("Improved Controller")
-                    b.info(IC.PadText("Wheels (buffs, consumables, emotes and your own) opened with an {RS} combo or any key, touchpad clicks that open windows, and {LS}"
-                        .. " to clean up your bags. {LB} / {RB} switch tabs here;") .. " open this panel with /ic or a key"
-                        .. " binding (Key Bindings > AddOns).")
-                    b.info("Panel design adapted from Easy Controller - Forever by moust4ki (MIT License).")
-                end,
-            },
-        },
+        key = "general", label = "General",
+        -- GeneralEditor.lua's page: the settings, the big slot, the choices
+        sections = {},
     },
     {
         key = "wheels", label = "Wheels",
@@ -1217,5 +1110,5 @@ events:SetScript("OnEvent", function(_, event)
     menu.Render()
 end)
 
--- Another controller in hand (or the Home tab's choice): its buttons
+-- Another controller in hand (or the General tab's choice): its buttons
 IC.OnPadStyleChanged(function() menu.Render() end)

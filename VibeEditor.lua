@@ -5,7 +5,7 @@
 -- middle with its pattern, and the patterns down the right (Off and Easy
 -- Controller's seven) as slices of a ring around it. Choosing a pattern
 -- sets it and plays it; Triangle plays the event's one again. (Vibration
--- on / off and its strength: the Home tab.)
+-- on / off and its strength: the General tab.)
 local _, IC = ...
 
 local K = IC.ConfigKit
@@ -118,9 +118,9 @@ function E:Build(parent)
     self.picker = K.Picker(f, PANEL_W, menu.Render, {
         bare = true, rowHeight = 38,
         arc = function(y) return ArcX(PICKER_TOP + y) end,
-        ring = { anchor = f, theta = 0.34 },
+        ring = { anchor = f, theta = 0.34, x = -K.NEAR },
     })
-    self.picker:SetPoint("TOPLEFT", f, "CENTER", 30, PICKER_TOP)
+    self.picker:SetPoint("TOPLEFT", f, "CENTER", 30 - K.NEAR, PICKER_TOP)
     self.picker:SetHeight(400)
     self:SyncPicker()
 end
@@ -158,7 +158,7 @@ end
 -- combo of them)
 function E:Try()
     if not V.Settings().enabled then
-        menu.Toast("Vibration is off (Home tab)", true)
+        menu.Toast("Vibration is off (General tab)", true)
         return
     end
     local item = self:Item()
@@ -258,7 +258,7 @@ function E:Render()
     for i, r in ipairs(f.rows) do
         local line = lines[i]
         local theta = math.pi - ((n + 1) / 2 - i) * K.SEG.STEP
-        r.seg:Place(f, theta)
+        r.seg:Place(f, theta, K.NEAR)
         r.index = line.index
         if line.header then
             r.seg:SetShown(false)

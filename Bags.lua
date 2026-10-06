@@ -1,7 +1,12 @@
--- L3 (left stick click) cleans up bags while any bag frame is open.
+-- A button (L3, the left stick click, unless bound to another in the
+-- General tab: IC.db.bagSortKey) cleans up bags while any bag frame is open.
 local _, IC = ...
 
-local SORT_KEY = "PADLSTICK"
+local DEFAULT_KEY = "PADLSTICK"
+
+function IC.BagSortKey()
+    return IC.db and IC.db.bagSortKey or DEFAULT_KEY
+end
 
 local owner = CreateFrame("Frame", "ImprovedControllerBagsOwner")
 local sortButton = CreateFrame("Button", "ImprovedControllerSortBags", UIParent)
@@ -49,7 +54,7 @@ local function UpdateBinding()
     end
     pending = false
     if want then
-        SetOverrideBindingClick(owner, true, SORT_KEY, sortButton:GetName(), "LeftButton")
+        SetOverrideBindingClick(owner, true, IC.BagSortKey(), sortButton:GetName(), "LeftButton")
     else
         ClearOverrideBindings(owner)
     end
@@ -75,6 +80,16 @@ local function WatchBagFrames()
 end
 
 IC.UpdateBagBinding = UpdateBinding
+
+-- Another button for it (nil: back to L3); out of combat (the General tab)
+function IC.SetBagSortKey(key)
+    IC.db.bagSortKey = key ~= DEFAULT_KEY and key or nil
+    if bound and not IC.InCombat() then
+        ClearOverrideBindings(owner)
+        bound = false
+    end
+    UpdateBinding()
+end
 
 IC.OnLogin(function()
     WatchBagFrames()

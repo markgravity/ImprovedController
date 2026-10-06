@@ -5,7 +5,7 @@
 -- land a critical hit (damage or heal), you take one. Each has a pattern of
 -- its own, or none, grouped as Easy Controller does (Combat, Progress). Set
 -- in the Vibration tab (VibeEditor.lua); on / off
--- and strength in the Home tab.
+-- and strength in the General tab.
 local _, IC = ...
 
 local V = {}

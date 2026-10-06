@@ -4,7 +4,7 @@
 -- (PlayStation), "Letters" (Xbox, and any other pad: "Generic") and
 -- "Reverse" (Nintendo Switch). Buttons are named here by place, as the
 -- game binds them: A is the bottom face button (PAD1), B the right one
--- (PAD2), X the left (PAD3), Y the top (PAD4). Home tab: a style can be
+-- (PAD2), X the left (PAD3), Y the top (PAD4). General tab: a style can be
 -- forced instead of the detected one.
 local _, IC = ...
 
@@ -153,7 +153,7 @@ local function Detected()
 end
 IC.DetectedPadStyle = Detected
 
--- The style in use: the one set in the Home tab, else the detected one
+-- The style in use: the one set in the General tab, else the detected one
 function IC.PadStyle()
     local set = IC.db and IC.db.padStyle
     if ATLAS[set] then return set end

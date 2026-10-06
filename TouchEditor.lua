@@ -4,7 +4,7 @@
 -- lists as slices of a ring around it. A corner is picked from the list,
 -- by clicking the touchpad (the corner under the finger) or by pointing
 -- the right stick; a choice in the picker binds it. Triangle clears a
--- corner, held turns it off. (Turning the touchpad click on / off: the Home
+-- corner, held turns it off. (Turning the touchpad click on / off: the General
 -- tab.)
 local _, IC = ...
 
@@ -98,9 +98,9 @@ function T:Build(parent)
     self.picker = K.Picker(f, PANEL_W, menu.Render, {
         bare = true, rowHeight = 38,
         arc = function(y) return ArcX(PICKER_TOP + y) end,
-        ring = { anchor = f, theta = 0.34 },
+        ring = { anchor = f, theta = 0.34, x = -K.NEAR },
     })
-    self.picker:SetPoint("TOPLEFT", f, "CENTER", 30, PICKER_TOP)
+    self.picker:SetPoint("TOPLEFT", f, "CENTER", 30 - K.NEAR, PICKER_TOP)
     self.picker:SetHeight(400)
     self.picker:Open({
         kicker = function() return "Slot · " .. touch.REGION_LABELS[T:Region()] end,
@@ -308,7 +308,7 @@ function T:Render()
     for i, r in ipairs(f.rows) do
         local region = touch.REGIONS[i]
         local theta = math.pi - ((n + 1) / 2 - i) * K.SEG.STEP
-        r.seg:Place(f, theta)
+        r.seg:Place(f, theta, K.NEAR)
         local isSel = region == selected
         r.seg:SetFocus(isSel and self.zone == "rail")
         r.label:SetText(touch.REGION_LABELS[region] .. (touch.IsOff(region) and "  |cffff7a5cOff|r" or ""))

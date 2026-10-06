@@ -533,6 +533,10 @@ local RIM = {
     { size = 1, color = { 0.05, 0.04, 0.03, 0.9 } },  -- inner edge
 }
 
+-- Tabs with one slot in the middle (Touchpad, Vibration, General): their
+-- lists' rings centred this far to the side, so the lists sit close to it
+K.NEAR = 120
+
 local function WheelFill(texture)
     local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(WHEEL_ATLAS)
     local file = info and (info.file or info.filename)
@@ -642,9 +646,11 @@ function K.Segment(frame)
     seg.glow:SetVertexColor(C.focus[1], C.focus[2], C.focus[3])
     seg.glow:SetBlendMode("ADD")
     seg.glow:Hide()
-    function seg:Place(anchor, theta)
+    -- (ox: the ring's centre that far right of the anchor's, so a smaller
+    -- middle can have its lists close by)
+    function seg:Place(anchor, theta, ox)
         frame:ClearAllPoints()
-        frame:SetPoint("CENTER", anchor, "CENTER", K.SEG.MID * math.cos(theta), K.SEG.MID * math.sin(theta))
+        frame:SetPoint("CENTER", anchor, "CENTER", (ox or 0) + K.SEG.MID * math.cos(theta), K.SEG.MID * math.sin(theta))
         for _, t in ipairs({ self.fill, self.rim, self.glow }) do t:SetRotation(theta) end
     end
     function seg:SetFocus(on)
@@ -661,10 +667,10 @@ end
 
 -- An arrow on a ring at theta, turned with the slices there: up = toward
 -- the slices above (the triangle art points down; a half turn flips it)
-function K.RingArrow(arrow, anchor, theta, up)
+function K.RingArrow(arrow, anchor, theta, up, ox)
     arrow:SetTexCoord(0, 1, 0, 1)
     arrow:ClearAllPoints()
-    arrow:SetPoint("CENTER", anchor, "CENTER", K.SEG.MID * math.cos(theta), K.SEG.MID * math.sin(theta))
+    arrow:SetPoint("CENTER", anchor, "CENTER", (ox or 0) + K.SEG.MID * math.cos(theta), K.SEG.MID * math.sin(theta))
     arrow:SetRotation(K.ReadingAngle(theta) + (up and math.pi or 0))
 end
 
@@ -983,7 +989,7 @@ function K.Picker(parent, width, onRender, opts)
                     -- A slice of the outer ring (a group title: just its text
                     -- there); the icon at its inner end and the name along it
                     local theta = ring.theta - (shown - 1) * K.SEG.STEP
-                    r.seg:Place(ring.anchor, theta)
+                    r.seg:Place(ring.anchor, theta, ring.x)
                     r.seg:SetShown(not e.header)
                     r.seg:SetFocus(not e.header and self.offset + i == self.index)
                     r.ringT = K.ReadingAngle(theta)
@@ -1040,8 +1046,8 @@ function K.Picker(parent, width, onRender, opts)
         self.moreDown:ClearAllPoints()
         if ring and shown > 0 then
             -- Just past the first and last slices, turned with them
-            K.RingArrow(self.moreUp, ring.anchor, ring.theta + 0.75 * K.SEG.STEP, true)
-            K.RingArrow(self.moreDown, ring.anchor, ring.theta - (shown - 0.25) * K.SEG.STEP, false)
+            K.RingArrow(self.moreUp, ring.anchor, ring.theta + 0.75 * K.SEG.STEP, true, ring.x)
+            K.RingArrow(self.moreDown, ring.anchor, ring.theta - (shown - 0.25) * K.SEG.STEP, false, ring.x)
         else
             self.moreUp:SetPoint("BOTTOM", self, "TOPLEFT", 12 + arc(top) + (width - 24) / 2, top + 1)
             self.moreDown:SetPoint("TOP", self, "TOPLEFT", 12 + arc(y) + (width - 24) / 2, y - 1)
