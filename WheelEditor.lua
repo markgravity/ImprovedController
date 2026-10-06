@@ -27,10 +27,8 @@ end
 -- at SCALE
 local SCALE = 1
 local CX, CY = 270, 270             -- in the wheel's 540 x 541 frame
-local RADIUS = 110 * SCALE          -- icons
 local WEDGE_RADIUS = 150 * SCALE    -- highlight / empty wedges
-local LABEL_RADIUS = 168 * SCALE
-local ICON_SIZE = math.floor(56 * SCALE + 0.5)
+local ICON_SIZE = math.floor(38 * SCALE + 0.5)
 local PER_PAGE = 8
 
 local W = { zone = "rail", index = 1, slot = 1, btn = 1 }
@@ -84,9 +82,11 @@ local function Count(wheel)
     return n
 end
 
+-- Slot p's icon, from the wheel's top left (y down)
 local function SlotPoint(p)
     local a = (p - 1) * math.pi / 4
-    return CX + RADIUS * math.sin(a), CY - RADIUS * math.cos(a)
+    local ix, iy = IC.SlotLayout(math.sin(a), math.cos(a))
+    return CX + ix * SCALE, CY - iy * SCALE
 end
 
 ---------------------------------------------------------------------------
@@ -194,7 +194,9 @@ function W:Build(parent)
         empty:SetRotation(math.pi - a)
         local s = K.NewFrame("Button", nil, zone)
         s:SetSize(ICON_SIZE, ICON_SIZE)
-        s:SetPoint("CENTER", zone, "TOPLEFT", CX + RADIUS * sn, -(CY - RADIUS * cs))
+        -- Laid out as the wheel in play (Ring.lua, the native radial's)
+        local ix, iy, lx, ly = IC.SlotLayout(sn, cs)
+        s:SetPoint("CENTER", zone, "TOPLEFT", CX + ix * SCALE, -CY + iy * SCALE)
         s:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         s.empty = empty
         s.icon = K.RoundIcon(s, ICON_SIZE, "ARTWORK")
@@ -208,7 +210,7 @@ function W:Build(parent)
         s.label:SetSize(90, 40)
         s.label:SetWordWrap(true)
         s.label:SetJustifyH("CENTER")
-        s.label:SetPoint("CENTER", zone, "TOPLEFT", CX + LABEL_RADIUS * sn, -(CY - LABEL_RADIUS * cs))
+        s.label:SetPoint("CENTER", zone, "TOPLEFT", CX + lx * SCALE, -CY + ly * SCALE)
         s:SetScript("OnClick", function(_, button)
             if MW.renaming then return end
             menu.Disarm()

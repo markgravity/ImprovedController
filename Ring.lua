@@ -15,9 +15,25 @@ local _, IC = ...
 -- Measured from GamepadRadial with /ic probe.
 local WHEEL_WIDTH, WHEEL_HEIGHT = 540, 541
 local SLOT_RADIUS = 150  -- wedges (highlight / empty)
-local ICON_RADIUS = 110
-local LABEL_RADIUS = 168
-local ICON_SIZE = 56
+local ICON_SIZE = 38     -- as the native menu's (texture) icons
+
+-- A slot's icon and label, as Forever's radial lays its segments out
+-- (GamepadRadial): segments 150 out (112, 112 on a diagonal), an icon 20
+-- in from there, its label off the icon by 60 straight out (sides) or
+-- 30 across and 45 up / down (diagonals). dx, dy: the slot's direction (y
+-- up); returns icon x, y and label x, y from the wheel's centre.
+function IC.SlotLayout(dx, dy)
+    local diagonal = math.abs(dx) > 0.3 and math.abs(dy) > 0.3
+    local reach = (diagonal and 112 * math.sqrt(2) or 150) - 20
+    local ix, iy = dx * reach, dy * reach
+    local lx, ly
+    if diagonal then
+        lx, ly = (dx > 0 and 30 or -30), (dy > 0 and 45 or -45)
+    else
+        lx, ly = dx * 60, dy * 60
+    end
+    return ix, iy, ix + lx, iy + ly
+end
 local SLOTS_PER_PAGE = 8
 local PICK_LENGTH_SQ = 0.25 -- stick must be at least half way out
 local KEY = "PADRSTICK"
@@ -34,7 +50,9 @@ local rebuildPending, bindingsPending = false, false
 
 local ring = CreateFrame("Frame", "ImprovedControllerRing", UIParent, "SecureHandlerBaseTemplate")
 ring:SetSize(WHEEL_WIDTH, WHEEL_HEIGHT)
-ring:SetPoint("CENTER")
+-- Where Forever's own radial menu (GamepadRadial) puts its wheel: right of
+-- the middle, a little up
+ring:SetPoint("CENTER", UIParent, "CENTER", 312, 10)
 ring:SetFrameStrata("DIALOG")
 ring:Hide()
 
@@ -219,7 +237,7 @@ SecureHandlerWrapScript(aim, "OnClick", aim, [[
     return false
 ]])
 
--- D-pad: step the pick round the ring.
+-- D-pad up / down: step the pick round the ring.
 local step = SecureButton("ImprovedControllerRingStep")
 step:RegisterForClicks("AnyDown")
 SecureHandlerWrapScript(step, "OnClick", step, [[
@@ -277,19 +295,35 @@ SecureHandlerWrapScript(use, "OnClick", use, [[
     self:SetAttribute("type", actionType)
 ]])
 
--- L1 / R1: previous / next page, through every ring's pages.
+-- L1 / R1: the previous / next wheel (its first page). D-pad left / right:
+-- the previous / next page of this wheel.
 local page = SecureButton("ImprovedControllerRingPage")
 page:RegisterForClicks("AnyDown")
 SecureHandlerWrapScript(page, "OnClick", page, [[
     local ring = self:GetFrameRef("ring")
-    local total = ring:GetAttribute("page-total") or 0
-    local position = ring:GetAttribute("pagepos-" .. (ring:GetAttribute("ic-active") or ""))
-    if not ring:IsShown() or total < 2 or not position then
+    local active = ring:GetAttribute("ic-active") or ""
+    local wheel = ring:GetAttribute(active .. "-wheel")
+    if not ring:IsShown() or not wheel then
         return false
     end
-    local step = button == "PADLSHOULDER" and -1 or 1
+    local step = (button == "PADLSHOULDER" or button == "PADDLEFT") and -1 or 1
+    local target
+    if button == "PADLSHOULDER" or button == "PADRSHOULDER" then
+        local total = ring:GetAttribute("wheel-total") or 0
+        local position = ring:GetAttribute("wheelpos-" .. wheel)
+        if total < 2 or not position then
+            return false
+        end
+        target = ring:GetAttribute("wheel-" .. ((position - 1 + step) % total + 1)) .. 1
+    else
+        local number, of = ring:GetAttribute(active .. "-number"), ring:GetAttribute(active .. "-of") or 1
+        if of < 2 or not number then
+            return false
+        end
+        target = wheel .. ((number - 1 + step) % of + 1)
+    end
     ring:SetAttribute("ic-sticky", nil)
-    ring:SetAttribute("ic-active", ring:GetAttribute("page-" .. ((position - 1 + step) % total + 1)))
+    ring:SetAttribute("ic-active", target)
     return false
 ]])
 
@@ -309,9 +343,11 @@ SecureHandlerWrapScript(ring, "OnShow", ring, [[
         self:SetBindingClick(true, modifier .. "PAD2", "ImprovedControllerRingClose", "LeftButton")
         self:SetBindingClick(true, modifier .. "PADLSHOULDER", "ImprovedControllerRingPage", "PADLSHOULDER")
         self:SetBindingClick(true, modifier .. "PADRSHOULDER", "ImprovedControllerRingPage", "PADRSHOULDER")
-        for _, key in ipairs(newtable("PADDUP", "PADDDOWN", "PADDLEFT", "PADDRIGHT")) do
+        for _, key in ipairs(newtable("PADDUP", "PADDDOWN")) do
             self:SetBindingClick(true, modifier .. key, "ImprovedControllerRingStep", key)
         end
+        self:SetBindingClick(true, modifier .. "PADDLEFT", "ImprovedControllerRingPage", "PADDLEFT")
+        self:SetBindingClick(true, modifier .. "PADDRIGHT", "ImprovedControllerRingPage", "PADDRIGHT")
         for _, key in ipairs(newtable("PADRSTICKUP", "PADRSTICKDOWN", "PADRSTICKLEFT", "PADRSTICKRIGHT",
                 "PADLSTICKUP", "PADLSTICKDOWN", "PADLSTICKLEFT", "PADLSTICKRIGHT")) do
             self:SetBindingClick(true, modifier .. key, "ImprovedControllerRingAim", key)
@@ -402,7 +438,7 @@ highlight:Hide()
 local header = ring:CreateFontString(nil, "OVERLAY")
 header:SetFont("Fonts\\FRIZQT__.TTF", 16, "")
 header:SetShadowOffset(1, -1)
-header:SetPoint("BOTTOM", ring, "TOP", 0, 50)
+header:SetPoint("BOTTOM", ring, "TOP", 0, 40)
 local headerBar = ring:CreateTexture(nil, "OVERLAY", nil, -2)
 headerBar:SetSize(487, 75)
 headerBar:SetPoint("TOP", header, "BOTTOM", 0, 4)
@@ -428,11 +464,13 @@ local prompts = ring:CreateFontString(nil, "OVERLAY")
 prompts:SetFont("Fonts\\FRIZQT__.TTF", 12, "")
 prompts:SetShadowOffset(1, -1)
 prompts:SetPoint("TOP", selected, "BOTTOM", 0, -6)
-local function SetPrompts()
-    prompts:SetText(Glyph("RT") .. " Use      " .. Glyph("B") .. " Close      " .. Glyph("DPAD") .. " Move")
+-- (pages: a wheel of more than one, D-pad left / right turns them)
+local function SetPrompts(pages)
+    prompts:SetText(Glyph("RT") .. " Use      " .. Glyph("B") .. " Close"
+        .. (pages and ("      " .. Glyph("DPAD_LR") .. " Page") or ""))
 end
 SetPrompts()
-IC.OnPadStyleChanged(SetPrompts)
+IC.OnPadStyleChanged(function() SetPrompts() end)
 
 local slots = {}
 for index = 1, SLOTS_PER_PAGE do
@@ -447,7 +485,8 @@ for index = 1, SLOTS_PER_PAGE do
     slot.empty:SetRotation(angle + math.pi / 2)
     slot.icon = ring:CreateTexture(nil, "OVERLAY", nil, 0)
     slot.icon:SetSize(ICON_SIZE, ICON_SIZE)
-    slot.icon:SetPoint("CENTER", ring, "CENTER", dx * ICON_RADIUS, dy * ICON_RADIUS)
+    local ix, iy, lx, ly = IC.SlotLayout(dx, dy)
+    slot.icon:SetPoint("CENTER", ring, "CENTER", ix, iy)
     -- Round, as the wheel editor shows them (ConfigKit's RoundIcon)
     local mask = ring:CreateMaskTexture()
     mask:SetAllPoints(slot.icon)
@@ -463,7 +502,7 @@ for index = 1, SLOTS_PER_PAGE do
     slot.label:SetFont("Fonts\\FRIZQT__.TTF", 12, "")
     slot.label:SetShadowOffset(1, -1)
     slot.label:SetSize(90, 40)
-    slot.label:SetPoint("CENTER", ring, "CENTER", dx * LABEL_RADIUS, dy * LABEL_RADIUS)
+    slot.label:SetPoint("CENTER", ring, "CENTER", lx, ly)
     slots[index] = slot
 end
 
@@ -472,7 +511,8 @@ local function ItemCount(value)
     return getCount and getCount(value) or 0
 end
 
-local pageOrder = {}  -- page keys in L1 / R1 order
+local pageOrder = {}  -- page keys, every wheel's in turn
+local wheelOrder = {} -- wheel keys in L1 / R1 order
 local pageInfo = {}   -- page key -> { ring = key, number = n, of = total }
 
 local function RefreshVisuals()
@@ -502,12 +542,13 @@ local function RefreshVisuals()
             slot.label:SetTextColor(unpack(usable and GOLD or GREY))
         end
     end
-    -- One dot per page, the current one lit.
+    -- One dot per wheel (L1 / R1), the current one lit; the page is in the
+    -- title ("2/3", D-pad left / right)
     for _, dot in ipairs(dots) do
         dot:Hide()
     end
-    local total = #pageOrder
-    for position, key in ipairs(pageOrder) do
+    local total = #wheelOrder
+    for position, key in ipairs(wheelOrder) do
         local dot = dots[position]
         if not dot then
             dot = dotRow:CreateTexture(nil, "OVERLAY")
@@ -516,8 +557,9 @@ local function RefreshVisuals()
         end
         dot:ClearAllPoints()
         dot:SetPoint("CENTER", dotRow, "CENTER", (position - (total + 1) / 2) * 20, 0)
-        Atlas(dot, key == active and "gamepad-radialgamemenu-cursorbg-neutral"
-            or "gamepad-radialgamemenu-cursorbg-inactive", key == active and { 1, 1, 1, 1 } or { 0.4, 0.4, 0.4, 1 })
+        local lit = info and key == info.ring
+        Atlas(dot, lit and "gamepad-radialgamemenu-cursorbg-neutral"
+            or "gamepad-radialgamemenu-cursorbg-inactive", lit and { 1, 1, 1, 1 } or { 0.4, 0.4, 0.4, 1 })
         dot:Show()
     end
     local edge = (total - 1) * 10 + 12
@@ -528,6 +570,7 @@ local function RefreshVisuals()
     pageRight:SetPoint("LEFT", dotRow, "CENTER", edge, -2)
     pageRight:SetText(total > 1 and IC.GlyphText("RB", 38) or "")
     selected:SetText(#entries == 0 and "Nothing here" or "")
+    SetPrompts(info and info.of > 1)
 end
 
 -- Same pick as the secure "ic-pick-body": the stronger of the two sticks.
@@ -560,7 +603,7 @@ local function StickPick(entries)
     return best
 end
 
--- The picked entry's tooltip, mid-right of the wheel (spells and items; a
+-- The picked entry's tooltip, mid-left of the wheel (spells and items; a
 -- macro or an emote has none)
 local function ShowTooltip(entry)
     local tip = GameTooltip
@@ -571,7 +614,7 @@ local function ShowTooltip(entry)
     tip:SetOwner(ring, "ANCHOR_NONE")
     tip:ClearAllPoints()
     -- (the wheel art has ~35 px of clear edge around the ring)
-    tip:SetPoint("LEFT", ring, "RIGHT", -28, 0)
+    tip:SetPoint("RIGHT", ring, "LEFT", 28, 0)
     if entry.spellID then
         tip:SetSpellByID(entry.spellID)
     else
@@ -642,6 +685,7 @@ local function Rebuild()
     end
     rebuildPending = false
     wipe(pageOrder)
+    wipe(wheelOrder)
     wipe(pageInfo)
     wipe(ringData)
     -- A deleted wheel's key binding opens nothing
@@ -672,13 +716,17 @@ local function Rebuild()
                 ringData[key] = pageEntries
                 pageOrder[#pageOrder + 1] = key
                 pageInfo[key] = { ring = ringKey, number = number, of = pages }
-                ring:SetAttribute("pagepos-" .. key, #pageOrder)
-                ring:SetAttribute("page-" .. #pageOrder, key)
+                ring:SetAttribute(key .. "-wheel", ringKey)
+                ring:SetAttribute(key .. "-number", number)
+                ring:SetAttribute(key .. "-of", pages)
             end
             ring:SetAttribute("ic-first-" .. ringKey, ringKey .. 1)
+            wheelOrder[#wheelOrder + 1] = ringKey
+            ring:SetAttribute("wheelpos-" .. ringKey, #wheelOrder)
+            ring:SetAttribute("wheel-" .. #wheelOrder, ringKey)
         end
     end
-    ring:SetAttribute("page-total", #pageOrder)
+    ring:SetAttribute("wheel-total", #wheelOrder)
     if ring:IsShown() then
         RefreshVisuals()
         Highlight(nil)
@@ -781,3 +829,31 @@ events:SetScript("OnEvent", function(_, event)
         QueueRebuild()
     end
 end)
+
+-- One radial at a time: ours opening closes Forever's main menu radial, and
+-- Forever's opening closes ours. In combat our secure wheel can't be hidden
+-- from here: it is turned invisible instead until the native one closes.
+local function NativeRadial()
+    return _G.GamepadRadial
+end
+
+ring:HookScript("OnShow", function()
+    ring:SetAlpha(1)
+    local native = NativeRadial()
+    if native and native:IsShown() then native:Hide() end
+end)
+
+if EventRegistry and EventRegistry.RegisterCallback then
+    EventRegistry:RegisterCallback("Gamepad.ShowMainMenu", function()
+        if not ring:IsShown() then return end
+        if IC.InCombat() then
+            ring:SetAlpha(0)
+        else
+            ring:Hide()
+        end
+    end, ring)
+    EventRegistry:RegisterCallback("Gamepad.HideMainMenu", function()
+        ring:SetAlpha(1)
+    end, ring)
+end
+
