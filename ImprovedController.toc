@@ -2,6 +2,7 @@
 ## Title: Improved Controller
 ## Notes: Quality-of-life tweaks for playing WoW Forever with a controller.
 ## Author: markg
+## IconTexture: Interface\AddOns\ImprovedController\textures\ic_addon
 ## Version: 0.2.0
 ## SavedVariables: ImprovedControllerDB
 ## SavedVariablesPerCharacter: ImprovedControllerCharDB
