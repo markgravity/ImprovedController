@@ -674,6 +674,26 @@ function K.RingArrow(arrow, anchor, theta, up, ox)
     arrow:SetRotation(K.ReadingAngle(theta) + (up and math.pi or 0))
 end
 
+-- A side list of group headings and items, at most max lines at once:
+-- where it starts (kept so the selected item, and its heading just above,
+-- show), how many show, and each shown line's angle on the ring
+function K.RailWindow(lines, selected, top, max)
+    local n = #lines
+    local shown = math.min(n, max)
+    local sel = 1
+    for i, line in ipairs(lines) do
+        if line.index == selected then sel = i end
+    end
+    top = math.max(1, math.min(top or 1, n - shown + 1))
+    local first = (sel > 1 and lines[sel - 1].header) and sel - 1 or sel
+    if first < top then top = first end
+    if sel > top + shown - 1 then top = sel - shown + 1 end
+    local function thetaAt(slot)
+        return math.pi - ((shown + 1) / 2 - slot) * K.SEG.STEP
+    end
+    return top, shown, thetaAt
+end
+
 -- More above / below: the small gold triangles
 function K.MoreArrows(parent)
     local up = parent:CreateTexture(nil, "OVERLAY")

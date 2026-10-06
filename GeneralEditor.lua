@@ -10,6 +10,7 @@ local KC = K.C
 local menu = IC.Menu
 
 local PANEL_W, PICKER_TOP, PICKER_ROWS = 340, 236, 8
+local RAIL_ROWS = 8                 -- lines on the left at once (as the picker); the rest scroll
 local ARC = 300
 local function ArcX(dy)
     return math.sqrt(math.max(0, ARC * ARC - dy * dy))
@@ -209,6 +210,7 @@ function G:Build(parent)
 
     -- Left: the groups' names and their settings
     f.rows = {}
+    f.railUp, f.railDown = K.MoreArrows(f)
     for i in ipairs(Lines()) do
         local r = K.NewFrame("Button", nil, f)
         r:SetSize(200, 34)
@@ -421,27 +423,38 @@ function G:Render()
     if not f then return end
     if self.zone ~= "picker" and self.zone ~= "capture" then self.zone = "rail" end
     self:SyncPicker()
+    -- Only RAIL_ROWS lines at once, scrolled to keep the selected one in
+    -- view, arrows past the ends when there are more
     local lines = Lines()
-    local n = #lines
+    local shown, thetaAt
+    self.railTop, shown, thetaAt = K.RailWindow(lines, self.index, self.railTop, RAIL_ROWS)
+    K.RingArrow(f.railUp, f, thetaAt(0.25), true, K.NEAR)
+    f.railUp:SetShown(self.railTop > 1)
+    K.RingArrow(f.railDown, f, thetaAt(shown + 0.75), false, K.NEAR)
+    f.railDown:SetShown(self.railTop + shown - 1 < #lines)
     for i, r in ipairs(f.rows) do
         local line = lines[i]
-        local theta = math.pi - ((n + 1) / 2 - i) * K.SEG.STEP
-        r.seg:Place(f, theta, K.NEAR)
-        r.index = line.index
-        if line.header then
-            r.seg:SetShown(false)
-            r.seg:SetFocus(false)
-            r.label:SetText(line.header:upper())
-            r.label:SetTextColor(unpack(KC.dimGold))
-        else
-            local item = ITEMS[line.index]
-            local isSel = line.index == self.index
-            r.seg:SetShown(true)
-            r.seg:SetFocus(isSel and self.zone == "rail")
-            r.label:SetText(item.label)
-            r.label:SetTextColor(unpack(isSel and KC.focus or KC.rail))
+        local slot = i - self.railTop + 1
+        r:SetShown(line ~= nil and slot >= 1 and slot <= shown)
+        if r:IsShown() then
+            local theta = thetaAt(slot)
+            r.seg:Place(f, theta, K.NEAR)
+            r.index = line.index
+            if line.header then
+                r.seg:SetShown(false)
+                r.seg:SetFocus(false)
+                r.label:SetText(line.header:upper())
+                r.label:SetTextColor(unpack(KC.dimGold))
+            else
+                local item = ITEMS[line.index]
+                local isSel = line.index == self.index
+                r.seg:SetShown(true)
+                r.seg:SetFocus(isSel and self.zone == "rail")
+                r.label:SetText(item.label)
+                r.label:SetTextColor(unpack(isSel and KC.focus or KC.rail))
+            end
+            K.Rotate(r.label, K.ReadingAngle(theta))
         end
-        K.Rotate(r.label, K.ReadingAngle(theta))
     end
     -- The selected setting: its icon, its value, what it is bound to
     local item = self:Item()

@@ -14,6 +14,7 @@ local menu = IC.Menu
 local V = IC.Vibe
 
 local PANEL_W, PICKER_TOP, PICKER_ROWS = 340, 236, 8
+local RAIL_ROWS = 8                 -- lines on the left at once (as the picker); the rest scroll
 local ARC = 300
 local function ArcX(dy)
     return math.sqrt(math.max(0, ARC * ARC - dy * dy))
@@ -99,6 +100,7 @@ function E:Build(parent)
     -- Left: the groups' names and their events, slices down the ring's left
     -- side (a name: just its text, in its slice's place)
     f.rows = {}
+    f.railUp, f.railDown = K.MoreArrows(f)
     for i in ipairs(Lines()) do
         local r = K.NewFrame("Button", nil, f)
         r:SetSize(200, 34)
@@ -260,32 +262,43 @@ function E:Render()
     local settings = V.Settings()
     -- The groups and their events down the ring's left side, centred on it,
     -- each name along its slice; a group's name in gold without a slice
+    -- Only RAIL_ROWS lines at once, scrolled to keep the selected one in
+    -- view, arrows past the ends when there are more
     local lines = Lines()
-    local n = #lines
+    local shown, thetaAt
+    self.railTop, shown, thetaAt = K.RailWindow(lines, self.index, self.railTop, RAIL_ROWS)
+    K.RingArrow(f.railUp, f, thetaAt(0.25), true, K.NEAR)
+    f.railUp:SetShown(self.railTop > 1)
+    K.RingArrow(f.railDown, f, thetaAt(shown + 0.75), false, K.NEAR)
+    f.railDown:SetShown(self.railTop + shown - 1 < #lines)
     for i, r in ipairs(f.rows) do
         local line = lines[i]
-        local theta = math.pi - ((n + 1) / 2 - i) * K.SEG.STEP
-        r.seg:Place(f, theta, K.NEAR)
-        r.index = line.index
-        if line.header then
-            r.seg:SetShown(false)
-            r.seg:SetFocus(false)
-            r.label:SetText(line.header:upper())
-            r.label:SetTextColor(unpack(KC.dimGold))
-        else
-            -- Off: none of its events vibrates
-            local item = V.RAIL[line.index]
-            local on = false
-            for _, sub in ipairs(item.subs) do
-                if V.EventPattern(sub.key) then on = true end
+        local slot = i - self.railTop + 1
+        r:SetShown(line ~= nil and slot >= 1 and slot <= shown)
+        if r:IsShown() then
+            local theta = thetaAt(slot)
+            r.seg:Place(f, theta, K.NEAR)
+            r.index = line.index
+            if line.header then
+                r.seg:SetShown(false)
+                r.seg:SetFocus(false)
+                r.label:SetText(line.header:upper())
+                r.label:SetTextColor(unpack(KC.dimGold))
+            else
+                -- Off: none of its events vibrates
+                local item = V.RAIL[line.index]
+                local on = false
+                for _, sub in ipairs(item.subs) do
+                    if V.EventPattern(sub.key) then on = true end
+                end
+                local isSel = line.index == self.index
+                r.seg:SetShown(true)
+                r.seg:SetFocus(isSel and self.zone == "rail")
+                r.label:SetText(item.label .. (on and "" or "  |cffff7a5cOff|r"))
+                r.label:SetTextColor(unpack(isSel and KC.focus or KC.rail))
             end
-            local isSel = line.index == self.index
-            r.seg:SetShown(true)
-            r.seg:SetFocus(isSel and self.zone == "rail")
-            r.label:SetText(item.label .. (on and "" or "  |cffff7a5cOff|r"))
-            r.label:SetTextColor(unpack(isSel and KC.focus or KC.rail))
+            K.Rotate(r.label, K.ReadingAngle(theta))
         end
-        K.Rotate(r.label, K.ReadingAngle(theta))
     end
     -- The selected event (Spell cast: the one in the picker), its pattern
     -- under it
