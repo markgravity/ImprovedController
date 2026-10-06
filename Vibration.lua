@@ -55,6 +55,7 @@ end
 -- default state and pattern
 V.GROUPS = {
     { key = "combat", label = "Combat" },
+    { key = "wheel", label = "Wheel" },
     { key = "progress", label = "Progress" },
 }
 V.EVENTS = {
@@ -76,6 +77,9 @@ V.EVENTS = {
     { key = "pushback", group = "combat", parent = "spellcast", label = "Pushed back", icon = EVENT_ICONS .. "pushback",
         on = true, pattern = "micro", tip = "A hit while you cast or channel costs you cast time: the"
             .. " cast slows, or the channel shortens." },
+    { key = "wheelTick", group = "wheel", label = "Slot change", icon = EVENT_ICONS .. "wheel", on = true,
+        pattern = "micro", gap = 0.03, tip = "In an open wheel, the pick moves to another slot (stick,"
+            .. " D-pad or a new page)." },
     { key = "levelUp", group = "progress", label = "Level up", icon = EVENT_ICONS .. "levelup", on = true,
         pattern = "rise", tip = "You reach a new level." },
 }
@@ -278,7 +282,7 @@ local function ComboShape(eventKey, chained)
 end
 
 -- An event happened: its pattern, if it is on (the same event at most
--- every 0.4 s; a combo event every 0.15 s). A looping event's plays until
+-- every 0.4 s; a combo event every 0.15 s, others at their own gap). A looping event's plays until
 -- V.EndLoop.
 local last = {}
 function V.ResetLast(eventKey)
@@ -299,7 +303,7 @@ function V.Fire(eventKey)
     local now = GetTime()
     local combo = EVENT[eventKey].combo
     local since = last[eventKey] and now - last[eventKey]
-    if since and since < (combo and 0.15 or 0.4) then return end
+    if since and since < (EVENT[eventKey].gap or (combo and 0.15 or 0.4)) then return end
     last[eventKey] = now
     local shape = combo and ComboShape(eventKey, since ~= nil and since < COMBO_WINDOW) or nil
     V.Play(pattern, false, shape)

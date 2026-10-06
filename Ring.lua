@@ -1,13 +1,13 @@
 -- R3 rings. Press R3 (optionally holding L1/L2/R1/R2) to open a ring, point
 -- at a slot with either stick (the pick stays when the stick springs back)
--- or step with the D-pad, then press Cross to use it. Circle closes. L1/R1
+-- or step with the D-pad, then press R2 to use it. Circle closes. L1/R1
 -- flip pages: every ring is cut into pages of eight, like Forever's native
 -- radial menu (GamepadRadial), whose art and layout the ring copies.
 --
 -- It works in combat: every button is a secure button. R3's snippet reads
 -- the pad (GetGamePadState) to pick the combo; the stick directions arrive
 -- as keys (GamePadStickAxisButtons, switched on while the ring is up) and
--- update the pick; Cross copies the picked slot's action onto itself. Ring
+-- update the pick; R2 copies the picked slot's action onto itself. Ring
 -- contents are rebuilt out of combat only, so loot from a fight shows up
 -- afterwards.
 local _, IC = ...
@@ -50,6 +50,46 @@ if stickCapture.EnableGamePadStick then
     stickCapture:SetScript("OnGamePadStick", function() end)
 end
 
+-- After the ring closes (a slot used, Circle) the stick that pointed is
+-- often still pushed: this keeps holding the sticks until both aiming
+-- sticks are back near the middle (or 3 s pass), so the camera doesn't
+-- swing round and the character doesn't walk off as the ring goes.
+local RELEASE_SQ, RELEASE_MAX = 0.2 * 0.2, 3
+local afterCapture = CreateFrame("Frame", nil, UIParent)
+afterCapture:SetAllPoints(UIParent)
+afterCapture:SetFrameStrata("DIALOG")
+afterCapture:Hide()
+if afterCapture.EnableGamePadStick then
+    afterCapture:EnableGamePadStick(true)
+    afterCapture:SetScript("OnGamePadStick", function() end)
+end
+
+local function AimSticksPushed()
+    if not (C_GamePad and C_GamePad.GetDeviceMappedState) then return false end
+    local state = C_GamePad.GetDeviceMappedState(C_GamePad.GetActiveDeviceID())
+    local sticks = state and state.sticks
+    if not sticks then return false end
+    for _, attribute in ipairs({ "ic-stick", "ic-stick2" }) do
+        local stick = sticks[ring:GetAttribute(attribute) or 0]
+        if stick and stick.x and stick.y and stick.x * stick.x + stick.y * stick.y > RELEASE_SQ then
+            return true
+        end
+    end
+    return false
+end
+
+afterCapture:SetScript("OnUpdate", function(self, elapsed)
+    self.held = (self.held or 0) + elapsed
+    if self.held >= RELEASE_MAX or not AimSticksPushed() then self:Hide() end
+end)
+ring:HookScript("OnHide", function()
+    if AimSticksPushed() then
+        afterCapture.held = 0
+        afterCapture:Show()
+    end
+end)
+ring:HookScript("OnShow", function() afterCapture:Hide() end)
+
 local function SecureButton(name)
     local button = CreateFrame("Button", name, UIParent, "SecureActionButtonTemplate,SecureHandlerBaseTemplate")
     button:SetSize(1, 1)
@@ -88,8 +128,9 @@ ring:SetAttribute("ic-pick-body", [[
     return best
 ]])
 
--- R3: open the ring for the held combo. While it's up R3 does nothing, so
--- clicking the stick by accident while pointing can't close it.
+-- R3: open the ring for the held combo. It stays up until R2 uses a slot
+-- or Circle closes it; while it's up R3 does nothing, so clicking the stick
+-- by accident while pointing can't close it.
 local trigger = SecureButton("ImprovedControllerRingTrigger")
 trigger:RegisterForClicks("AnyDown", "AnyUp")
 SecureHandlerWrapScript(trigger, "OnClick", trigger, [[
@@ -200,17 +241,28 @@ SecureHandlerWrapScript(step, "OnClick", step, [[
     return false
 ]])
 
--- Cross: use the slot a stick points at right now, else the sticky pick.
+-- R2: use the slot a stick points at right now, else the sticky pick.
 -- It acts on the press or the release, whichever the game's
--- ActionButtonUseKeyDown setting makes action buttons fire on.
+-- ActionButtonUseKeyDown setting makes action buttons fire on; a release
+-- counts only after a press while the wheel is up (R2 + R3 opens one with
+-- R2 still held).
 local use = SecureButton("ImprovedControllerRingUse")
 use:RegisterForClicks("AnyDown", "AnyUp")
 SecureHandlerWrapScript(use, "OnClick", use, [[
     self:SetAttribute("type", nil)
     local ring = self:GetFrameRef("ring")
-    if not ring:IsShown() or (down and 1 or 0) ~= (self:GetAttribute("ic-keydown") or 1) then
+    if not ring:IsShown() then
+        self:SetAttribute("ic-pressed", nil)
         return false
     end
+    if down then self:SetAttribute("ic-pressed", true) end
+    if (down and 1 or 0) ~= (self:GetAttribute("ic-keydown") or 1) then
+        return false
+    end
+    if not down and not self:GetAttribute("ic-pressed") then
+        return false
+    end
+    self:SetAttribute("ic-pressed", nil)
     local key = ring:GetAttribute("ic-active")
     local pick = ring:RunAttribute("ic-pick-body", 0.25) or ring:GetAttribute("ic-sticky")
     if not pick then
@@ -249,11 +301,11 @@ SecureHandlerWrapScript(close, "OnClick", close, [[
     return false
 ]])
 
--- While the ring is up it owns Cross, Circle, L1, R1, the D-pad and the
--- stick directions, whatever they do otherwise.
+-- While the ring is up it owns R2, Circle, L1, R1, the D-pad and the stick
+-- directions, whatever they do otherwise.
 SecureHandlerWrapScript(ring, "OnShow", ring, [[
     for _, modifier in ipairs(newtable("", "SHIFT-", "CTRL-", "ALT-", "CTRL-SHIFT-", "ALT-SHIFT-", "CTRL-ALT-", "CTRL-ALT-SHIFT-")) do
-        self:SetBindingClick(true, modifier .. "PAD1", "ImprovedControllerRingUse", "LeftButton")
+        self:SetBindingClick(true, modifier .. "PADRTRIGGER", "ImprovedControllerRingUse", "LeftButton")
         self:SetBindingClick(true, modifier .. "PAD2", "ImprovedControllerRingClose", "LeftButton")
         self:SetBindingClick(true, modifier .. "PADLSHOULDER", "ImprovedControllerRingPage", "PADLSHOULDER")
         self:SetBindingClick(true, modifier .. "PADRSHOULDER", "ImprovedControllerRingPage", "PADRSHOULDER")
@@ -273,7 +325,7 @@ SecureHandlerWrapScript(ring, "OnHide", ring, [[
 -- The game only sends stick directions as keys with GamePadStickAxisButtons
 -- on: switch it on while the ring is up and put it back after. The old
 -- value is saved so a /reload mid-ring still restores it. If the game
--- refuses in combat, pointing while pressing Cross and the D-pad still work.
+-- refuses in combat, pointing while pressing R2 and the D-pad still work.
 local function SetCVarSafe(name, value)
     local setter = (C_CVar and C_CVar.SetCVar) or SetCVar
     return setter and pcall(setter, name, value)
@@ -377,7 +429,7 @@ prompts:SetFont("Fonts\\FRIZQT__.TTF", 12, "")
 prompts:SetShadowOffset(1, -1)
 prompts:SetPoint("TOP", selected, "BOTTOM", 0, -6)
 local function SetPrompts()
-    prompts:SetText(Glyph("A") .. " Use      " .. Glyph("B") .. " Close      " .. Glyph("DPAD") .. " Move")
+    prompts:SetText(Glyph("RT") .. " Use      " .. Glyph("B") .. " Close      " .. Glyph("DPAD") .. " Move")
 end
 SetPrompts()
 IC.OnPadStyleChanged(SetPrompts)
@@ -508,8 +560,30 @@ local function StickPick(entries)
     return best
 end
 
+-- The picked entry's tooltip, mid-right of the wheel (spells and items; a
+-- macro or an emote has none)
+local function ShowTooltip(entry)
+    local tip = GameTooltip
+    if not (entry and (entry.spellID or entry.type == "item")) then
+        if tip:GetOwner() == ring then tip:Hide() end
+        return
+    end
+    tip:SetOwner(ring, "ANCHOR_NONE")
+    tip:ClearAllPoints()
+    -- (the wheel art has ~35 px of clear edge around the ring)
+    tip:SetPoint("LEFT", ring, "RIGHT", -28, 0)
+    if entry.spellID then
+        tip:SetSpellByID(entry.spellID)
+    else
+        tip:SetHyperlink(entry.value)
+    end
+    tip:Show()
+end
+
 local highlighted
 local function Highlight(pick)
+    -- A new slot picked: a tick (Vibration tab: Wheel, Slot change)
+    if pick and pick ~= highlighted and IC.Vibe then IC.Vibe.Fire("wheelTick") end
     highlighted = pick
     local entries = ringData[ring:GetAttribute("ic-active")] or {}
     local slot = pick and slots[pick]
@@ -519,9 +593,11 @@ local function Highlight(pick)
         highlight:SetRotation(SlotAngle(pick) + math.pi / 2)
         highlight:Show()
         selected:SetText(entries[pick].label)
+        ShowTooltip(entries[pick])
     else
         highlight:Hide()
         selected:SetText(#entries == 0 and "Nothing here" or "")
+        ShowTooltip(nil)
     end
     -- The picked entry's label turns white, like the native menu.
     for index, other in ipairs(slots) do
@@ -543,6 +619,10 @@ end)
 ring:HookScript("OnShow", function()
     RefreshVisuals()
     Highlight(nil)
+end)
+ring:HookScript("OnHide", function()
+    highlighted = nil
+    ShowTooltip(nil)
 end)
 ring:HookScript("OnAttributeChanged", function(_, name)
     if name == "ic-active" and ring:IsShown() then

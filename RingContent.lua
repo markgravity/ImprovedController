@@ -105,7 +105,7 @@ function IC.ActionEntry(action)
         return nil
     end
     if kind == "spell" then
-        return { label = name, icon = icon, type = "spell", value = name }
+        return { label = name, icon = icon, type = "spell", value = name, spellID = tonumber(value) }
     elseif kind == "item" then
         return { label = name, icon = icon, type = "item", value = "item:" .. value }
     elseif kind == "macro" then

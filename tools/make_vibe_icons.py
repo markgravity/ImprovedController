@@ -152,6 +152,21 @@ def events():
     icon.arc(d, 64, 56, 44, 20, 160, 10)
     icon.save(path("ic_event_cast"), [(hand, GOLD), (orb, BLUE), (sparks, GOLD)])
 
+    # Slot change: a small wheel, one slice lit
+    wheel = icon.mask(); d = icon.draw(wheel)
+    icon.arc(d, 64, 64, 44, 0, 360, 14)
+    for k in range(8):
+        a = math.radians(k * 45 + 22.5)
+        icon.stroke(d, [(64 + 30 * math.cos(a), 64 + 30 * math.sin(a)),
+                        (64 + 58 * math.cos(a), 64 + 58 * math.sin(a))], 4)
+    lit = icon.mask(); d = icon.draw(lit)
+    pts = [(64, 64)] + [(64 + 56 * math.cos(math.radians(a)), 64 + 56 * math.sin(math.radians(a)))
+                        for a in range(-112, -67, 3)]
+    icon.polygon(d, pts)
+    hub = icon.mask(); d = icon.draw(hub)
+    icon.circle(d, 64, 64, 14)
+    icon.save(path("ic_event_wheel"), [(icon.cut(wheel, lit), STEEL), (lit, GOLD), (hub, GOLD)])
+
     # Interrupted: the cast's orb struck through by a red bolt
     orb = icon.mask(); d = icon.draw(orb)
     icon.circle(d, 64, 64, 32)
