@@ -142,6 +142,23 @@ def events():
     icon.stroke(d, [(66, 24), (58, 46), (72, 60), (56, 82), (66, 98)], 4)
     icon.save(path("ic_event_critted"), [(burst, RED), (icon.cut(shield, crack), STEEL)])
 
+    # Low health: a red heart, mostly drained (the top cut out), a pulse line
+    heart = icon.mask(); d = icon.draw(heart)
+    pts = []
+    for i in range(160):
+        t = i / 160 * 2 * math.pi
+        x = 16 * math.sin(t) ** 3
+        y = 13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)
+        pts.append((64 + x * 3.3, 58 - y * 3.3))
+    icon.polygon(d, pts)
+    drained = icon.mask(); d = icon.draw(drained)
+    icon.polygon(d, [(0, 0), (128, 0), (128, 74), (0, 74)])
+    full = icon.cut(heart, drained)
+    empty = icon.cut(heart, full)
+    line = icon.mask(); d = icon.draw(line)
+    icon.stroke(d, [(6, 66), (34, 66), (44, 46), (56, 88), (66, 56), (74, 66), (122, 66)], 6)
+    icon.save(path("ic_event_lowhp"), [(empty, GREY), (full, RED), (line, GOLD)])
+
     # Spell cast: a glowing orb in a cupped hand of waves (a cast's loop)
     orb = icon.mask(); d = icon.draw(orb)
     icon.circle(d, 64, 56, 24)

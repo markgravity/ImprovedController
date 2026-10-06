@@ -172,6 +172,13 @@ function E:Try()
     local pattern = V.EventPattern(event.key)
     if not pattern then
         menu.Toast(event.label .. " is off", true)
+    elseif event.loop then
+        -- Plays on, as it would while the state lasts
+        if V.SimulateLoop(event.key, 6) then
+            menu.Toast(event.label .. ": playing (" .. IC.ButtonName("Y") .. " stops)")
+        else
+            menu.Toast(event.label .. ": stopped")
+        end
     elseif event.combo then
         -- A run of crits, each hit varied as in a real combo
         V.SimulateCombo(event.key, function(n)

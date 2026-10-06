@@ -65,6 +65,9 @@ V.EVENTS = {
     { key = "critted", group = "combat", label = "Critical hit taken", icon = EVENT_ICONS .. "critted", on = true,
         combo = true,
         pattern = "double", tip = "An enemy lands a critical hit on you." },
+    { key = "lowHp", group = "combat", label = "Low health", icon = EVENT_ICONS .. "lowhp", on = true,
+        pattern = "heart", loop = true, tip = "While your health is at 35% or less (the game's red"
+            .. " low-health warning), its pattern plays over and over." },
     { key = "cast", group = "combat", parent = "spellcast", label = "Casting", icon = EVENT_ICONS .. "cast", on = false,
         pattern = "sweep", loop = true, tip = "While you cast or channel a spell, its pattern plays over"
             .. " and over until the spell ends (instant spells: nothing)." },
@@ -284,6 +287,10 @@ end
 -- An event happened: its pattern, if it is on (the same event at most
 -- every 0.4 s; a combo event every 0.15 s, others at their own gap). A looping event's plays until
 -- V.EndLoop.
+-- Loops still wanted under the one playing (low health under a cast):
+-- the newest plays; when it ends, the one before it resumes
+local loops = {}
+
 local last = {}
 function V.ResetLast(eventKey)
     last[eventKey] = nil
@@ -296,7 +303,9 @@ function V.Fire(eventKey)
     local pattern = V.EventPattern(eventKey)
     if not (s.enabled and pattern) then return end
     if EVENT[eventKey].loop then
+        V.EndLoop(eventKey)
         V.looping = { key = eventKey, pattern = pattern }
+        loops[#loops + 1] = V.looping
         V.Play(pattern, true)
         return
     end
@@ -311,9 +320,16 @@ end
 
 -- A looping event is over (the cast ended): its loop stops
 function V.EndLoop(eventKey)
+    for i = #loops, 1, -1 do
+        if loops[i].key == eventKey then table.remove(loops, i) end
+    end
     if V.looping and V.looping.key == eventKey then
-        V.looping = nil
-        V.Stop()
+        V.looping = loops[#loops]
+        if V.looping then
+            V.Play(V.looping.pattern, true)
+        else
+            V.Stop()
+        end
     end
 end
 
@@ -327,6 +343,27 @@ function V.StopSimulation()
     for _, t in ipairs(sim) do t:Cancel() end
     wipe(sim)
     V.EndLoop("cast")
+    if V.loopDemo then
+        V.EndLoop(V.loopDemo)
+        V.loopDemo = nil
+    end
+end
+
+-- Try it on a looping event (low health): its loop for a few seconds, as
+-- it would run while the state lasts. Triangle again, or closing the
+-- panel, stops it.
+function V.SimulateLoop(eventKey, seconds)
+    local wasDemo = V.loopDemo == eventKey
+    V.StopSimulation()
+    if wasDemo then return false end
+    V.loopDemo = eventKey
+    V.Fire(eventKey)
+    sim[#sim + 1] = C_Timer.NewTimer(seconds or 6, function()
+        wipe(sim)
+        V.EndLoop(eventKey)
+        V.loopDemo = nil
+    end)
+    return true
 end
 
 -- Try it on a combo event: a run of six hits at uneven intervals, each
@@ -517,3 +554,57 @@ events:SetScript("OnEvent", function(_, event, ...)
         CombatLog()
     end
 end)
+
+---------------------------------------------------------------------------
+-- Low health. WoW Forever hides the player's health from addons in combat,
+-- but the game's own low-health warning (LowHealthFrame: the red screen
+-- edge, at 35%) reads it untainted: its showing is our cue. (It also pulses
+-- in combat behind a full-screen window: not low health, skipped.) With
+-- that warning off in the game's options, health is read directly when it
+-- isn't hidden.
+---------------------------------------------------------------------------
+local LOW_HP = 0.35
+local low = false
+
+local function Secret(v)
+    return issecretvalue ~= nil and issecretvalue(v) or false
+end
+
+local function FullscreenPanel()
+    return GetUIPanel ~= nil and GetUIPanel("fullscreen") ~= nil
+end
+
+-- Low: its loop for as long as it lasts
+local function SetLow(on)
+    if on and not low then
+        low = true
+        V.Fire("lowHp")
+    elseif not on and low then
+        low = false
+        V.EndLoop("lowHp")
+    end
+end
+
+local warning = _G.LowHealthFrame
+if warning then
+    warning:HookScript("OnShow", function()
+        if IC.db and not FullscreenPanel() and not UnitIsDeadOrGhost("player") then SetLow(true) end
+    end)
+    warning:HookScript("OnHide", function() SetLow(false) end)
+end
+
+local health = CreateFrame("Frame")
+health:RegisterUnitEvent("UNIT_HEALTH", "player")
+health:RegisterUnitEvent("UNIT_MAXHEALTH", "player")
+health:RegisterEvent("PLAYER_DEAD")
+health:SetScript("OnEvent", function(_, event)
+    if not IC.db then return end
+    if event == "PLAYER_DEAD" or UnitIsDeadOrGhost("player") then return SetLow(false) end
+    -- The game's warning does it, when it is on
+    local get = C_CVar and C_CVar.GetCVar or GetCVar
+    if warning and get and get("doNotFlashLowHealthWarning") ~= "1" then return end
+    local hp, max = UnitHealth("player"), UnitHealthMax("player")
+    if Secret(hp) or Secret(max) or not max or max <= 0 then return end
+    SetLow(hp / max <= LOW_HP)
+end)
+
