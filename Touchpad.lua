@@ -1,6 +1,6 @@
--- DualSense touchpad clicks. Clicking the pad runs the action of the region
--- the finger is on (top, bottom, left, right, the four corners or the
--- centre): an interface window, a spell, an item or a macro.
+-- DualSense touchpad clicks. Clicking the pad runs the action of the corner
+-- the finger is in (the pad's four quarters): an interface window, a
+-- spell, an item or a macro.
 --
 -- Why a click and not a swipe: on Forever, opening a game window from addon
 -- code taints it (its gamepad action bar then trips over a protected call,
@@ -17,16 +17,14 @@ local touch = {}
 IC.Touch = touch
 
 local PAD_STICK = 4       -- StickConfigNameToIndex("Pad") is nil on Forever
-local DEFAULT_CENTRE = 0.35
 local KEY = "PADBACK"     -- what the game calls a touchpad click
 local MODIFIERS = { "", "SHIFT-", "CTRL-", "ALT-", "CTRL-SHIFT-", "ALT-SHIFT-", "CTRL-ALT-", "CTRL-ALT-SHIFT-" }
 
-touch.REGIONS = { "up", "down", "left", "right", "upleft", "upright", "downleft", "downright", "centre" }
+touch.REGIONS = { "upleft", "upright", "downleft", "downright" }
 touch.REGION_LABELS = {
     up = "Top", down = "Bottom", left = "Left", right = "Right", centre = "Centre",
     upleft = "Top left", upright = "Top right", downleft = "Bottom left", downright = "Bottom right",
 }
-local DEFAULT_CORNER = 0.5
 
 -- What a region can open: the game's own button for it (the first that
 -- exists in this client). Only actions with a button here are offered.
@@ -51,23 +49,37 @@ for _, action in ipairs(ACTIONS) do
     ACTION_BY_KEY[action.key] = action
 end
 
-local DEFAULTS = {
-    up = "map", down = "character", left = "questlog", right = "bags", centre = "none",
-    upleft = "none", upright = "none", downleft = "none", downright = "none",
-}
+local DEFAULTS = { upleft = "map", upright = "bags", downleft = "questlog", downright = "character" }
+-- An earlier version had sides and a centre too: their actions move to the
+-- corners nearest them, once (top -> top left, right -> top right...)
+local FROM_SIDES = { upleft = "up", upright = "right", downleft = "left", downright = "down" }
 
 function touch.GetSettings()
     local db = IC.db
     db.touch = db.touch or {}
     local settings = db.touch
     settings.regions = settings.regions or {}
+    if not settings.quarters then
+        settings.quarters = true
+        local any = false
+        for corner in pairs(FROM_SIDES) do
+            if settings.regions[corner] and settings.regions[corner] ~= "none" then any = true end
+        end
+        if not any then
+            for corner, side in pairs(FROM_SIDES) do
+                local action = settings.regions[side]
+                if action and action ~= "none" then settings.regions[corner] = action end
+            end
+        end
+        for _, gone in ipairs({ "up", "down", "left", "right", "centre" }) do
+            settings.regions[gone] = nil
+        end
+    end
     for region, action in pairs(DEFAULTS) do
         if settings.regions[region] == nil then
             settings.regions[region] = action
         end
     end
-    settings.centre = settings.centre or DEFAULT_CENTRE
-    settings.corner = settings.corner or DEFAULT_CORNER
     return settings
 end
 
@@ -141,26 +153,15 @@ function touch.InterfaceEntries()
     return entries
 end
 
--- The region a finger position falls in (the secure click's own test): by
--- the centre size and corner reach, and a region turned off gives its area
--- to its neighbours. nil: every candidate is off.
+-- The corner a finger position falls in (the secure click's own test).
+-- nil: every candidate is off.
 function touch.RegionAt(x, y)
-    local settings = touch.GetSettings()
-    local ax, ay = math.abs(x), math.abs(y)
+    -- The quarter the finger is in; one turned off gives its area to the
+    -- corner beside it, then the one above / below it
     local h, v = x > 0 and "right" or "left", y > 0 and "up" or "down"
-    local corner = v .. h
-    local dom, other = h, v
-    if ay >= ax then dom, other = v, h end
-    local order
-    if ax < settings.centre and ay < settings.centre then
-        order = { "centre", dom, other, corner }
-    elseif ax >= settings.corner and ay >= settings.corner then
-        order = { corner, dom, other, "centre" }
-    else
-        local far = dom == h and ((v == "up" and "down" or "up") .. h) or (v .. (h == "right" and "left" or "right"))
-        order = { dom, corner, "centre", far, other }
-    end
-    for _, name in ipairs(order) do
+    local beside = v .. (h == "right" and "left" or "right")
+    local across = (v == "up" and "down" or "up") .. h
+    for _, name in ipairs({ v .. h, beside, across }) do
         if not touch.IsOff(name) then return name end
     end
 end
@@ -244,24 +245,11 @@ SecureHandlerWrapScript(click, "OnClick", click, [[
     local state = GetGamePadState()
     local stick = state and state.sticks and state.sticks[self:GetAttribute("ic-stick")]
     local x, y = stick and stick.x or 0, stick and stick.y or 0
-    local ax, ay = x < 0 and -x or x, y < 0 and -y or y
-    local centre = self:GetAttribute("ic-centre")
-    -- The region under the finger; one turned off gives its area to its
-    -- neighbours (a side to its corners, a corner to its sides, the centre
-    -- to the nearest side): the same as touch.RegionAt
+    -- The quarter under the finger; one turned off gives its area to the
+    -- corner beside it, then the one above / below it (touch.RegionAt)
     local h, v = x > 0 and "right" or "left", y > 0 and "up" or "down"
-    local corner = v .. h
-    local dom, other = h, v
-    if ay >= ax then dom, other = v, h end
-    local order
-    if ax < centre and ay < centre then
-        order = newtable("centre", dom, other, corner)
-    elseif ax >= self:GetAttribute("ic-corner") and ay >= self:GetAttribute("ic-corner") then
-        order = newtable(corner, dom, other, "centre")
-    else
-        local far = dom == h and ((v == "up" and "down" or "up") .. h) or (v .. (h == "right" and "left" or "right"))
-        order = newtable(dom, corner, "centre", far, other)
-    end
+    local order = newtable(v .. h, v .. (h == "right" and "left" or "right"),
+        (v == "up" and "down" or "up") .. h)
     local region
     for _, name in ipairs(order) do
         if not self:GetAttribute("ic-off-" .. name) then
@@ -310,8 +298,6 @@ function touch.Apply()
     pending = false
     local settings = touch.GetSettings()
     click:SetAttribute("ic-keydown", GetCVarSafe("ActionButtonUseKeyDown") == "0" and 0 or 1)
-    click:SetAttribute("ic-centre", settings.centre)
-    click:SetAttribute("ic-corner", settings.corner)
     for _, region in ipairs(touch.REGIONS) do
         local off = touch.IsOff(region)
         click:SetAttribute("ic-off-" .. region, off or nil)
@@ -341,15 +327,6 @@ function touch.CycleAction(region, step)
     touch.Apply()
 end
 
-function touch.SetCentre(size)
-    touch.GetSettings().centre = math.max(0.1, math.min(0.8, size))
-    touch.Apply()
-end
-
-function touch.SetCorner(size)
-    touch.GetSettings().corner = math.max(0.2, math.min(0.9, size))
-    touch.Apply()
-end
 
 -- An earlier version turned the touchpad edges into paddle buttons with a
 -- gamepad config; Forever ignores those presses, so take it out again.

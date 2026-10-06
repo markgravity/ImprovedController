@@ -53,6 +53,24 @@ menu.TABS = {
                 end,
             },
             {
+                key = "touchpad", label = "Touchpad",
+                tip = "Clicking the PS5 touchpad runs the action of the corner your finger is in.",
+                rows = function(b)
+                    local settings = IC.Touch.GetSettings()
+                    b.header("Touchpad")
+                    b.check({
+                        id = "touchOn", label = "Touchpad click",
+                        get = function() return settings.enabled ~= false end,
+                        set = function(on)
+                            settings.enabled = on
+                            IC.Touch.Apply()
+                        end,
+                        tip = "Clicking the touchpad runs what its corner holds (Touchpad tab): top left, top"
+                            .. " right, bottom left or bottom right. Works in combat.",
+                    })
+                end,
+            },
+            {
                 key = "about", label = "About",
                 tip = "Improved Controller: quality of life for WoW Forever with a controller.",
                 rows = function(b)
@@ -870,7 +888,7 @@ local function Build()
     f.crumb:SetWordWrap(false)
     f.hintRow = K.NewFrame("Frame", nil, bar)
     f.hintRow:SetSize(1, 30)
-    f.hintRow:SetPoint("TOP", f.crumb, "BOTTOM", 0, -2)
+    f.hintRow:SetPoint("TOP", bar, "TOP", 0, -18)
     f.hints = {}
 
     f:SetScript("OnUpdate", function() menu.OnUpdate() end)
@@ -932,7 +950,9 @@ function menu.Render()
     -- The help bar
     local hints = page:Help() or {}
     if menu.armed then hints = { K.H({ "A" }, "Confirm", "A"), K.H({ "B" }, "Cancel", "B") } end
-    local crumb, color = page:Crumb(), KC.grey
+    -- The line over the hints: only a short message (where you are is the
+    -- header's and the lists' to show)
+    local crumb, color = "", KC.grey
     if menu.toast then crumb, color = menu.toast.text, menu.toast.color end
     f.crumb:SetText(crumb)
     f.crumb:SetTextColor(unpack(color))
