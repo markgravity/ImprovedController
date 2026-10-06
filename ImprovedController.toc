@@ -16,6 +16,7 @@ Touchpad.lua
 Vibration.lua
 Probe.lua
 ConfigKit.lua
+RecentSlot.lua
 Menu.lua
 WheelEditor.lua
 TouchEditor.lua

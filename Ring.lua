@@ -147,19 +147,26 @@ ring:SetAttribute("ic-pick-body", [[
 ]])
 
 -- R3: open the ring for the held combo. It stays up until R2 uses a slot
--- or Circle closes it; while it's up R3 does nothing, so clicking the stick
--- by accident while pointing can't close it.
+-- or Circle closes it. R3 again while it's up, the same combo held (a
+-- double click), uses the wheel's most recent action (RecentSlot.lua) and
+-- closes it; with another combo held it does nothing. It acts on the press
+-- or the release, as action buttons do (ActionButtonUseKeyDown).
 local trigger = SecureButton("ImprovedControllerRingTrigger")
 trigger:RegisterForClicks("AnyDown", "AnyUp")
 SecureHandlerWrapScript(trigger, "OnClick", trigger, [[
-    if not down then
-        return false
-    end
     local ring = self:GetFrameRef("ring")
-    if ring:IsShown() then
-        self:SetAttribute("ic-mode", nil)
+    if not down then
+        -- The recent action, on the release
+        local pending = self:GetAttribute("ic-recent-pending")
+        self:SetAttribute("ic-recent-pending", nil)
+        if pending then
+            self:SetAttribute("type", pending)
+            return
+        end
         return false
     end
+    self:SetAttribute("type", nil)
+    self:SetAttribute("ic-recent-pending", nil)
     local combo = "R3"
     local state = GetGamePadState()
     local buttons = state and state.buttons
@@ -171,6 +178,27 @@ SecureHandlerWrapScript(trigger, "OnClick", trigger, [[
                 break
             end
         end
+    end
+    if ring:IsShown() then
+        self:SetAttribute("ic-mode", nil)
+        local wheel = ring:GetAttribute((ring:GetAttribute("ic-active") or "") .. "-wheel")
+        local actionType = wheel and self:GetAttribute("ic-combo-" .. combo) == wheel
+            and ring:GetAttribute("recent-" .. wheel .. "-type")
+        if not actionType then
+            return false
+        end
+        ring:Hide()
+        self:SetAttribute("spell", nil)
+        self:SetAttribute("item", nil)
+        self:SetAttribute("macrotext", nil)
+        self:SetAttribute(actionType == "macro" and "macrotext" or actionType,
+            ring:GetAttribute("recent-" .. wheel .. "-value"))
+        if (self:GetAttribute("ic-keydown") or 1) == 1 then
+            self:SetAttribute("type", actionType)
+            return
+        end
+        self:SetAttribute("ic-recent-pending", actionType)
+        return false
     end
     -- A combo another feature has for now (the bag clean-up panel's, while
     -- the bags are open): left to it
@@ -294,11 +322,20 @@ SecureHandlerWrapScript(use, "OnClick", use, [[
     end
     ring:Hide()
     local actionType = ring:GetAttribute(key .. "-type-" .. pick)
+    local value = ring:GetAttribute(key .. "-value-" .. pick)
     self:SetAttribute("spell", nil)
     self:SetAttribute("item", nil)
     self:SetAttribute("macrotext", nil)
-    self:SetAttribute(actionType == "macro" and "macrotext" or actionType, ring:GetAttribute(key .. "-value-" .. pick))
+    self:SetAttribute(actionType == "macro" and "macrotext" or actionType, value)
     self:SetAttribute("type", actionType)
+    -- The wheel's most recent action (R3 twice uses it again)
+    local wheel = ring:GetAttribute(key .. "-wheel")
+    if wheel then
+        ring:SetAttribute("recent-" .. wheel .. "-type", actionType)
+        ring:SetAttribute("recent-" .. wheel .. "-value", value)
+        ring:SetAttribute("ic-used-n", (ring:GetAttribute("ic-used-n") or 0) + 1)
+        ring:SetAttribute("ic-used", key .. "#" .. pick)
+    end
 ]])
 
 -- L1 / R1: the previous / next wheel (its first page). D-pad left / right:
@@ -684,6 +721,35 @@ end)
 -- Contents and bindings (out of combat only)
 ---------------------------------------------------------------------------
 
+-- The wheels' most recent actions, kept per character
+-- (IC.charDB.recent[wheel] = { type, value, label, icon }) and given to
+-- the secure side (out of combat)
+function IC.RecentAction(wheel)
+    return IC.charDB and IC.charDB.recent and IC.charDB.recent[wheel]
+end
+
+function IC.ApplyRecent()
+    if IC.InCombat() or not IC.charDB then return end
+    IC.charDB.recent = IC.charDB.recent or {}
+    for _, wheel in ipairs(IC.RINGS) do
+        local recent = IC.charDB.recent[wheel]
+        ring:SetAttribute("recent-" .. wheel .. "-type", recent and recent.type or nil)
+        ring:SetAttribute("recent-" .. wheel .. "-value", recent and recent.value or nil)
+    end
+end
+
+-- A slot used (the secure "ic-used" = page#slot): remembered
+ring:HookScript("OnAttributeChanged", function(_, name, value)
+    if name ~= "ic-used" or type(value) ~= "string" or not IC.charDB then return end
+    local key, pick = value:match("^(.+)#(%d+)$")
+    local entry = key and ringData[key] and ringData[key][tonumber(pick)]
+    local info = key and pageInfo[key]
+    if not (entry and info) then return end
+    IC.charDB.recent = IC.charDB.recent or {}
+    IC.charDB.recent[info.ring] = { type = entry.type, value = entry.value, label = entry.label, icon = entry.icon }
+    if IC.RecentChanged then IC.RecentChanged() end
+end)
+
 local function Rebuild()
     if IC.InCombat() then
         rebuildPending = true
@@ -733,6 +799,7 @@ local function Rebuild()
         end
     end
     ring:SetAttribute("wheel-total", #wheelOrder)
+    IC.ApplyRecent()
     if ring:IsShown() then
         RefreshVisuals()
         Highlight(nil)
@@ -780,6 +847,7 @@ function IC.ApplyRingBindings()
     ring:SetAttribute("ic-stick", StickIndex("Right") or 2)
     ring:SetAttribute("ic-stick2", StickIndex("Left") or 1)
     use:SetAttribute("ic-keydown", GetCVarSafe("ActionButtonUseKeyDown") == "0" and 0 or 1)
+    trigger:SetAttribute("ic-keydown", use:GetAttribute("ic-keydown"))
     local anyRing = false
     for _, combo in ipairs(IC.COMBOS) do
         local key = IC.GetComboRing(combo)
@@ -816,6 +884,7 @@ events:SetScript("OnEvent", function(_, event)
     if event == "CVAR_UPDATE" then
         if not IC.InCombat() then
             use:SetAttribute("ic-keydown", GetCVarSafe("ActionButtonUseKeyDown") == "0" and 0 or 1)
+            trigger:SetAttribute("ic-keydown", use:GetAttribute("ic-keydown"))
         end
     elseif event == "PLAYER_REGEN_ENABLED" then
         RestoreAxisCVar()

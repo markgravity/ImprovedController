@@ -335,13 +335,8 @@ function MW.ApplyWheelKeys()
     end
     keysPending = false
     ClearOverrideBindings(keyOwner)
-    for button, ringKey in pairs(MW.WheelKeys()) do
-        if IC.RING_LABELS[ringKey] then
-            for _, prefix in ipairs(PREFIXES) do
-                SetOverrideBindingClick(keyOwner, true, prefix .. button, "ImprovedControllerWheel_" .. ringKey, "LeftButton")
-            end
-        end
-    end
+    -- Wheels bind to R3 combos only now: buttons recorded before are dropped
+    wipe(MW.WheelKeys())
 end
 
 keyOwner:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -389,14 +384,13 @@ end
 
 -- A recorded press as a hotkey: { combo = "L1" } (held + R3, or "R3"
 -- alone) or { button = "PAD4" }; nil if it can't be one
+-- A wheel binds to R3 alone or L1 / L2 / R1 / R2 held + R3 only: R3 is
+-- where its recent action lives (RecentSlot.lua). Anything else: nil.
 function MW.HotkeySpec(held, pressed)
-    if pressed == "PADRSTICK" then
-        local combo = held and MW.COMBO_HOLD[held]
-        if held and not combo then return nil end
-        return { combo = combo or "R3" }
-    end
-    if held then return nil end
-    return { button = pressed }
+    if pressed ~= "PADRSTICK" then return nil end
+    local combo = held and MW.COMBO_HOLD[held]
+    if held and not combo then return nil end
+    return { combo = combo or "R3" }
 end
 
 function MW.SpecText(spec)

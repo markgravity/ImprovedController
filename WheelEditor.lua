@@ -589,7 +589,7 @@ function W:StartCapture(wheel)
     c:EnableKeyboard(true)
     c:SetPropagateKeyboardInput(false)
     if c.EnableGamePadButton then c:EnableGamePadButton(true) end
-    self:ShowDialog("Bind " .. wheel.label .. IC.PadText("\n\n|cffd8ccb0Press a button, or hold {LB} / {LT} / {RB} / {RT} and press {RS}."
+    self:ShowDialog("Bind " .. wheel.label .. IC.PadText("\n\n|cffd8ccb0Press {RS}, or hold {LB} / {LT} / {RB} / {RT} and press {RS}."
         .. "\n{B} alone cancels; holding {B} unbinds it.|r"))
     self.captureToken = (self.captureToken or 0) + 1
     local token = self.captureToken
@@ -619,7 +619,7 @@ function W:Recorded(held, pressed)
     local spec = MW.HotkeySpec(held, pressed)
     if not spec then
         self:StopCapture()
-        menu.Toast(IC.PadText("Use one button, or {LB} / {LT} / {RB} / {RT} held + {RS}."), true)
+        menu.Toast(IC.PadText("Wheels bind to {RS}, or {LB} / {LT} / {RB} / {RT} held + {RS}."), true)
         return
     end
     self.pendingSpec = spec
@@ -1070,8 +1070,8 @@ function W:Render()
                 .. " spell, an item, a macro or an emote for each slot. Up to " .. MW.MAX .. " wheels." })
         else
             self.detail:Set({ title = wheel.label, tag = "Fills itself", tagColor = KC.slot, body = wheel.info,
-                extra = "Bound to: " .. (MW.HotkeyText(wheel.key) or "nothing") .. IC.PadText(". {X} binds it: any controller button, or"
-                    .. " {LB} / {LT} / {RB} / {RT} + {RS}.") })
+                extra = "Bound to: " .. (MW.HotkeyText(wheel.key) or "nothing") .. IC.PadText(". {X} binds it: {RS}, or"
+                    .. " {LB} / {LT} / {RB} / {RT} + {RS}. {RS} twice uses its last action.") })
         end
     end
     -- The boxes over the wheel: naming, recording, confirming
