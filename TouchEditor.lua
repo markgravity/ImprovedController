@@ -35,7 +35,15 @@ local function Settings()
     return touch.GetSettings()
 end
 
-local T = { zone = "picker", row = 1, col = 1 }
+local T = { zone = "rail", row = 1, col = 1 }
+
+function T:SelectRegion(region)
+    for r, row in ipairs(GRID) do
+        for c, name in ipairs(row) do
+            if name == region then self.row, self.col = r, c end
+        end
+    end
+end
 touch.Editor = T
 
 function T:Region()
@@ -121,6 +129,38 @@ function T:Build(parent)
         end
     end
 
+    -- The middle: one big slot, the selected corner's (the pad drawing
+    -- above stays hidden)
+    pad:Hide()
+    f:SetScript("OnUpdate", nil)
+    local big = K.Slot(f, 150, 108)
+    big:SetPoint("CENTER", f, "CENTER", 0, 0)
+    big:SetScript("OnClick", function(_, button)
+        if button == "RightButton" then
+            T:Clear()
+        else
+            T:Aim()
+        end
+    end)
+    f.big = big
+
+    -- Left: the corners by name, slices down the ring's left side
+    f.rows = {}
+    for i, region in ipairs(touch.REGIONS) do
+        local r = K.NewFrame("Button", nil, f)
+        r:SetSize(200, 34)
+        r.seg = K.Segment(r)
+        r.label = K.Text(r, 14, KC.rail, "OVERLAY")
+        r.label:SetJustifyH("CENTER")
+        r.label:SetPoint("CENTER")
+        r:SetScript("OnClick", function()
+            T:SelectRegion(region)
+            T.zone = "rail"
+            menu.Render()
+        end)
+        f.rows[i] = r
+    end
+
     -- Right: the picker of what a slot runs
     local lists = {}
     for _, list in ipairs(MW.CATALOG) do
@@ -148,12 +188,15 @@ function T:Build(parent)
             return false
         end,
         onChoose = function(e) T:Bind(e) end,
-        onBack = function() menu.Close() end,
+        onBack = function()
+            T.zone = "rail"
+            menu.Render()
+        end,
     })
 end
 
 function T:Show()
-    self.zone = "picker"
+    self.zone = "rail"
     self.frame:Show()
 end
 
@@ -263,27 +306,58 @@ end
 ---------------------------------------------------------------------------
 -- The pad
 ---------------------------------------------------------------------------
--- The picker has the pad: up / down, Cross binds, L2 / R2 switch lists.
--- The slot follows the touchpad click and the right stick only.
+-- Left / right move between the corners (left) and the picker (right);
+-- up / down move inside them. A touchpad click or the right stick picks a
+-- corner too, and gives the picker the focus.
 function T:Press(name)
     if name == "LB" or name == "RB" then return false end
     if name == "Y" then
         self:Triangle()
         return true
     end
-    self.zone = "picker"
-    if name == "LEFT" or name == "RIGHT" then return true end
-    -- (Circle: the picker's back, which closes the panel)
-    self.picker:Press(name)
+    if self.zone == "picker" then
+        if name == "LEFT" or name == "B" then
+            self.zone = "rail"
+        elseif name ~= "RIGHT" then
+            self.picker:Press(name)
+        end
+        menu.Render()
+        return true
+    end
+    -- The corners
+    local index = 1
+    for i, region in ipairs(touch.REGIONS) do
+        if region == self:Region() then index = i end
+    end
+    if name == "UP" or name == "DOWN" then
+        index = math.max(1, math.min(#touch.REGIONS, index + (name == "UP" and -1 or 1)))
+        self:SelectRegion(touch.REGIONS[index])
+    elseif name == "RIGHT" or name == "A" then
+        self.zone = "picker"
+        self:Target()
+    else
+        -- Circle closes the panel
+        return false
+    end
     menu.Render()
     return true
 end
 
 function T:Help()
     local H = K.H
-    return { H({ "Touchpad" }, "Slot"), H({ "RS" }, "Slot"), H({ "DPAD" }, "Move"), H({ "A" }, "Bind", "A"),
-        H({ "LT", "RT" }, "List", "RT"), H({ "Y" }, "Clear (hold: off)", "Y"), H({ "LB", "RB" }, "Tab", "RB"),
-        H({ "B" }, "Close", "B") }
+    local hints = { H({ "Touchpad" }, "Slot"), H({ "RS" }, "Slot") }
+    if self.zone == "picker" then
+        hints[#hints + 1] = H({ "DPAD" }, "Move")
+        hints[#hints + 1] = H({ "A" }, "Bind", "A")
+        hints[#hints + 1] = H({ "LT", "RT" }, "List", "RT")
+    else
+        hints[#hints + 1] = H({ "DPAD" }, "Pick corner")
+        hints[#hints + 1] = H({ "A" }, "Edit", "A")
+    end
+    hints[#hints + 1] = H({ "Y" }, "Clear (hold: off)", "Y")
+    hints[#hints + 1] = H({ "LB", "RB" }, "Tab", "RB")
+    hints[#hints + 1] = H({ "B" }, self.zone == "picker" and "Corners" or "Close", "B")
+    return hints
 end
 
 function T:Crumb()
@@ -305,8 +379,6 @@ local REGION_COLOR = { upleft = KC.info, downright = KC.info, upright = KC.slot,
 function T:DrawZones()
     local f = self.frame
     local selected = self:Region()
-    -- Brighter while its setting has the focus
-    local centreFocus, cornerFocus = false, false
     local regions = {}
     for row = 1, MAP_ROWS do
         regions[row] = {}
@@ -321,8 +393,7 @@ function T:DrawZones()
             local color = region and REGION_COLOR[region]
             if color then
                 local alpha = 0.1
-                if region == selected and not (centreFocus or cornerFocus) then alpha = 0.28 end
-                if (centreFocus and region == "centre") or (cornerFocus and touch.CORNERS[region]) then alpha = 0.32 end
+                if region == selected then alpha = 0.28 end
                 cell.tex:SetColorTexture(color[1], color[2], color[3], alpha)
             else
                 cell.tex:SetColorTexture(0, 0, 0, 0)
@@ -356,7 +427,7 @@ end
 function T:Render()
     local f = self.frame
     if not f then return end
-    self.zone = "picker"
+    if self.zone ~= "picker" then self.zone = "rail" end
     local settings = Settings()
     local on = settings.enabled ~= false
     local selected = self:Region()
@@ -370,12 +441,31 @@ function T:Render()
             dash = self.zone == "picker" and isSel })
         s:SetAlpha((on and not off) and 1 or 0.45)
         if self.holding == region then s:SetAlpha(0.7) end
-        local label = f.labels[region]
-        label:SetText(off and (touch.REGION_LABELS[region] .. " · Off")
-            or (bound and touch.ActionLabel(key) or touch.REGION_LABELS[region]))
-        label:SetTextColor(unpack(isSel and KC.focus or (bound and KC.cream or KC.grey)))
+        -- The middle shows the selected corner's slot alone (its name: the
+        -- list on the left)
+        f.labels[region]:Hide()
+        s:SetShown(isSel)
     end
-    self:DrawZones()
+    -- The corners down the ring's left side, centred on it, each name along
+    -- its slice (dimmed when turned off)
+    local n = #f.rows
+    for i, r in ipairs(f.rows) do
+        local region = touch.REGIONS[i]
+        local theta = math.pi - ((n + 1) / 2 - i) * K.SEG.STEP
+        r.seg:Place(f, theta)
+        local isSel = region == selected
+        r.seg:SetFocus(isSel and self.zone == "rail")
+        r.label:SetText(touch.REGION_LABELS[region] .. (touch.IsOff(region) and "  |cffff7a5cOff|r" or ""))
+        r.label:SetTextColor(unpack(isSel and KC.focus or KC.rail))
+        K.Rotate(r.label, K.ReadingAngle(theta))
+    end
+    -- The big slot: what the selected corner holds
+    local key = settings.regions[selected]
+    local bound = touch.IsBound(key)
+    local off = touch.IsOff(selected)
+    f.big:SetLook({ icon = bound and (touch.ActionIcon(key) or 134400) or nil, discColor = bound and KC.iconBg or nil,
+        plus = not bound and not off, hatch = off, glow = self.zone == "rail", dash = self.zone == "picker" })
+    f.big:SetAlpha((on and not off) and 1 or 0.45)
     self.picker:Show()
     self.picker:SetAlpha(self.zone == "picker" and 1 or 0.5)
     self.picker:Render()
@@ -392,6 +482,6 @@ end
 
 -- The panel kept the touchpad click while it was open; give it back
 hooksecurefunc(menu, "Close", function()
-    T.zone = "picker"
+    T.zone = "rail"
     if not IC.InCombat() then touch.Apply() end
 end)
