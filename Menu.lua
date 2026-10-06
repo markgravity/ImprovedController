@@ -1,5 +1,5 @@
 -- The configuration panel, adapted from Easy Controller - Forever's
--- ConfigWindow (moust4ki, MIT License, see textures/LICENSE-EasyController.md):
+-- ConfigWindow (moust4ki, MIT License, see LICENSE-EasyController.md):
 -- 820 x 580, tabs (L1 / R1), each a rail of sections on the left, the
 -- section's settings in the middle and what the focused one does on the
 -- right; the help bar at the bottom shows where the focus is and what the
@@ -41,23 +41,27 @@ menu.TABS = {
                 rows = function(b)
                     b.header("Bags")
                     b.check({
-                        id = "bagSort", label = "L3 cleans up bags",
+                        id = "bagSort", label = IC.PadText("{LS} cleans up bags"),
                         get = function() return IC.db.bagSort ~= false end,
                         set = function(on)
                             IC.db.bagSort = on
                             IC.UpdateBagBinding()
                         end,
-                        tip = "While any bag is open, L3 (left stick click) sorts your bags. L3 does its usual"
-                            .. " job again once the bags close.",
+                        tip = IC.PadText("While any bag is open, {LS} (left stick click) sorts your bags. {LS} does"
+                            .. " its usual job again once the bags close."),
                     })
                 end,
             },
             {
                 key = "touchpad", label = "Touchpad",
-                tip = "Clicking the PS5 touchpad runs the action of the corner your finger is in.",
+                tip = "Clicking a PlayStation controller's touchpad runs the action of the corner your finger is in.",
                 rows = function(b)
                     local settings = IC.Touch.GetSettings()
                     b.header("Touchpad")
+                    if IC.PadStyle() ~= "Shapes" then
+                        b.info("Needs a controller with a touchpad (PlayStation DualSense or DualShock 4). This"
+                            .. " one is set up as " .. IC.PAD_STYLE_LABELS[IC.PadStyle()] .. " (Controller section).")
+                    end
                     b.check({
                         id = "touchOn", label = "Touchpad click",
                         get = function() return settings.enabled ~= false end,
@@ -71,12 +75,69 @@ menu.TABS = {
                 end,
             },
             {
+                key = "vibration", label = "Vibration",
+                tip = "The controller vibrates on the events set in the Vibration tab.",
+                rows = function(b)
+                    local settings = IC.Vibe.Settings()
+                    b.header("Vibration")
+                    b.check({
+                        id = "vibeOn", label = "Vibration",
+                        get = function() return settings.enabled end,
+                        set = function(on)
+                            settings.enabled = on
+                            if on then IC.Vibe.Play("pulse") else IC.Vibe.Stop() end
+                        end,
+                        tip = "The controller vibrates when you level up, land a critical hit or take one (each"
+                            .. " with its pattern, or off: Vibration tab).",
+                    })
+                    b.slider({
+                        id = "vibeStrength", label = "Strength", min = 0.1, max = 1, stepSize = 0.1,
+                        get = function() return settings.intensity end,
+                        set = function(v)
+                            settings.intensity = v
+                            IC.Vibe.Play("pulse")
+                        end,
+                        fmt = function(v) return math.floor(v * 100 + 0.5) .. "%" end,
+                        tip = "How strong every vibration is. Changing it plays one so you can feel it.",
+                    })
+                end,
+            },
+            {
+                key = "controller", label = "Controller",
+                tip = "Which controller's buttons the menus and wheels show.",
+                rows = function(b)
+                    b.header("Controller")
+                    local function current() return IC.db.padStyle or "auto" end
+                    b.choice({
+                        id = "padStyle", label = "Buttons shown",
+                        text = function()
+                            local set = current()
+                            if set == "auto" then
+                                return "Auto: " .. IC.PAD_STYLE_LABELS[IC.DetectedPadStyle()]
+                            end
+                            return IC.PAD_STYLE_LABELS[set]
+                        end,
+                        step = function(delta)
+                            local list, at = IC.PAD_STYLES, 1
+                            for i, style in ipairs(list) do
+                                if style == current() then at = i end
+                            end
+                            IC.SetPadStyle(list[(at - 1 + delta) % #list + 1])
+                        end,
+                        tip = "Automatic shows the buttons of the controller in use, as the game's own prompts"
+                            .. " do: PlayStation shapes, Xbox letters (also for other controllers) or Nintendo"
+                            .. " Switch letters. Pick one if it guesses wrong.",
+                    })
+                    b.info(IC.PadText("Now: {A} chooses, {B} goes back, {LB} / {RB} switch tabs, {Y} clears, {X} binds."))
+                end,
+            },
+            {
                 key = "about", label = "About",
                 tip = "Improved Controller: quality of life for WoW Forever with a controller.",
                 rows = function(b)
                     b.header("Improved Controller")
-                    b.info("Wheels (buffs, consumables, emotes and your own) opened with an R3 combo or any key, touchpad clicks that open windows, and L3"
-                        .. " to clean up your bags. L1 / R1 switch tabs here; open this panel with /ic or a key"
+                    b.info(IC.PadText("Wheels (buffs, consumables, emotes and your own) opened with an {RS} combo or any key, touchpad clicks that open windows, and {LS}"
+                        .. " to clean up your bags. {LB} / {RB} switch tabs here;") .. " open this panel with /ic or a key"
                         .. " binding (Key Bindings > AddOns).")
                     b.info("Panel design adapted from Easy Controller - Forever by moust4ki (MIT License).")
                 end,
@@ -90,7 +151,12 @@ menu.TABS = {
     },
     {
         key = "touchpad", label = "Touchpad",
-        -- TouchEditor.lua's page: the pad, its settings and the picker
+        -- TouchEditor.lua's page: the corners, the big slot, the picker
+        sections = {},
+    },
+    {
+        key = "vibration", label = "Vibration",
+        -- VibeEditor.lua's page: the events, the big slot, the patterns
         sections = {},
     },
 }
@@ -197,7 +263,7 @@ local function NewRow(page, n)
     local r = K.NewFrame("Button", nil, page.list)
     r:SetWidth(LIST_W)
     r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    r.sel = K.NineSlice(r, "ck_select", 128, 32, 10, 10, "ARTWORK")
+    r.sel = K.NineSlice(r, "ic_select", 128, 32, 10, 10, "ARTWORK")
     -- A section's title
     r.head = K.Text(r, 15, KC.title)
     r.head:SetPoint("BOTTOMLEFT", 2, 7)
@@ -296,9 +362,9 @@ function Page:Build(parent)
         local e = K.NewFrame("Button", nil, rail)
         e:SetSize(RAIL_W - 11, 38)
         e:SetPoint("TOPLEFT", 0, -2 - (i - 1) * 42)
-        e.sel = K.NineSlice(e, "ck_select", 128, 32, 10, 10, "ARTWORK")
+        e.sel = K.NineSlice(e, "ic_select", 128, 32, 10, 10, "ARTWORK")
         e.diamond = e:CreateTexture(nil, "OVERLAY")
-        e.diamond:SetTexture(K.TEX .. "ck_diamond")
+        e.diamond:SetTexture(K.TEX .. "ic_diamond")
         e.diamond:SetSize(7, 7)
         e.diamond:SetPoint("LEFT", 10, 0)
         e.diamond:SetVertexColor(KC.title[1], KC.title[2], KC.title[3])
@@ -321,12 +387,12 @@ function Page:Build(parent)
     self.list = list
     self.rowsUI = {}
     self.moreUp = list:CreateTexture(nil, "OVERLAY")
-    self.moreUp:SetTexture(K.TEX .. "ck_tri")
+    self.moreUp:SetTexture(K.TEX .. "ic_tri")
     self.moreUp:SetTexCoord(0, 1, 1, 0)
     self.moreUp:SetSize(11, 11)
     self.moreUp:SetPoint("TOPRIGHT", list, "TOPRIGHT", -4, 10)
     self.moreDown = list:CreateTexture(nil, "OVERLAY")
-    self.moreDown:SetTexture(K.TEX .. "ck_tri")
+    self.moreDown:SetTexture(K.TEX .. "ic_tri")
     self.moreDown:SetSize(11, 11)
     self.moreDown:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", -4, -8)
     for _, t in ipairs({ self.moreUp, self.moreDown }) do t:SetVertexColor(KC.dimGold[1], KC.dimGold[2], KC.dimGold[3]) end
@@ -851,12 +917,13 @@ local function Build()
         d:SetScript("OnClick", function() menu.SetTab(def.key) end)
         f.dots[i] = d
     end
-    local edge = (count + 1) / 2 * 20 + 8
-    f.lbGlyph = K.Glyph(f, 24)
+    -- L1 / R1 at the native header's size, just clear of the dots
+    local edge = (count - 1) / 2 * 20 + 12
+    f.lbGlyph = K.Glyph(f, 38)
     f.lbGlyph:SetPoint("RIGHT", dotRow, "CENTER", -edge, 0)
     f.lbGlyph:EnableMouse(true)
     f.lbGlyph:SetScript("OnMouseUp", function() menu.StepTab(-1) end)
-    f.rbGlyph = K.Glyph(f, 24)
+    f.rbGlyph = K.Glyph(f, 38)
     f.rbGlyph:SetPoint("LEFT", dotRow, "CENTER", edge, 0)
     f.rbGlyph:EnableMouse(true)
     f.rbGlyph:SetScript("OnMouseUp", function() menu.StepTab(1) end)
@@ -961,8 +1028,8 @@ function menu.Render()
     for i, hint in ipairs(hints) do
         local h = f.hints[i]
         if not h then
-            -- The native footer's size: small glyphs, gold labels
-            h = K.Hint(f.hintRow, menu.Press, { glyph = 24, font = 12, color = KC.title })
+            -- The native footer's size: its glyphs, gold labels
+            h = K.Hint(f.hintRow, menu.Press, { glyph = 36, font = 13, color = KC.title })
             f.hints[i] = h
         end
         h:Set(hint)
@@ -1149,3 +1216,6 @@ events:SetScript("OnEvent", function(_, event)
     end
     menu.Render()
 end)
+
+-- Another controller in hand (or the Home tab's choice): its buttons
+IC.OnPadStyleChanged(function() menu.Render() end)

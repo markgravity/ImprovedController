@@ -325,9 +325,9 @@ local function Atlas(texture, atlas, fallback)
     end
 end
 
--- Button glyph as inline text, or a plain label if the atlas is missing.
-local function Glyph(atlas, fallback)
-    return HasAtlas(atlas) and ("|A:" .. atlas .. ":26:26|a") or fallback
+-- A button as inline text in the pad's style (Pad.lua): its glyph, else its name
+local function Glyph(key)
+    return IC.GlyphText(key, 36)
 end
 
 -- Slot i (1..8): 1 at the top, then clockwise, 45 degrees apart.
@@ -376,9 +376,11 @@ local prompts = ring:CreateFontString(nil, "OVERLAY")
 prompts:SetFont("Fonts\\FRIZQT__.TTF", 12, "")
 prompts:SetShadowOffset(1, -1)
 prompts:SetPoint("TOP", selected, "BOTTOM", 0, -6)
-prompts:SetText(Glyph("Gamepad-PS-Cross-Normal", "Cross") .. " Use      "
-    .. Glyph("Gamepad-PS-Circle-Normal", "Circle") .. " Close      "
-    .. Glyph("Gamepad-PS-DpadAll-Normal", "D-pad") .. " Move")
+local function SetPrompts()
+    prompts:SetText(Glyph("A") .. " Use      " .. Glyph("B") .. " Close      " .. Glyph("DPAD") .. " Move")
+end
+SetPrompts()
+IC.OnPadStyleChanged(SetPrompts)
 
 local slots = {}
 for index = 1, SLOTS_PER_PAGE do
@@ -454,13 +456,13 @@ local function RefreshVisuals()
             or "gamepad-radialgamemenu-cursorbg-inactive", key == active and { 1, 1, 1, 1 } or { 0.4, 0.4, 0.4, 1 })
         dot:Show()
     end
-    local edge = total * 10 + 6
+    local edge = (total - 1) * 10 + 12
     pageLeft:ClearAllPoints()
     pageLeft:SetPoint("RIGHT", dotRow, "CENTER", -edge, -2)
-    pageLeft:SetText(total > 1 and Glyph("Gamepad-PS-TriggerL1-Normal", "L1") or "")
+    pageLeft:SetText(total > 1 and IC.GlyphText("LB", 38) or "")
     pageRight:ClearAllPoints()
     pageRight:SetPoint("LEFT", dotRow, "CENTER", edge, -2)
-    pageRight:SetText(total > 1 and Glyph("Gamepad-PS-TriggerR1-Normal", "R1") or "")
+    pageRight:SetText(total > 1 and IC.GlyphText("RB", 38) or "")
     selected:SetText(#entries == 0 and "Nothing here" or "")
 end
 

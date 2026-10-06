@@ -1,11 +1,11 @@
--- The Touchpad tab, laid out like the Wheels tab: the pad in the middle of
--- the screen, drawn with its four corners (its quarters) as slots over a
--- map of where a click lands, and the picker (Spells, Items, Macros,
--- Interface; L2 / R2) down the right as slices of a ring around it. A slot
--- is picked by clicking the touchpad (the corner under the finger) or
--- pointing the right stick; a choice in the picker binds it. Triangle
--- clears a slot, held turns it off. (Turning the touchpad click on / off:
--- the Home tab.)
+-- The Touchpad tab, laid out like the Wheels tab: the four corners by name
+-- down the left, the selected corner's slot big in the middle, and the
+-- picker (Spells, Items, Macros, Interface; L2 / R2) down the right, the
+-- lists as slices of a ring around it. A corner is picked from the list,
+-- by clicking the touchpad (the corner under the finger) or by pointing
+-- the right stick; a choice in the picker binds it. Triangle clears a
+-- corner, held turns it off. (Turning the touchpad click on / off: the Home
+-- tab.)
 local _, IC = ...
 
 local K = IC.ConfigKit
@@ -15,21 +15,16 @@ local touch = IC.Touch
 local MW = IC.MyWheels
 
 local PANEL_W, PICKER_TOP, PICKER_ROWS = 340, 236, 7
-local PAD_W, PAD_H = 480, 272
-local SLOT_SIZE, ICON_SIZE = 46, 32
-local INSET, MAP_COLS, MAP_ROWS = 4, 40, 23
 local ARC = 300
 local function ArcX(dy)
     return math.sqrt(math.max(0, ARC * ARC - dy * dy))
 end
 
--- The slots, row by row as on the pad
+-- The corners, row by row as on the pad
 local GRID = {
     { "upleft", "upright" },
     { "downleft", "downright" },
 }
-local COLS = { 120, 360 }
-local ROWS = { 78, 214 }
 
 local function Settings()
     return touch.GetSettings()
@@ -61,78 +56,7 @@ function T:Build(parent)
     f:Hide()
     self.frame = f
 
-    -- The pad, where the wheel is on the Wheels tab: a rounded box the
-    -- shape of the DualSense's touchpad
-    local pad = K.NewFrame("Frame", nil, f)
-    pad:SetSize(PAD_W, PAD_H)
-    pad:SetPoint("CENTER", f, "CENTER", 0, 0)
-    pad.box = K.Box(pad, 4, 2, "BACKGROUND")
-    pad.box:SetPoints(pad)
-    pad.box:SetColors(KC.boxBg, 0.9, KC.control, 1)
-    -- The regions as the click sees them: the pad cut in cells, each
-    -- coloured by touch.RegionAt at its middle, with a line where two
-    -- regions meet (so a slot turned off shows its area going to its
-    -- neighbours)
-    f.cells = {}
-    local cw, ch = (PAD_W - 2 * INSET) / MAP_COLS, (PAD_H - 2 * INSET) / MAP_ROWS
-    for row = 1, MAP_ROWS do
-        f.cells[row] = {}
-        for col = 1, MAP_COLS do
-            local x, y = INSET + (col - 1) * cw, -(INSET + (row - 1) * ch)
-            local cell = pad:CreateTexture(nil, "BACKGROUND", nil, 3)
-            cell:SetPoint("TOPLEFT", pad, "TOPLEFT", x, y)
-            cell:SetSize(cw, ch)
-            local right = pad:CreateTexture(nil, "BORDER", nil, 1)
-            right:SetPoint("TOPRIGHT", cell, "TOPRIGHT")
-            right:SetSize(1, ch)
-            right:SetColorTexture(KC.line1[1], KC.line1[2], KC.line1[3], 1)
-            local bottom = pad:CreateTexture(nil, "BORDER", nil, 1)
-            bottom:SetPoint("BOTTOMLEFT", cell, "BOTTOMLEFT")
-            bottom:SetSize(cw, 1)
-            bottom:SetColorTexture(KC.line1[1], KC.line1[2], KC.line1[3], 1)
-            f.cells[row][col] = { tex = cell, right = right, bottom = bottom,
-                x = -1 + (col - 0.5) * 2 / MAP_COLS, y = 1 - (row - 0.5) * 2 / MAP_ROWS }
-        end
-    end
-    -- Where the finger is, live (above the zones and the slots)
-    local top = K.NewFrame("Frame", nil, pad)
-    top:SetAllPoints()
-    top:SetFrameLevel(pad:GetFrameLevel() + 20)
-    f.finger = top:CreateTexture(nil, "OVERLAY", nil, 6)
-    f.finger:SetTexture(K.TEX .. "ck_dot")
-    f.finger:SetSize(16, 16)
-    f.finger:SetVertexColor(1, 1, 1)
-    f.finger:Hide()
-    f:SetScript("OnUpdate", function() T:UpdateFinger() end)
-    f.slots, f.labels = {}, {}
-    for r, row in ipairs(GRID) do
-        for c, region in ipairs(row) do
-            local s = K.Slot(pad, SLOT_SIZE, ICON_SIZE)
-            s:SetPoint("CENTER", pad, "TOPLEFT", COLS[c], -(ROWS[r] - 6))
-            s:SetScript("OnClick", function(_, button)
-                T.row, T.col = r, c
-                if button == "RightButton" and IsShiftKeyDown() then
-                    touch.ToggleOff(region)
-                    menu.Render()
-                elseif button == "RightButton" then
-                    T:Clear()
-                else
-                    T:Aim()
-                end
-            end)
-            f.slots[region] = s
-            local label = K.Text(pad, 11, KC.grey)
-            label:SetPoint("TOP", s, "BOTTOM", 0, -1)
-            label:SetWidth(118)
-            label:SetJustifyH("CENTER")
-            f.labels[region] = label
-        end
-    end
-
-    -- The middle: one big slot, the selected corner's (the pad drawing
-    -- above stays hidden)
-    pad:Hide()
-    f:SetScript("OnUpdate", nil)
+    -- The middle: one big slot, the selected corner's
     local big = K.Slot(f, 150, 108)
     big:SetPoint("CENTER", f, "CENTER", 0, 0)
     big:SetScript("OnClick", function(_, button)
@@ -143,6 +67,10 @@ function T:Build(parent)
         end
     end)
     f.big = big
+    -- Under it, what the corner runs (as the Vibration tab shows its pattern)
+    f.bound = K.Text(f, 16, KC.title)
+    f.bound:SetPoint("TOP", big, "BOTTOM", 0, -40)
+    f.bound:SetJustifyH("CENTER")
 
     -- Left: the corners by name, slices down the ring's left side
     f.rows = {}
@@ -345,7 +273,7 @@ end
 
 function T:Help()
     local H = K.H
-    local hints = { H({ "Touchpad" }, "Slot"), H({ "RS" }, "Slot") }
+    local hints = { H({ "TOUCHPAD" }, "Slot"), H({ "RS" }, "Slot") }
     if self.zone == "picker" then
         hints[#hints + 1] = H({ "DPAD" }, "Move")
         hints[#hints + 1] = H({ "A" }, "Bind", "A")
@@ -367,63 +295,6 @@ end
 ---------------------------------------------------------------------------
 -- Drawing
 ---------------------------------------------------------------------------
--- Pad coordinates (-1..1, up and right positive) to pixels in the pad
-local function PadPoint(x, y)
-    return INSET + (x + 1) / 2 * (PAD_W - 2 * INSET), -(INSET + (1 - y) / 2 * (PAD_H - 2 * INSET))
-end
-
--- Each region's colour on the map: the centre gold, the sides bronze, the
--- corners cyan (no two neighbours alike)
-local REGION_COLOR = { upleft = KC.info, downright = KC.info, upright = KC.slot, downleft = KC.slot }
-
-function T:DrawZones()
-    local f = self.frame
-    local selected = self:Region()
-    local regions = {}
-    for row = 1, MAP_ROWS do
-        regions[row] = {}
-        for col = 1, MAP_COLS do
-            local cell = f.cells[row][col]
-            regions[row][col] = touch.RegionAt(cell.x, cell.y) or false
-        end
-    end
-    for row = 1, MAP_ROWS do
-        for col = 1, MAP_COLS do
-            local cell, region = f.cells[row][col], regions[row][col]
-            local color = region and REGION_COLOR[region]
-            if color then
-                local alpha = 0.1
-                if region == selected then alpha = 0.28 end
-                cell.tex:SetColorTexture(color[1], color[2], color[3], alpha)
-            else
-                cell.tex:SetColorTexture(0, 0, 0, 0)
-            end
-            cell.right:SetShown(col < MAP_COLS and regions[row][col + 1] ~= region)
-            cell.bottom:SetShown(row < MAP_ROWS and regions[row + 1][col] ~= region)
-        end
-    end
-end
-
--- The finger dot, and the region under it lit, while touching
-function T:UpdateFinger()
-    local f = self.frame
-    local x, y = touch.FingerPosition()
-    local touching = x and (x ~= 0 or y ~= 0)
-    f.finger:SetShown(touching or false)
-    if touching then
-        local px, py = PadPoint(math.max(-1, math.min(1, x)), math.max(-1, math.min(1, y)))
-        f.finger:ClearAllPoints()
-        f.finger:SetPoint("CENTER", f.pad, "TOPLEFT", px, py)
-    end
-    local region = touching and touch.RegionAt(x, y) or nil
-    if region ~= self.fingerRegion then
-        self.fingerRegion = region
-        for name, label in pairs(f.labels) do
-            label:SetAlpha((not region or name == region) and 1 or 0.55)
-        end
-    end
-end
-
 function T:Render()
     local f = self.frame
     if not f then return end
@@ -431,21 +302,6 @@ function T:Render()
     local settings = Settings()
     local on = settings.enabled ~= false
     local selected = self:Region()
-    for region, s in pairs(f.slots) do
-        local key = settings.regions[region]
-        local bound = touch.IsBound(key)
-        local isSel = region == selected
-        local off = touch.IsOff(region)
-        s:SetLook({ icon = bound and (touch.ActionIcon(key) or 134400) or nil, discColor = bound and KC.iconBg or nil,
-            plus = not bound and not off, hatch = off, glow = isSel and self.zone ~= "picker",
-            dash = self.zone == "picker" and isSel })
-        s:SetAlpha((on and not off) and 1 or 0.45)
-        if self.holding == region then s:SetAlpha(0.7) end
-        -- The middle shows the selected corner's slot alone (its name: the
-        -- list on the left)
-        f.labels[region]:Hide()
-        s:SetShown(isSel)
-    end
     -- The corners down the ring's left side, centred on it, each name along
     -- its slice (dimmed when turned off)
     local n = #f.rows
@@ -464,8 +320,9 @@ function T:Render()
     local bound = touch.IsBound(key)
     local off = touch.IsOff(selected)
     f.big:SetLook({ icon = bound and (touch.ActionIcon(key) or 134400) or nil, discColor = bound and KC.iconBg or nil,
-        plus = not bound and not off, hatch = off, glow = self.zone == "rail", dash = self.zone == "picker" })
+        plus = not bound and not off, hatch = off, dash = true })
     f.big:SetAlpha((on and not off) and 1 or 0.45)
+    f.bound:SetText(off and "|cffff7a5cOff|r" or (bound and touch.ActionLabel(key) or "|cff9d917aEmpty|r"))
     self.picker:Show()
     self.picker:SetAlpha(self.zone == "picker" and 1 or 0.5)
     self.picker:Render()

@@ -16,14 +16,6 @@ function IC.Print(msg)
     print("|cff33ccffImprovedController|r: " .. tostring(msg))
 end
 
--- A controller button as inline text, or `fallback` if the atlas is missing.
-function IC.Glyph(atlas, fallback, size)
-    if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas) then
-        return string.format("|A:%s:%d:%d|a", atlas, size or 16, size or 16)
-    end
-    return fallback
-end
-
 function IC.InCombat()
     return type(InCombatLockdown) == "function" and InCombatLockdown()
 end

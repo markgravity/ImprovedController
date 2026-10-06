@@ -13,7 +13,7 @@ local help = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 help:SetPoint("TOPLEFT", heading, "BOTTOMLEFT", 0, -8)
 help:SetPoint("RIGHT", panel, "RIGHT", -16, 0)
 help:SetJustifyH("LEFT")
-help:SetText("All settings live in the controller menu: D-pad to move, Cross to choose, Circle to go back. "
+help:SetText(IC.PadText("All settings live in the controller menu: D-pad to move, {A} to choose, {B} to go back. ")
     .. "Open it with /ic, or bind \"Toggle Improved Controller menu\" in Key Bindings > AddOns.")
 
 local open = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
@@ -42,12 +42,36 @@ end)
 -- /ic ring <combo> <ring>  e.g. /ic ring L1 buffs
 -- /ic probe                record the native radial menu's look
 -- /ic touchprobe           record what the touchpad reports
+-- /ic glyphs               the controller style, and its glyphs this client has
 SLASH_IMPROVEDCONTROLLER1 = "/ic"
 SLASH_IMPROVEDCONTROLLER2 = "/improvedcontroller"
 SlashCmdList.IMPROVEDCONTROLLER = function(msg)
     local command, combo, ring = strsplit(" ", strtrim(msg or ""):lower())
     if command == "probe" then
         IC.StartProbe()
+        return
+    end
+    if command == "glyphs" then
+        -- The controller style in use, and each style's glyphs this client
+        -- has (a missing one shows our own, or the button's name)
+        IC.Print("Buttons: " .. IC.PAD_STYLE_LABELS[IC.PadStyle()] .. " (detected: "
+            .. IC.PAD_STYLE_LABELS[IC.DetectedPadStyle()] .. ", set: " .. IC.PAD_STYLE_LABELS[IC.db.padStyle or "auto"] .. ")")
+        for _, style in ipairs(IC.PAD_STYLES) do
+            local glyphs = IC.PAD_ATLAS[style]
+            if glyphs then
+                local found, missing = 0, {}
+                for key, names in pairs(glyphs) do
+                    local any = false
+                    for _, name in ipairs(names) do
+                        if IC.HasAtlas(name) then any = true break end
+                    end
+                    if any then found = found + 1 else missing[#missing + 1] = key end
+                end
+                table.sort(missing)
+                IC.Print(IC.PAD_STYLE_LABELS[style] .. ": " .. found .. " glyphs"
+                    .. (#missing > 0 and ", missing " .. table.concat(missing, " ") or ""))
+            end
+        end
         return
     end
     if command == "padtest" then

@@ -1,5 +1,5 @@
 -- The panel's Wheels tab, adapted from Easy Controller - Forever's MyWheels
--- (moust4ki, MIT License, see textures/LICENSE-EasyController.md). On the
+-- (moust4ki, MIT License, see LICENSE-EasyController.md). On the
 -- left a rail of every wheel (the built-in ones, the player's own, "New
 -- wheel"); beside it the selected wheel's editor: its slots around it (8 a
 -- page), what opens it, Hotkey / Rename / Delete (or Reset) under it, and
@@ -153,7 +153,7 @@ function W:Build(parent)
     local wheelBg = zone:CreateTexture(nil, "BACKGROUND", nil, -3)
     wheelBg:SetSize(540 * SCALE, 541 * SCALE)
     wheelBg:SetPoint("CENTER", zone, "TOPLEFT", CX, -CY)
-    atlas(wheelBg, "gamepad-radial-menu-wheelbg", "ck_disc")
+    atlas(wheelBg, "gamepad-radial-menu-wheelbg", "ic_disc")
     -- The highlight wedge (the slot with the focus, or the one the picker
     -- fills): the art faces down at rotation 0
     f.highlight = zone:CreateTexture(nil, "BACKGROUND", nil, -1)
@@ -167,7 +167,7 @@ function W:Build(parent)
     f.hubName:SetWordWrap(true)
     if f.hubName.SetMaxLines then f.hubName:SetMaxLines(2) end
     -- What it is bound to, as button glyphs, alone in the hub
-    f.bindGlyphs = K.GlyphRow(zone, 28)
+    f.bindGlyphs = K.GlyphRow(zone, 36)
     -- A wheel of several pages: a dot each (the native page dots), under it
     f.pageDots = {}
     for i = 1, 3 do
@@ -260,7 +260,6 @@ function W:Build(parent)
     box.help:SetWidth(BOX_W - 28)
     box.help:SetWordWrap(true)
     box.help:SetSpacing(5)
-    box.help:SetText("D-pad left / right picks a name, Cross confirms, Circle cancels. A keyboard can type one too.")
     self.box = box
 
     -- Recording a hotkey, then confirming it: a box over the wheel
@@ -588,8 +587,8 @@ function W:StartCapture(wheel)
     c:EnableKeyboard(true)
     c:SetPropagateKeyboardInput(false)
     if c.EnableGamePadButton then c:EnableGamePadButton(true) end
-    self:ShowDialog("Bind " .. wheel.label .. "\n\n|cffd8ccb0Press a button, or hold L1 / L2 / R1 / R2 and press R3."
-        .. "\nCircle alone cancels; holding Circle unbinds it.|r")
+    self:ShowDialog("Bind " .. wheel.label .. IC.PadText("\n\n|cffd8ccb0Press a button, or hold {LB} / {LT} / {RB} / {RT} and press {RS}."
+        .. "\n{B} alone cancels; holding {B} unbinds it.|r"))
     self.captureToken = (self.captureToken or 0) + 1
     local token = self.captureToken
     C_Timer.After(10, function()
@@ -618,7 +617,7 @@ function W:Recorded(held, pressed)
     local spec = MW.HotkeySpec(held, pressed)
     if not spec then
         self:StopCapture()
-        menu.Toast("Use one button, or L1 / L2 / R1 / R2 held + R3.", true)
+        menu.Toast(IC.PadText("Use one button, or {LB} / {LT} / {RB} / {RT} held + {RS}."), true)
         return
     end
     self.pendingSpec = spec
@@ -696,6 +695,7 @@ function W:StartRename(wheel)
     self.suggestion = 0
     self.zone = "rename"
     local edit = self.box.edit
+    self.box.help:SetText(IC.PadText("D-pad left / right picks a name, {A} confirms, {B} cancels. A keyboard can type one too."))
     edit:SetText(wheel.label)
     self.frame.veil:Show()
     edit:SetFocus()
@@ -969,7 +969,7 @@ function W:Render()
     local pages = isNew and 1 or Pages(wheel)
     -- Under the count: its page, and what opens it
     local lines = {}
-    if isNew then lines[1] = "Cross makes one" end
+    if isNew then lines[1] = IC.ButtonName("A") .. " makes one" end
     if pages > 1 then lines[#lines + 1] = format("Page %d / %d", base / PER_PAGE + 1, pages) end
     if not isNew then
         local hotkey = MW.HotkeyText(wheel.key)
@@ -1068,8 +1068,8 @@ function W:Render()
                 .. " spell, an item, a macro or an emote for each slot. Up to " .. MW.MAX .. " wheels." })
         else
             self.detail:Set({ title = wheel.label, tag = "Fills itself", tagColor = KC.slot, body = wheel.info,
-                extra = "Bound to: " .. (MW.HotkeyText(wheel.key) or "nothing") .. ". Square binds it: any controller button, or"
-                    .. " L1 / L2 / R1 / R2 + R3." })
+                extra = "Bound to: " .. (MW.HotkeyText(wheel.key) or "nothing") .. IC.PadText(". {X} binds it: any controller button, or"
+                    .. " {LB} / {LT} / {RB} / {RT} + {RS}.") })
         end
     end
     -- The boxes over the wheel: naming, recording, confirming

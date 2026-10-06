@@ -1,5 +1,5 @@
 -- The wheels, adapted from Easy Controller - Forever's MyWheels (moust4ki,
--- MIT License, see textures/LICENSE-EasyController.md): the built-in ones
+-- MIT License, see LICENSE-EasyController.md): the built-in ones
 -- (Buffs, Consumables, Emotes) and up to 8 of the player's own per
 -- character, 8 slots each, holding the spells, items, macros and emotes
 -- they pick. Each is a ring ("buffs", "my<id>"...), opened by an R3 combo
@@ -312,19 +312,12 @@ end
 -- Forever's own action for it, under every modifier a held trigger may add
 ---------------------------------------------------------------------------
 local PREFIXES = { "", "SHIFT-", "CTRL-", "ALT-", "CTRL-SHIFT-", "ALT-SHIFT-", "CTRL-ALT-", "CTRL-ALT-SHIFT-" }
-local BUTTON_NAMES = {
-    PAD1 = "Cross", PAD2 = "Circle", PAD3 = "Square", PAD4 = "Triangle", PAD5 = "Mic", PAD6 = "Pad 6",
-    PADDUP = "D-pad Up", PADDDOWN = "D-pad Down", PADDLEFT = "D-pad Left", PADDRIGHT = "D-pad Right",
-    PADLSHOULDER = "L1", PADRSHOULDER = "R1", PADLTRIGGER = "L2", PADRTRIGGER = "R2",
-    PADLSTICK = "L3", PADRSTICK = "R3", PADBACK = "Touchpad", PADFORWARD = "Options",
-    PADSOCIAL = "Create", PADSYSTEM = "PS", PADPADDLE1 = "Paddle 1", PADPADDLE2 = "Paddle 2",
-    PADPADDLE3 = "Paddle 3", PADPADDLE4 = "Paddle 4",
-}
 -- Held with R3: the R3 combos (Ring.lua reads which is held on the press)
 MW.COMBO_HOLD = { PADLSHOULDER = "L1", PADLTRIGGER = "L2", PADRSHOULDER = "R1", PADRTRIGGER = "R2" }
 
+-- A button's name as printed on the pad in hand (Pad.lua)
 function MW.ButtonName(button)
-    return BUTTON_NAMES[button] or button
+    return IC.ButtonName(button)
 end
 
 function MW.WheelKeys()
@@ -370,10 +363,6 @@ end
 -- What opens it, as glyph keys for a GlyphRow (ConfigKit): an R3 combo
 -- ("LB", "RS"), else a bound button, else its game key binding's name; nil
 -- when nothing does
-local GLYPH_OF = {
-    PAD1 = "A", PAD2 = "B", PAD3 = "X", PAD4 = "Y", PADLSHOULDER = "LB", PADRSHOULDER = "RB",
-    PADLTRIGGER = "LT", PADRTRIGGER = "RT", PADLSTICK = "LS", PADRSTICK = "RS", PADDUP = "DPAD_UP",
-}
 local COMBO_GLYPHS = {
     R3 = { "RS" }, L1 = { "LB", "+", "RS" }, L2 = { "LT", "+", "RS" }, R1 = { "RB", "+", "RS" }, R2 = { "RT", "+", "RS" },
 }
@@ -383,7 +372,7 @@ function MW.BindGlyphs(ringKey)
         if IC.GetComboRing(combo) == ringKey then return COMBO_GLYPHS[combo] end
     end
     for button, key in pairs(MW.WheelKeys()) do
-        if key == ringKey then return { GLYPH_OF[button] or MW.ButtonName(button) } end
+        if key == ringKey then return { IC.PAD_KEY[button] or button } end
     end
     local binding = MW.BindingText(ringKey)
     return binding and { binding } or nil
@@ -421,7 +410,7 @@ function MW.SpecReplaces(spec, ringKey)
         local current = IC.GetComboRing(spec.combo)
         if current == ringKey then return "nothing (already this wheel)" end
         if current ~= "native" then return "the " .. (IC.RING_LABELS[current] or current) .. " wheel" end
-        return spec.combo == "R3" and "the game's R3 (Look Here)" or "nothing"
+        return spec.combo == "R3" and "the game's " .. IC.ButtonName("RS") .. " (Look Here)" or "nothing"
     end
     local key = MW.WheelKeys()[spec.button]
     if key == ringKey then return "nothing (already this wheel)" end

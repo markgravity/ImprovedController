@@ -305,9 +305,11 @@ function touch.Apply()
     end
     ClearOverrideBindings(click)
     -- While the panel is open it owns the touchpad click (it picks the slot
-    -- under the finger); it gives it back when it closes (TouchEditor.lua)
+    -- under the finger); it gives it back when it closes (TouchEditor.lua).
+    -- Only a PlayStation pad has a touchpad: on others the same button is
+    -- View / Minus, left to the game.
     local panelOpen = IC.Menu and IC.Menu.IsOpen and IC.Menu.IsOpen()
-    if settings.enabled ~= false and not panelOpen then
+    if settings.enabled ~= false and not panelOpen and IC.PadStyle() == "Shapes" then
         for _, modifier in ipairs(MODIFIERS) do
             SetOverrideBindingClick(click, true, modifier .. KEY, click:GetName(), "LeftButton")
         end
@@ -354,3 +356,6 @@ events:SetScript("OnEvent", function(_, event)
         touch.Apply()
     end
 end)
+
+-- Another controller in hand: the touchpad click only on a PlayStation pad
+IC.OnPadStyleChanged(function() touch.Apply() end)

@@ -1,5 +1,5 @@
 -- The configuration panel's parts, adapted from Easy Controller - Forever's
--- ConfigKit (moust4ki, MIT License, see textures/LICENSE-EasyController.md):
+-- ConfigKit (moust4ki, MIT License, see LICENSE-EasyController.md):
 -- its colours and type, rounded boxes, gamepad glyphs, the help bar's hints,
 -- the detail panel and buttons. Menu.lua builds the window out of them.
 local _, IC = ...
@@ -117,7 +117,7 @@ function K.NineSlice(frame, file, texW, texH, texCorner, corner, layer)
 end
 
 ---------------------------------------------------------------------------
--- Rounded boxes: nine-slices of the ck_box textures (32 texels for 16 px,
+-- Rounded boxes: nine-slices of the ic_box textures (32 texels for 16 px,
 -- corners of 4 px), tinted
 ---------------------------------------------------------------------------
 function K.Slice(parent, file, layer, sub)
@@ -159,8 +159,8 @@ end
 
 -- A filled box with an edge: radius 3 (edge 2) or 4 (edge 1 or 2)
 function K.Box(parent, radius, edge, layer, sub)
-    local box = { fill = K.Slice(parent, format("ck_box%d", radius), layer, sub) }
-    if edge then box.line = K.Slice(parent, format("ck_box%d_line%d", radius, edge), layer, (sub or 0) + 1) end
+    local box = { fill = K.Slice(parent, format("ic_box%d", radius), layer, sub) }
+    if edge then box.line = K.Slice(parent, format("ic_box%d_line%d", radius, edge), layer, (sub or 0) + 1) end
     function box:SetPoints(region, inset)
         self.fill:SetPoints(region, inset)
         if self.line then self.line:SetPoints(region, inset) end
@@ -183,52 +183,14 @@ function K.Box(parent, radius, edge, layer, sub)
     return box
 end
 
--- The window look: the stone tile, a 2 px bronze edge, a 1 px dark line
-function K.Panel(f)
-    local under = K.Solid(f, C.bg, 1, "BACKGROUND", -8)
-    under:SetAllPoints()
-    local bg = f:CreateTexture(nil, "BACKGROUND", nil, -7)
-    bg:SetTexture(TEX .. "ck_panel_bg", "REPEAT", "REPEAT")
-    bg:SetHorizTile(true)
-    bg:SetVertTile(true)
-    bg:SetAllPoints()
-    for _, e in ipairs({ { "TOPLEFT", "TOPRIGHT", nil, 2 }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, 2 },
-        { "TOPLEFT", "BOTTOMLEFT", 2, nil }, { "TOPRIGHT", "BOTTOMRIGHT", 2, nil } }) do
-        local t = K.Solid(f, C.bronze, 1, "BORDER")
-        t:SetPoint(e[1]); t:SetPoint(e[2])
-        if e[3] then t:SetWidth(e[3]) else t:SetHeight(e[4]) end
-    end
-    for _, e in ipairs({ { "TOPLEFT", "TOPRIGHT", 0, -2, nil, 1 }, { "BOTTOMLEFT", "BOTTOMRIGHT", 0, 2, nil, 1 },
-        { "TOPLEFT", "BOTTOMLEFT", 2, 0, 1, nil }, { "TOPRIGHT", "BOTTOMRIGHT", -2, 0, 1, nil } }) do
-        local t = K.Solid(f, C.inner, 1, "BORDER", 1)
-        t:SetPoint(e[1], e[3], e[4]); t:SetPoint(e[2], e[3], e[4])
-        if e[5] then t:SetWidth(e[5]) else t:SetHeight(e[6]) end
-    end
-end
-
 ---------------------------------------------------------------------------
--- Glyphs: PlayStation buttons from the game's atlases, else the shipped
--- textures (Xbox-style letters in the same places)
+-- Glyphs: the game's own, in the style of the pad in hand (Pad.lua), else
+-- ours (textures/ic_g_*)
 ---------------------------------------------------------------------------
-local ATLAS = {
-    A = { "Gamepad_Shp_Cross_64", "Gamepad_Shp_Cross_32" },
-    B = { "Gamepad_Shp_Circle_64", "Gamepad_Shp_Circle_32" },
-    X = { "Gamepad_Shp_Square_64", "Gamepad_Shp_Square_32" },
-    Y = { "Gamepad_Shp_Triangle_64", "Gamepad_Shp_Triangle_32" },
-    LB = { "Gamepad_Shp_LShoulder_64", "Gamepad_Gen_LShoulder_64" },
-    RB = { "Gamepad_Shp_RShoulder_64", "Gamepad_Gen_RShoulder_64" },
-    LT = { "Gamepad_Shp_LTrigger_64", "Gamepad_Gen_LTrigger_64" },
-    RT = { "Gamepad_Shp_RTrigger_64", "Gamepad_Gen_RTrigger_64" },
-    LS = { "Gamepad_Gen_LStickIn_64", "Gamepad_Shp_LStickIn_64" },
-    RS = { "Gamepad_Gen_RStickIn_64", "Gamepad_Shp_RStickIn_64" },
-    DPAD = { "Gamepad_Gen_DPad_64" },
-    DPAD_LR = { "Gamepad_Gen_DPadLR_64" },
-    DPAD_UP = { "Gamepad_Gen_Up_64", "Gamepad_Shp_Up_64" },
-}
 local FALLBACK = {
-    A = "ck_g_a", B = "ck_g_b", X = "ck_g_x", Y = "ck_g_y", LB = "ck_g_lb", RB = "ck_g_rb",
-    LT = "ck_g_lt", RT = "ck_g_rt", LS = "ck_g_ls", RS = "ck_g_rs",
-    DPAD = "ck_g_dpad", DPAD_LR = "ck_g_dpad_lr", DPAD_UP = "ck_g_dpad_up",
+    A = "ic_g_a", B = "ic_g_b", X = "ic_g_x", Y = "ic_g_y", LB = "ic_g_lb", RB = "ic_g_rb",
+    LT = "ic_g_lt", RT = "ic_g_rt", LS = "ic_g_ls", RS = "ic_g_rs",
+    DPAD = "ic_g_dpad", DPAD_LR = "ic_g_dpad_lr", DPAD_UP = "ic_g_dpad_up",
 }
 
 local function hasAtlas(name)
@@ -236,17 +198,16 @@ local function hasAtlas(name)
 end
 
 function K.SetGlyph(tex, key)
-    for _, name in ipairs(ATLAS[key] or {}) do
-        if hasAtlas(name) then
-            tex:SetAtlas(name)
-            return
-        end
+    local atlas = IC.GlyphAtlas(key)
+    if atlas then
+        tex:SetAtlas(atlas)
+        return
     end
-    tex:SetTexture(TEX .. (FALLBACK[key] or "ck_g_a"))
+    tex:SetTexture(TEX .. (FALLBACK[key] or "ic_g_a"))
     tex:SetTexCoord(0, 1, 0, 1)
 end
 
--- A glyph; keys without an image (Select, Options...) as a grey pill
+-- A glyph; keys without an image as a grey pill with the button's name
 function K.Glyph(parent, size)
     local g = K.NewFrame("Frame", nil, parent)
     g:SetSize(size, size)
@@ -257,7 +218,7 @@ function K.Glyph(parent, size)
     g.chip = {}
     for i, cut in ipairs({ { 0, 22 / 64 }, { 22 / 64, 42 / 64 }, { 42 / 64, 1 } }) do
         local t = g:CreateTexture(nil, "ARTWORK")
-        t:SetTexture(TEX .. "ck_chip")
+        t:SetTexture(TEX .. "ic_chip")
         t:SetTexCoord(cut[1], cut[2], 10 / 64, 54 / 64)
         t:SetHeight(h)
         g.chip[i] = t
@@ -272,15 +233,15 @@ function K.Glyph(parent, size)
     g.label:SetPoint("CENTER", 0, 0)
     g.label:SetJustifyH("CENTER")
     function g:Set(key)
-        local image = FALLBACK[key] ~= nil
+        local image = IC.GlyphAtlas(key) ~= nil or FALLBACK[key] ~= nil
         self.tex:SetShown(image)
         for _, t in ipairs(self.chip) do t:SetShown(not image) end
         self.label:SetShown(not image)
         if image then
             K.SetGlyph(self.tex, key)
-            self:SetWidth(self.size)
+            self:SetSize(self.size, self.size)
         else
-            self.label:SetText(key)
+            self.label:SetText(IC.ButtonName(key))
             self:SetWidth(math.max(self.size * 0.75, self.label:GetStringWidth() + h * 0.6))
         end
         self:Show()
@@ -373,7 +334,7 @@ function K.Detail(parent, width)
     d.title:SetWordWrap(true)
     d.title:SetSpacing(5)
     d.dot = d:CreateTexture(nil, "ARTWORK")
-    d.dot:SetTexture(TEX .. "ck_dot")
+    d.dot:SetTexture(TEX .. "ic_dot")
     d.dot:SetSize(10, 10)
     d.tag = K.ChatText(d, 13, C.cream)
     d.body = K.ChatText(d, 14, C.cream2)
@@ -429,12 +390,12 @@ function K.Detail(parent, width)
 end
 
 ---------------------------------------------------------------------------
--- A button of the ck_btn textures. States: active (the focus, the open
+-- A button of the ic_btn textures. States: active (the focus, the open
 -- tab), armed (a destructive one asking again: red), disabled (faded)
 ---------------------------------------------------------------------------
 function K.Button(parent, size)
     local b = K.NewFrame("Button", nil, parent)
-    b.slice = K.NineSlice(b, "ck_btn_normal", 128, 32, 6, 6, "ARTWORK")
+    b.slice = K.NineSlice(b, "ic_btn_normal", 128, 32, 6, 6, "ARTWORK")
     b.armedBox = K.Box(b, 4, 2, "ARTWORK", 2)
     b.armedBox:SetPoints(b)
     b.armedBox:SetColors(C.dangerBg, 1, C.danger, 1)
@@ -456,7 +417,7 @@ function K.Button(parent, size)
             self.label:SetTextColor(unpack(C.dangerText))
         else
             local on = st.active or st.focus
-            self.slice:SetFile(on and "ck_btn_active" or (self.hover and not st.disabled and "ck_btn_hover" or "ck_btn_normal"))
+            self.slice:SetFile(on and "ic_btn_active" or (self.hover and not st.disabled and "ic_btn_hover" or "ic_btn_normal"))
             self.label:SetTextColor(unpack(st.disabled and C.disabled or (on and C.focus or C.tab)))
         end
         self:SetAlpha(st.disabled and 0.45 or 1)
@@ -500,7 +461,7 @@ function K.RoundIcon(parent, size, layer)
 end
 
 ---------------------------------------------------------------------------
--- A round slot (ck_slot): the wheel editor's slots. An icon cut round on
+-- A round slot (ic_slot): the wheel editor's slots. An icon cut round on
 -- its dark disc, a "+", the focus glow, the target's dashed ring.
 ---------------------------------------------------------------------------
 function K.Slot(parent, size, iconSize)
@@ -508,17 +469,17 @@ function K.Slot(parent, size, iconSize)
     s:SetSize(size, size)
     s:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     s.bg = s:CreateTexture(nil, "BACKGROUND")
-    s.bg:SetTexture(TEX .. "ck_slot")
+    s.bg:SetTexture(TEX .. "ic_slot")
     s.bg:SetAllPoints()
     s.disc = s:CreateTexture(nil, "ARTWORK", nil, 0)
-    s.disc:SetTexture(TEX .. "ck_dot")
+    s.disc:SetTexture(TEX .. "ic_dot")
     s.disc:SetSize(iconSize, iconSize)
     s.disc:SetPoint("CENTER")
     s.icon = K.RoundIcon(s, iconSize, "ARTWORK")
     s.icon:SetDrawLayer("ARTWORK", 1)
     s.icon:SetPoint("CENTER")
     s.hatch = s:CreateTexture(nil, "ARTWORK", nil, 2)
-    s.hatch:SetTexture(TEX .. "ck_hatch")
+    s.hatch:SetTexture(TEX .. "ic_hatch")
     s.hatch:SetSize(iconSize, iconSize)
     s.hatch:SetPoint("CENTER")
     s.plus = K.Text(s, size >= 52 and 20 or 18, C.dimGold, "OVERLAY")
@@ -526,12 +487,12 @@ function K.Slot(parent, size, iconSize)
     s.plus:SetJustifyH("CENTER")
     s.plus:SetText("+")
     s.glow = s:CreateTexture(nil, "OVERLAY", nil, 3)
-    s.glow:SetTexture(TEX .. "ck_slot_glow")
+    s.glow:SetTexture(TEX .. "ic_slot_glow")
     s.glow:SetBlendMode("ADD")
     s.glow:SetSize(math.floor(size * 1.46 + 0.5), math.floor(size * 1.46 + 0.5))
     s.glow:SetPoint("CENTER")
     s.dash = s:CreateTexture(nil, "OVERLAY", nil, 4)
-    s.dash:SetTexture(TEX .. "ck_ring_dash")
+    s.dash:SetTexture(TEX .. "ic_ring_dash")
     s.dash:SetVertexColor(C.focus[1], C.focus[2], C.focus[3])
     s.dash:SetSize(size + 10, size + 10)
     s.dash:SetPoint("CENTER")
@@ -710,12 +671,12 @@ end
 -- More above / below: the small gold triangles
 function K.MoreArrows(parent)
     local up = parent:CreateTexture(nil, "OVERLAY")
-    up:SetTexture(TEX .. "ck_tri")
+    up:SetTexture(TEX .. "ic_tri")
     up:SetTexCoord(0, 1, 1, 0)
     up:SetSize(12, 12)
     up:SetVertexColor(C.dimGold[1], C.dimGold[2], C.dimGold[3])
     local down = parent:CreateTexture(nil, "OVERLAY")
-    down:SetTexture(TEX .. "ck_tri")
+    down:SetTexture(TEX .. "ic_tri")
     down:SetSize(12, 12)
     down:SetVertexColor(C.dimGold[1], C.dimGold[2], C.dimGold[3])
     return up, down
@@ -748,7 +709,7 @@ function K.Picker(parent, width, onRender, opts)
     p.tabs = {}
     p.rows = {}
     -- L2 / R2 around the lists' tabs, like L1 / R1 around the panel's
-    local GLYPH = 26
+    local GLYPH = 34
     p.ltGlyph = K.Glyph(p, GLYPH)
     p.ltGlyph:SetPoint("TOPLEFT", 10 + arc(-55), -55)
     p.rtGlyph = K.Glyph(p, GLYPH)
@@ -775,8 +736,11 @@ function K.Picker(parent, width, onRender, opts)
         p.dotRow:SetSize(1, 13)
         p.dotRow:SetPoint("TOP", p.listName, "BOTTOM", 0, -12)
         p.dots = {}
-        p.ltGlyph:SetSize(22, 22)
-        p.rtGlyph:SetSize(22, 22)
+        -- Smaller beside the list's name (Set keeps them square at .size)
+        for _, g in ipairs({ p.ltGlyph, p.rtGlyph }) do
+            g.size = 30
+            g:SetSize(30, 30)
+        end
     end
     p.kicker:ClearAllPoints()
     p.kicker:SetPoint("TOPLEFT", 12 + arc(-12), -12)
@@ -799,7 +763,7 @@ function K.Picker(parent, width, onRender, opts)
         if r then return r end
         r = K.NewFrame("Button", nil, p)
         r:SetSize(width - 24, ROW)
-        r.sel = K.NineSlice(r, "ck_select", 128, 32, 10, 10, "ARTWORK")
+        r.sel = K.NineSlice(r, "ic_select", 128, 32, 10, 10, "ARTWORK")
         if ring then
             r:SetSize(200, ROW - 4)
             r.seg = K.Segment(r)
@@ -812,7 +776,7 @@ function K.Picker(parent, width, onRender, opts)
         r.icon:SetDrawLayer("ARTWORK", 2)
         r.icon:SetPoint("LEFT", opts.bare and 10 or 6, 0)
         r.mark = r:CreateTexture(nil, "OVERLAY")
-        r.mark:SetTexture(TEX .. "ck_diamond")
+        r.mark:SetTexture(TEX .. "ic_diamond")
         r.mark:SetSize(8, 8)
         r.mark:SetVertexColor(C.info[1], C.info[2], C.info[3])
         r.mark:SetPoint("BOTTOMLEFT", r.icon, "BOTTOMLEFT", -3, -1)
@@ -984,7 +948,7 @@ function K.Picker(parent, width, onRender, opts)
                     end
                 end
             end
-            local edge = (n + 1) / 2 * 18 + 6
+            local edge = (n - 1) / 2 * 18 + 12
             self.ltGlyph:ClearAllPoints()
             self.ltGlyph:SetPoint("RIGHT", self.dotRow, "CENTER", -edge, 0)
             self.rtGlyph:ClearAllPoints()

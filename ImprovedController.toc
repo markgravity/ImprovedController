@@ -7,14 +7,17 @@
 ## SavedVariablesPerCharacter: ImprovedControllerCharDB
 
 ImprovedController.lua
+Pad.lua
 Bags.lua
 RingContent.lua
 MyWheels.lua
 Ring.lua
 Touchpad.lua
+Vibration.lua
 Probe.lua
 ConfigKit.lua
 Menu.lua
 WheelEditor.lua
 TouchEditor.lua
+VibeEditor.lua
 Options.lua
