@@ -367,6 +367,28 @@ function MW.KeysText(ringKey)
     return #parts > 0 and table.concat(parts, ", ") or nil
 end
 
+-- What opens it, as glyph keys for a GlyphRow (ConfigKit): an R3 combo
+-- ("LB", "RS"), else a bound button, else its game key binding's name; nil
+-- when nothing does
+local GLYPH_OF = {
+    PAD1 = "A", PAD2 = "B", PAD3 = "X", PAD4 = "Y", PADLSHOULDER = "LB", PADRSHOULDER = "RB",
+    PADLTRIGGER = "LT", PADRTRIGGER = "RT", PADLSTICK = "LS", PADRSTICK = "RS", PADDUP = "DPAD_UP",
+}
+local COMBO_GLYPHS = {
+    R3 = { "RS" }, L1 = { "LB", "+", "RS" }, L2 = { "LT", "+", "RS" }, R1 = { "RB", "+", "RS" }, R2 = { "RT", "+", "RS" },
+}
+
+function MW.BindGlyphs(ringKey)
+    for _, combo in ipairs(IC.COMBOS) do
+        if IC.GetComboRing(combo) == ringKey then return COMBO_GLYPHS[combo] end
+    end
+    for button, key in pairs(MW.WheelKeys()) do
+        if key == ringKey then return { GLYPH_OF[button] or MW.ButtonName(button) } end
+    end
+    local binding = MW.BindingText(ringKey)
+    return binding and { binding } or nil
+end
+
 -- Everything that opens it, or nil
 function MW.HotkeyText(ringKey)
     local parts = {}

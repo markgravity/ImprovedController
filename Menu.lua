@@ -790,61 +790,63 @@ end
 local function Build()
     if frame then return end
     local f = K.NewFrame("Frame", "ImprovedControllerConfigFrame", UIParent)
-    f:SetSize(W, H)
-    f:SetFrameStrata("DIALOG")
+    f:SetAllPoints(UIParent)
+    -- Above every other window (chat, the gamepad bars...), so nothing
+    -- shows through the panel's text
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:EnableMouse(true)
-    f:SetClampedToScreen(true)
-    f:SetMovable(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", function(self) self:StartMoving() end)
-    f:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-        local point, _, _, x, y = self:GetPoint(1)
-        IC.db.menuPos = { point = point, x = math.floor(x + 0.5), y = math.floor(y + 0.5) }
-    end)
-    local pos = IC.db.menuPos
-    if type(pos) == "table" and pos.point then
-        f:SetPoint(pos.point, UIParent, pos.point, pos.x, pos.y)
-    else
-        f:SetPoint("CENTER", 0, 30)
-    end
+    -- Centred over the game with no window of its own, framed like Forever's
+    -- radial menu (its header and footer bands), as the R3 wheel is
     f:Hide()
-    K.Panel(f)
     frame = f
-
-    -- Header: the title, the close button
-    local title = K.Text(f, 20, KC.title)
-    title:SetPoint("LEFT", f, "TOPLEFT", 20, -22)
-    title:SetText("Improved Controller")
-    local close = K.Button(f, 14)
-    close:SetSize(30, 26)
-    close:SetPoint("TOPRIGHT", -14, -9)
-    close.label:SetText("X")
-    close.label:SetTextColor(unpack(KC.cream))
-    close:SetScript("OnClick", function() menu.Close() end)
-
-    -- Tabs, centred: L1, the tabs, R1
-    local count = #menu.TABS
-    local tabsW = 34 + 6 + count * 126 + (count - 1) * 6 + 6 + 34
-    local x = math.floor((W - tabsW) / 2)
-    f.lbGlyph = K.Glyph(f, 34)
-    f.lbGlyph:SetPoint("TOPLEFT", x, -47)
-    f.tabs = {}
-    for i, def in ipairs(menu.TABS) do
-        local t = K.Button(f, 16)
-        t:SetSize(126, 32)
-        t:SetPoint("TOPLEFT", x + 40 + (i - 1) * 132, -48)
-        t.key = def.key
-        t.label:SetText(def.label)
-        t:SetScript("OnClick", function() menu.SetTab(def.key) end)
-        f.tabs[i] = t
+    local function atlas(texture, name)
+        if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) then
+            texture:SetAtlas(name)
+            return true
+        end
     end
-    f.rbGlyph = K.Glyph(f, 34)
-    f.rbGlyph:SetPoint("TOPLEFT", x + 40 + count * 132, -47)
+
+    -- Header, as the R3 wheel's: the tab's name, under it the native top
+    -- band with a dot per tab (they click to their tab) between L1 / R1
+    f.header = f:CreateFontString(nil, "OVERLAY")
+    f.header:SetFont("Fonts\\FRIZQT__.TTF", 16, "")
+    f.header:SetShadowOffset(1, -1)
+    f.header:SetTextColor(1, 1, 1)
+    -- (where the R3 wheel has its own: 50 above a 540 wheel at the centre)
+    f.header:SetPoint("BOTTOM", f, "CENTER", 0, 320)
+    local band = f:CreateTexture(nil, "BACKGROUND", nil, -2)
+    band:SetSize(487, 75)
+    band:SetPoint("TOP", f.header, "BOTTOM", 0, 4)
+    if not atlas(band, "gamepad-radial-menu-toptext") then band:SetColorTexture(0, 0, 0, 0.5) end
+    local dotRow = K.NewFrame("Frame", nil, f)
+    dotRow:SetSize(1, 15)
+    dotRow:SetPoint("TOP", f.header, "BOTTOM", 0, -24)
+    f.dots = {}
+    local count = #menu.TABS
+    for i, def in ipairs(menu.TABS) do
+        local d = K.NewFrame("Button", nil, dotRow)
+        d:SetSize(15, 15)
+        d:SetPoint("CENTER", dotRow, "CENTER", (i - (count + 1) / 2) * 20, 0)
+        d.tex = d:CreateTexture(nil, "OVERLAY")
+        d.tex:SetAllPoints()
+        d.key = def.key
+        d:SetScript("OnClick", function() menu.SetTab(def.key) end)
+        f.dots[i] = d
+    end
+    local edge = (count + 1) / 2 * 20 + 8
+    f.lbGlyph = K.Glyph(f, 24)
+    f.lbGlyph:SetPoint("RIGHT", dotRow, "CENTER", -edge, 0)
+    f.lbGlyph:EnableMouse(true)
+    f.lbGlyph:SetScript("OnMouseUp", function() menu.StepTab(-1) end)
+    f.rbGlyph = K.Glyph(f, 24)
+    f.rbGlyph:SetPoint("LEFT", dotRow, "CENTER", edge, 0)
+    f.rbGlyph:EnableMouse(true)
+    f.rbGlyph:SetScript("OnMouseUp", function() menu.StepTab(1) end)
+    f.atlas = atlas
 
     -- Body: 964 x 424 inside its margins
     f.body = K.NewFrame("Frame", nil, f)
-    f.body:SetPoint("TOPLEFT", 18, -98)
+    f.body:SetPoint("CENTER", f, "CENTER", 0, 10)
     f.body:SetSize(BODY_W, BODY_H)
     for _, def in ipairs(menu.TABS) do
         -- A tab may bring its own page (the Wheels tab: the rail or the editor)
@@ -853,18 +855,22 @@ local function Build()
         pages[def.key] = page
     end
 
-    -- Help bar: the crumb on the left, the hints on the right
+    -- Footer: the native bottom band, where the focus is, the pad's hints
     local bar = K.NewFrame("Frame", nil, f)
-    bar:SetPoint("TOPLEFT", 2, -534)
-    bar:SetSize(W - 4, 44)
-    local line = K.Solid(bar, KC.line3, 1, "BORDER")
-    line:SetPoint("TOPLEFT")
-    line:SetPoint("TOPRIGHT")
-    line:SetHeight(1)
+    bar:SetPoint("TOP", f, "CENTER", 0, -276)
+    bar:SetSize(W, 52)
     f.bar = bar
+    f.footer = bar:CreateTexture(nil, "BACKGROUND", nil, -2)
+    f.footer:SetPoint("CENTER", bar, "CENTER", 0, -6)
+    f.footer:SetHeight(120)
+    if not atlas(f.footer, "gamepad-radial-menu-bottomtext") then f.footer:SetColorTexture(0, 0, 0, 0.5) end
     f.crumb = K.ChatText(bar, 13, KC.grey)
-    f.crumb:SetPoint("LEFT", 18, 0)
+    f.crumb:SetPoint("TOP", bar, "TOP", 0, -2)
+    f.crumb:SetJustifyH("CENTER")
     f.crumb:SetWordWrap(false)
+    f.hintRow = K.NewFrame("Frame", nil, bar)
+    f.hintRow:SetSize(1, 30)
+    f.hintRow:SetPoint("TOP", f.crumb, "BOTTOM", 0, -2)
     f.hints = {}
 
     f:SetScript("OnUpdate", function() menu.OnUpdate() end)
@@ -908,8 +914,17 @@ function menu.Render()
     local f = frame
     f.lbGlyph:Set("LB")
     f.rbGlyph:Set("RB")
-    for _, t in ipairs(f.tabs) do
-        t:SetState({ active = t.key == menu.tab })
+    local index = 1
+    for i, def in ipairs(menu.TABS) do
+        if def.key == menu.tab then index = i end
+    end
+    f.header:SetText(menu.TABS[index].label)
+    for _, d in ipairs(f.dots) do
+        local active = d.key == menu.tab
+        if not f.atlas(d.tex, active and "gamepad-radialgamemenu-cursorbg-neutral"
+                or "gamepad-radialgamemenu-cursorbg-inactive") then
+            d.tex:SetColorTexture(active and 1 or 0.4, active and 1 or 0.4, active and 1 or 0.4, 1)
+        end
     end
     local page = CurrentPage()
     page:Render()
@@ -921,20 +936,26 @@ function menu.Render()
     if menu.toast then crumb, color = menu.toast.text, menu.toast.color end
     f.crumb:SetText(crumb)
     f.crumb:SetTextColor(unpack(color))
-    local x = W - 4 - 18
-    for i = #hints, 1, -1 do
+    -- The hints centred in a row; the band as wide as they need
+    local x = 0
+    for i, hint in ipairs(hints) do
         local h = f.hints[i]
         if not h then
-            h = K.Hint(f.bar, menu.Press)
+            -- The native footer's size: small glyphs, gold labels
+            h = K.Hint(f.hintRow, menu.Press, { glyph = 24, font = 12, color = KC.title })
             f.hints[i] = h
         end
-        h:Set(hints[i])
+        h:Set(hint)
         h:ClearAllPoints()
-        h:SetPoint("RIGHT", f.bar, "LEFT", x, 0)
-        x = x - h:GetWidth() - 18
+        h:SetPoint("LEFT", f.hintRow, "LEFT", x, 0)
+        x = x + h:GetWidth() + 18
     end
     for i = #hints + 1, #f.hints do f.hints[i]:Hide() end
-    f.crumb:SetWidth(math.max(10, x - 18))
+    local rowW = math.max(1, x - 18)
+    f.hintRow:SetWidth(rowW)
+    f.crumb:SetWidth(W - 40)
+    -- Wide padding: the band's art fades toward its ends, so it reaches well past the hints
+    f.footer:SetWidth(math.max(1000, rowW + 760))
 end
 
 ---------------------------------------------------------------------------

@@ -288,7 +288,7 @@ function K.Glyph(parent, size)
     return g
 end
 
--- A row of glyphs ("L1 / R1"): returns its width
+-- A row of glyphs ("L1", "+", "R3": "+" is a plus sign): returns its width
 function K.GlyphRow(parent, size)
     local row = K.NewFrame("Frame", nil, parent)
     row:SetSize(1, size)
@@ -296,17 +296,30 @@ function K.GlyphRow(parent, size)
     function row:Set(keys)
         local x = 0
         for i, key in ipairs(keys or {}) do
-            local glyph = self.items[i]
-            if not glyph then
-                glyph = K.Glyph(self, size)
-                self.items[i] = glyph
+            local item = self.items[i]
+            if not item then
+                item = { glyph = K.Glyph(self, size), plus = K.Text(self, math.max(12, math.floor(size * 0.6)), C.cream) }
+                item.plus:SetText("+")
+                self.items[i] = item
             end
-            glyph:ClearAllPoints()
-            glyph:Set(key)
-            glyph:SetPoint("LEFT", x, 0)
-            x = x + glyph:GetWidth() + 1
+            item.glyph:ClearAllPoints()
+            item.plus:ClearAllPoints()
+            if key == "+" then
+                item.glyph:Hide()
+                item.plus:Show()
+                item.plus:SetPoint("LEFT", x + 2, 0)
+                x = x + item.plus:GetStringWidth() + 5
+            else
+                item.plus:Hide()
+                item.glyph:Set(key)
+                item.glyph:SetPoint("LEFT", x, 0)
+                x = x + item.glyph:GetWidth() + 1
+            end
         end
-        for i = #(keys or {}) + 1, #self.items do self.items[i]:Hide() end
+        for i = #(keys or {}) + 1, #self.items do
+            self.items[i].glyph:Hide()
+            self.items[i].plus:Hide()
+        end
         self:SetWidth(math.max(1, x))
         return x
     end
@@ -318,13 +331,16 @@ function K.H(keys, verb, press)
     return { keys = keys, verb = verb, press = press or keys[1] }
 end
 
--- A help bar hint: its glyph(s), then a short verb; a click presses its key
-function K.Hint(parent, onPress)
+-- A help bar hint: its glyph(s), then a short verb; a click presses its key.
+-- style = { glyph = px, font = pt, color } (default 30 / 15 / cream)
+function K.Hint(parent, onPress, style)
+    style = style or {}
+    local size = style.glyph or 30
     local h = K.NewFrame("Button", nil, parent)
-    h:SetHeight(30)
-    h.glyphs = K.GlyphRow(h, 30)
+    h:SetHeight(size)
+    h.glyphs = K.GlyphRow(h, size)
     h.glyphs:SetPoint("LEFT")
-    h.verb = K.Text(h, 15, C.cream)
+    h.verb = K.Text(h, style.font or 15, style.color or C.cream)
     h:SetScript("OnClick", function(self) if self.press then onPress(self.press) end end)
     function h:Set(hint)
         local w = self.glyphs:Set(hint.keys)
@@ -544,13 +560,185 @@ end
 ---------------------------------------------------------------------------
 local PICK_ROW, PICK_HEAD = 32, 28
 
-function K.Picker(parent, width, onRender)
+-- A row's slot: a piece of the wheel's own art (cut from inside its left
+-- segment: the same see-through dark fill) in the wheel's grey metal rim
+-- (dark edges, a lighter bevel on the inside)
+local WHEEL_ATLAS = "gamepad-radial-menu-wheelbg"
+local WHEEL_CUT = { 0.11, 0.29, 0.43, 0.57 } -- left, right, top, bottom of the atlas
+local RIM = {
+    { size = 1, color = { 0.04, 0.035, 0.03, 1 } },   -- outer edge
+    { size = 3, color = { 0.30, 0.29, 0.26, 1 } },    -- the metal
+    { size = 1, color = { 0.46, 0.44, 0.39, 0.9 } },  -- bevel
+    { size = 1, color = { 0.05, 0.04, 0.03, 0.9 } },  -- inner edge
+}
+
+local function WheelFill(texture)
+    local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(WHEEL_ATLAS)
+    local file = info and (info.file or info.filename)
+    if not file then
+        texture:SetColorTexture(0.12, 0.07, 0.04, 0.7)
+        return
+    end
+    texture:SetTexture(file)
+    local l, r = info.leftTexCoord, info.rightTexCoord
+    local t, b = info.topTexCoord, info.bottomTexCoord
+    texture:SetTexCoord(l + (r - l) * WHEEL_CUT[1], l + (r - l) * WHEEL_CUT[2],
+        t + (b - t) * WHEEL_CUT[3], t + (b - t) * WHEEL_CUT[4])
+end
+
+function K.RowSlot(frame)
+    local slot = { parts = {} }
+    local fill = frame:CreateTexture(nil, "BACKGROUND", nil, -2)
+    fill:SetAllPoints()
+    WheelFill(fill)
+    slot.parts[#slot.parts + 1] = fill
+    -- The rim, layer by layer from the outside in
+    local inset = 0
+    for layer, line in ipairs(RIM) do
+        for _, side in ipairs({ "TOP", "BOTTOM", "LEFT", "RIGHT" }) do
+            local t = frame:CreateTexture(nil, "BORDER", nil, layer)
+            t:SetColorTexture(unpack(line.color))
+            if side == "TOP" or side == "BOTTOM" then
+                local y = side == "TOP" and -inset or inset
+                t:SetPoint(side .. "LEFT", frame, side .. "LEFT", inset, y)
+                t:SetPoint(side .. "RIGHT", frame, side .. "RIGHT", -inset, y)
+                t:SetHeight(line.size)
+            else
+                local x = side == "LEFT" and inset or -inset
+                t:SetPoint("TOP" .. side, frame, "TOP" .. side, x, -inset)
+                t:SetPoint("BOTTOM" .. side, frame, "BOTTOM" .. side, x, inset)
+                t:SetWidth(line.size)
+            end
+            slot.parts[#slot.parts + 1] = t
+        end
+        inset = inset + line.size
+    end
+    function slot:SetShown(shown)
+        for _, part in ipairs(self.parts) do part:SetShown(shown) end
+    end
+    return slot
+end
+
+-- Turns a region (a texture, or a font string) by radians, counter-
+-- clockwise, about its centre. Textures turn natively; text with
+-- SetRotation where the client has it, else with a rotation animation held
+-- at its end (its end delay keeps the turn)
+function K.Rotate(region, radians)
+    if region:GetObjectType() == "Texture" or (region.SetRotation and region:GetObjectType() ~= "FontString") then
+        region:SetRotation(radians)
+        return
+    end
+    if region.SetRotation and pcall(region.SetRotation, region, radians) then
+        return
+    end
+    local anim = region.icRotation
+    if not anim then
+        local group = region:CreateAnimationGroup()
+        anim = group:CreateAnimation("Rotation")
+        anim:SetOrigin("CENTER", 0, 0)
+        anim:SetDuration(0.001)
+        anim:SetEndDelay(1e7)
+        region.icRotation = anim
+    end
+    if anim.angle == radians and anim:GetParent():IsPlaying() then return end
+    anim.angle = radians
+    local group = anim:GetParent()
+    group:Stop()
+    anim:SetRadians(radians)
+    group:Play()
+end
+
+-- The angle text along a slice at theta reads at (never upside down)
+function K.ReadingAngle(theta)
+    local t = theta % (2 * math.pi)
+    if t > math.pi / 2 and t < 3 * math.pi / 2 then t = t - math.pi end
+    return t
+end
+
+-- A slice of a ring around the wheel (tools/make_segments.py draws them:
+-- inner radius 285, outer 505, the slice pointing right in its 256 px
+-- square). Lists beside the wheel are made of them, each turned to face
+-- the wheel's centre, as if the wheel had an outer ring of slots.
+K.SEG = { R1 = 285, R2 = 505, MID = 395, STEP = 0.106 }
+local SEG_SIZE = 256
+
+-- Puts the slice textures on a frame (a row): seg:Place(anchor, theta)
+-- puts the row on the ring at angle theta (radians, counter-clockwise from
+-- the right) around the anchor's centre; seg:SetFocus(on) lights it
+function K.Segment(frame)
+    local seg = {}
+    local function texture(file, layer, sub)
+        local t = frame:CreateTexture(nil, layer, nil, sub)
+        t:SetTexture(TEX .. file)
+        t:SetSize(SEG_SIZE, SEG_SIZE)
+        t:SetPoint("CENTER", frame, "CENTER")
+        return t
+    end
+    seg.fill = texture("ic_seg_fill", "BACKGROUND", -2)
+    seg.fill:SetVertexColor(0.13, 0.08, 0.045, 0.72)
+    seg.rim = texture("ic_seg_rim", "BORDER", 0)
+    seg.glow = texture("ic_seg_glow", "ARTWORK", 0)
+    seg.glow:SetVertexColor(C.focus[1], C.focus[2], C.focus[3])
+    seg.glow:SetBlendMode("ADD")
+    seg.glow:Hide()
+    function seg:Place(anchor, theta)
+        frame:ClearAllPoints()
+        frame:SetPoint("CENTER", anchor, "CENTER", K.SEG.MID * math.cos(theta), K.SEG.MID * math.sin(theta))
+        for _, t in ipairs({ self.fill, self.rim, self.glow }) do t:SetRotation(theta) end
+    end
+    function seg:SetFocus(on)
+        self.glow:SetShown(on and true or false)
+        self.fill:SetVertexColor(on and 0.22 or 0.13, on and 0.14 or 0.08, on and 0.06 or 0.045, on and 0.82 or 0.72)
+    end
+    function seg:SetShown(shown)
+        self.fill:SetShown(shown)
+        self.rim:SetShown(shown)
+        if not shown then self.glow:Hide() end
+    end
+    return seg
+end
+
+-- An arrow on a ring at theta, turned with the slices there: up = toward
+-- the slices above (the triangle art points down; a half turn flips it)
+function K.RingArrow(arrow, anchor, theta, up)
+    arrow:SetTexCoord(0, 1, 0, 1)
+    arrow:ClearAllPoints()
+    arrow:SetPoint("CENTER", anchor, "CENTER", K.SEG.MID * math.cos(theta), K.SEG.MID * math.sin(theta))
+    arrow:SetRotation(K.ReadingAngle(theta) + (up and math.pi or 0))
+end
+
+-- More above / below: the small gold triangles
+function K.MoreArrows(parent)
+    local up = parent:CreateTexture(nil, "OVERLAY")
+    up:SetTexture(TEX .. "ck_tri")
+    up:SetTexCoord(0, 1, 1, 0)
+    up:SetSize(12, 12)
+    up:SetVertexColor(C.dimGold[1], C.dimGold[2], C.dimGold[3])
+    local down = parent:CreateTexture(nil, "OVERLAY")
+    down:SetTexture(TEX .. "ck_tri")
+    down:SetSize(12, 12)
+    down:SetVertexColor(C.dimGold[1], C.dimGold[2], C.dimGold[3])
+    return up, down
+end
+
+-- opts = { arc = function(y) return x end (each line pushed right by the
+-- curve at its height: rows that follow a ring), bare = true (no box,
+-- the lists switched like the panel's tabs: the list's name over the
+-- native band with a dot per list between L2 / R2; each row a wheel slot) }
+function K.Picker(parent, width, onRender, opts)
+    opts = opts or {}
+    local arc = opts.arc or function() return 0 end
+    local ROW = opts.rowHeight or PICK_ROW
+    -- opts.ring = { anchor, theta }: the rows are slices of the outer ring,
+    -- the first at angle theta, each next one K.SEG.STEP further down
+    local ring = opts.ring
     local p = K.NewFrame("Frame", nil, parent)
     p:SetWidth(width)
     p:EnableMouseWheel(true)
     p.box = K.Box(p, 4, 1, "BACKGROUND", 1)
     p.box:SetPoints(p)
     p.box:SetColors(C.black, 0.72, C.line1, 1)
+    if opts.bare then p.box:SetShown(false) end
     p.kicker = K.ChatText(p, 12, C.grey)
     p.kicker:SetPoint("TOPLEFT", 12, -12)
     p.kicker:SetWidth(width - 24)
@@ -562,9 +750,37 @@ function K.Picker(parent, width, onRender)
     -- L2 / R2 around the lists' tabs, like L1 / R1 around the panel's
     local GLYPH = 26
     p.ltGlyph = K.Glyph(p, GLYPH)
-    p.ltGlyph:SetPoint("TOPLEFT", 10, -55)
+    p.ltGlyph:SetPoint("TOPLEFT", 10 + arc(-55), -55)
     p.rtGlyph = K.Glyph(p, GLYPH)
-    p.rtGlyph:SetPoint("TOPRIGHT", -10, -55)
+    p.rtGlyph:SetPoint("TOPLEFT", width - 10 - GLYPH + arc(-55), -55)
+    if opts.bare then
+        -- No slot line or title here: the list's name and its band at the top
+        p.kicker:Hide()
+        p.title:Hide()
+        local mid = width / 2 + arc(-24) - 40
+        p.listName = p:CreateFontString(nil, "OVERLAY")
+        p.listName:SetFont("Fonts\\FRIZQT__.TTF", 14, "")
+        p.listName:SetShadowOffset(1, -1)
+        p.listName:SetTextColor(1, 1, 1)
+        p.listName:SetPoint("TOP", p, "TOPLEFT", mid, 12)
+        p.band = p:CreateTexture(nil, "BACKGROUND", nil, -2)
+        p.band:SetSize(width, 50)
+        p.band:SetPoint("TOP", p.listName, "BOTTOM", 0, 4)
+        if hasAtlas("gamepad-radial-menu-toptext") then
+            p.band:SetAtlas("gamepad-radial-menu-toptext")
+        else
+            p.band:SetColorTexture(0, 0, 0, 0.5)
+        end
+        p.dotRow = K.NewFrame("Frame", nil, p)
+        p.dotRow:SetSize(1, 13)
+        p.dotRow:SetPoint("TOP", p.listName, "BOTTOM", 0, -12)
+        p.dots = {}
+        p.ltGlyph:SetSize(22, 22)
+        p.rtGlyph:SetSize(22, 22)
+    end
+    p.kicker:ClearAllPoints()
+    p.kicker:SetPoint("TOPLEFT", 12 + arc(-12), -12)
+    p.moreUp, p.moreDown = K.MoreArrows(p)
     p:SetScript("OnMouseWheel", function(self, delta) self:Move(-delta * 3) end)
     p:Hide()
 
@@ -582,17 +798,25 @@ function K.Picker(parent, width, onRender)
         local r = p.rows[i]
         if r then return r end
         r = K.NewFrame("Button", nil, p)
-        r:SetSize(width - 24, PICK_ROW)
+        r:SetSize(width - 24, ROW)
         r.sel = K.NineSlice(r, "ck_select", 128, 32, 10, 10, "ARTWORK")
+        if ring then
+            r:SetSize(200, ROW - 4)
+            r.seg = K.Segment(r)
+            r.sel:SetShown(false)
+        elseif opts.bare then
+            r:SetHeight(ROW - 3)
+            r.slot = K.RowSlot(r)
+        end
         r.icon = K.RoundIcon(r, 24, "ARTWORK")
         r.icon:SetDrawLayer("ARTWORK", 2)
-        r.icon:SetPoint("LEFT", 6, 0)
+        r.icon:SetPoint("LEFT", opts.bare and 10 or 6, 0)
         r.mark = r:CreateTexture(nil, "OVERLAY")
         r.mark:SetTexture(TEX .. "ck_diamond")
         r.mark:SetSize(8, 8)
         r.mark:SetVertexColor(C.info[1], C.info[2], C.info[3])
         r.mark:SetPoint("BOTTOMLEFT", r.icon, "BOTTOMLEFT", -3, -1)
-        r.label = K.Text(r, 15, C.cream)
+        r.label = K.Text(r, opts.bare and 13 or 15, C.cream)
         r.label:SetPoint("LEFT", r.icon, "RIGHT", 8, 0)
         r.label:SetPoint("RIGHT", -6, 0)
         r.head = K.Text(r, 14, C.title)
@@ -730,20 +954,56 @@ function K.Picker(parent, width, onRender)
             self.ltGlyph:Set("LT")
             self.rtGlyph:Set("RT")
         end
+        if opts.bare then
+            -- As the panel's tabs: the list's name, a dot per list (they
+            -- click to their list), L2 / R2 either side
+            self.listName:SetShown(n > 1)
+            self.band:SetShown(n > 1)
+            self.listName:SetText(n > 1 and def.lists[self.list].label or "")
+            for i = 1, math.max(n, #self.dots) do
+                local d = self.dots[i]
+                if not d then
+                    d = K.NewFrame("Button", nil, self.dotRow)
+                    d:SetSize(13, 13)
+                    d.tex = d:CreateTexture(nil, "OVERLAY")
+                    d.tex:SetAllPoints()
+                    local index = i
+                    d:SetScript("OnClick", function() p:SetList(index) end)
+                    self.dots[i] = d
+                end
+                d:SetShown(n > 1 and i <= n)
+                if i <= n then
+                    d:ClearAllPoints()
+                    d:SetPoint("CENTER", self.dotRow, "CENTER", (i - (n + 1) / 2) * 18, 0)
+                    local active = i == self.list
+                    local name = active and "gamepad-radialgamemenu-cursorbg-neutral" or "gamepad-radialgamemenu-cursorbg-inactive"
+                    if hasAtlas(name) then
+                        d.tex:SetAtlas(name)
+                    else
+                        d.tex:SetColorTexture(active and 1 or 0.4, active and 1 or 0.4, active and 1 or 0.4, 1)
+                    end
+                end
+            end
+            local edge = (n + 1) / 2 * 18 + 6
+            self.ltGlyph:ClearAllPoints()
+            self.ltGlyph:SetPoint("RIGHT", self.dotRow, "CENTER", -edge, 0)
+            self.rtGlyph:ClearAllPoints()
+            self.rtGlyph:SetPoint("LEFT", self.dotRow, "CENTER", edge, 0)
+        end
         local side = GLYPH + 4
         local tw = (width - 20 - 2 * side - (n - 1) * 4) / n
         for i = 1, math.max(n, #self.tabs) do
             local t = tab(i)
-            t:SetShown(n > 1 and i <= n)
+            t:SetShown(n > 1 and i <= n and not opts.bare)
             if i <= n then
                 t:SetWidth(tw)
                 t:ClearAllPoints()
-                t:SetPoint("TOPLEFT", self, "TOPLEFT", 10 + side + (i - 1) * (tw + 4), -54)
+                t:SetPoint("TOPLEFT", self, "TOPLEFT", 10 + side + (i - 1) * (tw + 4) + arc(-54), -54)
                 t.label:SetText(def.lists[i].label)
                 t:SetState({ active = i == self.list })
             end
         end
-        local top = n > 1 and -88 or -54
+        local top = n > 1 and (opts.bare and -116 or -88) or -54
         local max = def.rows or 10
         local y = top
         local shown = 0
@@ -753,16 +1013,32 @@ function K.Picker(parent, width, onRender)
             r.index = nil
             if e and shown < max then
                 shown = shown + 1
-                local h = e.header and PICK_HEAD or PICK_ROW
-                r:SetHeight(h)
-                r:ClearAllPoints()
-                r:SetPoint("TOPLEFT", self, "TOPLEFT", 12, y)
+                local h = e.header and PICK_HEAD or ROW
+                if ring then
+                    -- A slice of the outer ring (a group title: just its text
+                    -- there); the icon at its inner end and the name along it
+                    local theta = ring.theta - (shown - 1) * K.SEG.STEP
+                    r.seg:Place(ring.anchor, theta)
+                    r.seg:SetShown(not e.header)
+                    r.seg:SetFocus(not e.header and self.offset + i == self.index)
+                    r.ringT = K.ReadingAngle(theta)
+                    local t = r.ringT
+                    r.icon:ClearAllPoints()
+                    r.icon:SetPoint("CENTER", r, "CENTER", -76 * math.cos(t), -76 * math.sin(t))
+                    K.Rotate(r.icon, t)
+                else
+                    -- (wheel slots: a small gap between them)
+                    r:SetHeight(h - ((opts.bare and not e.header) and 3 or 0))
+                    r:ClearAllPoints()
+                    r:SetPoint("TOPLEFT", self, "TOPLEFT", 12 + arc(y - h / 2), y)
+                end
                 y = y - h
                 r.head:SetShown(e.header ~= nil)
+                if r.slot then r.slot:SetShown(not e.header) end
                 r.label:SetShown(not e.header)
                 r.icon:SetShown(not e.header)
                 r.mark:SetShown(not e.header and def.marked and def.marked(e) or false)
-                r.sel:SetShown(not e.header and self.offset + i == self.index)
+                r.sel:SetShown(not ring and not e.header and self.offset + i == self.index)
                 if e.header then
                     r.head:SetText(e.header)
                 else
@@ -770,16 +1046,46 @@ function K.Picker(parent, width, onRender)
                     K.SetIcon(r.icon, e.icon)
                     r.label:SetText(e.name .. (e.sub and ("  |cff9d9a8c" .. e.sub .. "|r") or ""))
                 end
+                if ring then
+                    -- Text turns about its own middle, so each box is just
+                    -- as wide as its text, its middle placed along the slice:
+                    -- a name from just past the icon, a group title from the
+                    -- slice's inner end
+                    local t = r.ringT
+                    local c, sn = math.cos(t), math.sin(t)
+                    local fs, from, room = r.label, -52, 150
+                    if e.header then fs, from, room = r.head, -96, 190 end
+                    fs:SetJustifyH("CENTER")
+                    fs:SetWidth(0)
+                    local w = math.min(fs:GetStringWidth(), room)
+                    fs:SetWidth(w + 2)
+                    local d = from + w / 2
+                    fs:ClearAllPoints()
+                    fs:SetPoint("CENTER", r, "CENTER", d * c, d * sn)
+                    K.Rotate(fs, t)
+                end
                 r:Show()
             else
                 r:Hide()
             end
         end
         for i = max + 2, #self.rows do self.rows[i]:Hide() end
+        -- More above / below the rows shown
+        self.moreUp:ClearAllPoints()
+        self.moreDown:ClearAllPoints()
+        if ring and shown > 0 then
+            -- Just past the first and last slices, turned with them
+            K.RingArrow(self.moreUp, ring.anchor, ring.theta + 0.75 * K.SEG.STEP, true)
+            K.RingArrow(self.moreDown, ring.anchor, ring.theta - (shown - 0.25) * K.SEG.STEP, false)
+        else
+            self.moreUp:SetPoint("BOTTOM", self, "TOPLEFT", 12 + arc(top) + (width - 24) / 2, top + 1)
+            self.moreDown:SetPoint("TOP", self, "TOPLEFT", 12 + arc(y) + (width - 24) / 2, y - 1)
+        end
+        self.moreDown:SetShown(self.offset + max < #self.entries)
         if #self.entries == 0 then
             local r = row(1)
             r:ClearAllPoints()
-            r:SetPoint("TOPLEFT", self, "TOPLEFT", 12, top)
+            r:SetPoint("TOPLEFT", self, "TOPLEFT", 12 + arc(top), top)
             r:Show()
             r.head:Show()
             r.head:SetText("Nothing here")

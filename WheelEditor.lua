@@ -12,11 +12,25 @@ local KC = K.C
 local MW = IC.MyWheels
 local menu = IC.Menu
 
-local RAIL_W, GAP, BODY_H = 150, 12, 424
-local RAIL_STEP = 34
-local ZONE_W, PANEL_W = 390, 400
-local CX, CY, RADIUS = 195, 196, 104
-local SLOT_SIZE, ICON_SIZE = 50, 36
+local ZONE_W, PANEL_W = 540, 340
+local BOX_W = 380                   -- the rename / hotkey boxes over the wheel
+-- The lists hug the ring: each line sits ARC from the wheel's centre
+local ARC = 300
+local LIST_STEP = 42
+local LIST_SHOWN = 8                -- wheels shown at once on the left; the rest scroll
+local PICKER_ROWS = 7               -- entries shown at once on the right
+local PICKER_TOP = 236              -- the picker's top, above the centre
+local function ArcX(dy)
+    return math.sqrt(math.max(0, ARC * ARC - dy * dy))
+end
+-- The wheel: Forever's radial menu (the R3 ring's art and layout, Ring.lua)
+-- at SCALE
+local SCALE = 1
+local CX, CY = 270, 270             -- in the wheel's 540 x 541 frame
+local RADIUS = 110 * SCALE          -- icons
+local WEDGE_RADIUS = 150 * SCALE    -- highlight / empty wedges
+local LABEL_RADIUS = 168 * SCALE
+local ICON_SIZE = math.floor(56 * SCALE + 0.5)
 local PER_PAGE = 8
 
 local W = { zone = "rail", index = 1, slot = 1, btn = 1 }
@@ -79,33 +93,33 @@ end
 -- Building
 ---------------------------------------------------------------------------
 function W:Build(parent)
-    local f = K.NewFrame("Frame", nil, parent)
-    f:SetAllPoints()
+    -- The whole screen, as the R3 wheel (the panel's frame, not its body)
+    local stage = parent:GetParent() or parent
+    local f = K.NewFrame("Frame", nil, stage)
+    f:SetAllPoints(stage)
     f:Hide()
     self.frame = f
 
-    -- The rail of wheels
+    -- The wheels, down the ring's left side (placed in Render)
     local rail = K.NewFrame("Frame", nil, f)
-    rail:SetPoint("TOPLEFT")
-    rail:SetSize(RAIL_W, BODY_H)
-    local line = K.Solid(rail, KC.line3, 1, "BORDER")
-    line:SetPoint("TOPRIGHT")
-    line:SetPoint("BOTTOMRIGHT")
-    line:SetWidth(1)
+    rail:SetAllPoints(f)
+    rail:EnableMouseWheel(true)
+    rail:SetScript("OnMouseWheel", function(_, delta)
+        if MW.renaming then return end
+        W:Select(W.index - delta)
+        menu.Render()
+    end)
+    self.railUp, self.railDown = K.MoreArrows(rail)
     self.railEntries = {}
     for i = 1, #MW.BUILT_IN_WHEELS + MW.MAX + 1 do
         local e = K.NewFrame("Button", nil, rail)
-        e:SetSize(RAIL_W - 11, RAIL_STEP - 4)
-        e:SetPoint("TOPLEFT", 0, -2 - (i - 1) * RAIL_STEP)
-        e.sel = K.NineSlice(e, "ck_select", 128, 32, 10, 10, "ARTWORK")
-        e.diamond = e:CreateTexture(nil, "OVERLAY")
-        e.diamond:SetTexture(K.TEX .. "ck_diamond")
-        e.diamond:SetSize(7, 7)
-        e.diamond:SetPoint("LEFT", 10, 0)
-        e.diamond:SetVertexColor(KC.title[1], KC.title[2], KC.title[3])
-        e.label = K.Text(e, 15, KC.rail)
-        e.label:SetPoint("LEFT", 25, 0)
-        e.label:SetWidth(RAIL_W - 11 - 29)
+        -- A slice of an outer ring around the wheel
+        e:SetSize(200, 34)
+        e.seg = K.Segment(e)
+        e.label = K.Text(e, 14, KC.rail, "OVERLAY")
+        e.label:SetPoint("CENTER")
+        e.label:SetWidth(180)
+        e.label:SetJustifyH("CENTER")
         e:SetScript("OnClick", function()
             if MW.renaming then return end
             W:Select(i)
@@ -114,49 +128,87 @@ function W:Build(parent)
         end)
         self.railEntries[i] = e
     end
-    -- A rule under the built-in wheels
-    local rule = K.Solid(rail, KC.line2, 1, "BORDER")
-    rule:SetHeight(1)
-    rule:SetPoint("TOPLEFT", 6, -#MW.BUILT_IN_WHEELS * RAIL_STEP)
-    rule:SetPoint("RIGHT", rail, "RIGHT", -16, 0)
-
     -- The wheel
     local zone = K.NewFrame("Frame", nil, f)
-    zone:SetPoint("TOPLEFT", RAIL_W + GAP, 0)
-    zone:SetSize(ZONE_W, BODY_H)
-    f.title = K.Text(zone, 18, KC.title)
-    f.title:SetPoint("TOP", zone, "TOPLEFT", CX, -4)
-    f.title:SetWidth(ZONE_W - 20)
+    zone:SetPoint("CENTER", f, "CENTER", 0, 0)
+    zone:SetSize(540, 541)
+    -- In the hub: the wheel's name, its count, its page
+    f.title = K.Text(zone, 15, KC.white)
+    f.title:SetPoint("CENTER", zone, "TOPLEFT", CX, -(CY - 16))
+    f.title:SetWidth(150)
     f.title:SetJustifyH("CENTER")
-    f.kicker = K.ChatText(zone, 13, KC.grey)
-    f.kicker:SetPoint("TOP", f.title, "BOTTOM", 0, -4)
-    f.kicker:SetWidth(ZONE_W - 20)
+    f.kicker = K.ChatText(zone, 12, KC.grey)
+    f.kicker:SetPoint("CENTER", zone, "TOPLEFT", CX, -(CY + 32))
+    f.kicker:SetWidth(150)
     f.kicker:SetJustifyH("CENTER")
-    f.kicker:SetWordWrap(false)
-    local disc = zone:CreateTexture(nil, "BACKGROUND")
-    disc:SetTexture(K.TEX .. "ck_disc")
-    disc:SetSize(270, 270)
-    disc:SetPoint("CENTER", zone, "TOPLEFT", CX, -CY)
-    local hub = zone:CreateTexture(nil, "BORDER")
-    hub:SetTexture(K.TEX .. "ck_hub")
-    hub:SetSize(108, 108)
-    hub:SetPoint("CENTER", zone, "TOPLEFT", CX, -CY)
-    -- In the hub: the focused slot's content, the wheel's count
-    f.hubName = K.Text(zone, 13, KC.cream)
-    f.hubName:SetPoint("CENTER", zone, "TOPLEFT", CX, -(CY - 10))
-    f.hubName:SetSize(90, 34)
+    f.kicker:SetWordWrap(true)
+    f.kicker:SetSpacing(2)
+    local function atlas(texture, name, fallback)
+        if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) then
+            texture:SetAtlas(name)
+        elseif fallback then
+            texture:SetTexture(K.TEX .. fallback)
+        end
+    end
+    local wheelBg = zone:CreateTexture(nil, "BACKGROUND", nil, -3)
+    wheelBg:SetSize(540 * SCALE, 541 * SCALE)
+    wheelBg:SetPoint("CENTER", zone, "TOPLEFT", CX, -CY)
+    atlas(wheelBg, "gamepad-radial-menu-wheelbg", "ck_disc")
+    -- The highlight wedge (the slot with the focus, or the one the picker
+    -- fills): the art faces down at rotation 0
+    f.highlight = zone:CreateTexture(nil, "BACKGROUND", nil, -1)
+    f.highlight:SetSize(169 * SCALE, 165 * SCALE)
+    atlas(f.highlight, "gamepad-radial-menu-selected")
+    f.hubName = K.Text(zone, 12, KC.cream)
+    f.hubName:Hide()
+    f.hubName:SetPoint("CENTER", zone, "TOPLEFT", CX, -(CY - 9))
+    f.hubName:SetSize(80, 30)
     f.hubName:SetJustifyH("CENTER")
     f.hubName:SetWordWrap(true)
     if f.hubName.SetMaxLines then f.hubName:SetMaxLines(2) end
-    f.count = K.Text(zone, 16, KC.title)
-    f.count:SetPoint("CENTER", zone, "TOPLEFT", CX, -(CY + 20))
+    -- What it is bound to, as button glyphs, alone in the hub
+    f.bindGlyphs = K.GlyphRow(zone, 28)
+    -- A wheel of several pages: a dot each (the native page dots), under it
+    f.pageDots = {}
+    for i = 1, 3 do
+        local d = zone:CreateTexture(nil, "OVERLAY")
+        d:SetSize(11, 11)
+        f.pageDots[i] = d
+    end
+    f.bindNone = K.ChatText(zone, 13, KC.grey)
+    f.bindNone:SetPoint("CENTER", zone, "TOPLEFT", CX, -CY)
+    f.bindNone:SetText("Not bound")
+    f.count = K.Text(zone, 14, KC.title)
+    f.count:SetPoint("CENTER", zone, "TOPLEFT", CX, -(CY + 10))
     f.count:SetJustifyH("CENTER")
 
     f.slots = {}
     for p = 1, PER_PAGE do
-        local x, y = SlotPoint(p)
-        local s = K.Slot(zone, SLOT_SIZE, ICON_SIZE)
-        s:SetPoint("CENTER", zone, "TOPLEFT", x, -y)
+        local a = (p - 1) * math.pi / 4
+        local sn, cs = math.sin(a), math.cos(a)
+        -- An empty slot: the dimmed wedge, a "+"
+        local empty = zone:CreateTexture(nil, "BACKGROUND", nil, -2)
+        empty:SetSize(169 * SCALE, 164 * SCALE)
+        empty:SetPoint("CENTER", zone, "TOPLEFT", CX + WEDGE_RADIUS * sn, -(CY - WEDGE_RADIUS * cs))
+        atlas(empty, "gamepad-radial-menu-disabled")
+        empty:SetRotation(math.pi - a)
+        local s = K.NewFrame("Button", nil, zone)
+        s:SetSize(ICON_SIZE, ICON_SIZE)
+        s:SetPoint("CENTER", zone, "TOPLEFT", CX + RADIUS * sn, -(CY - RADIUS * cs))
+        s:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        s.empty = empty
+        s.icon = K.RoundIcon(s, ICON_SIZE, "ARTWORK")
+        s.icon:SetPoint("CENTER")
+        s.plus = K.Text(s, 18, KC.dimGold, "OVERLAY")
+        s.plus:SetPoint("CENTER", 0, 1)
+        s.plus:SetText("+")
+        s.count = s:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+        s.count:SetPoint("BOTTOMRIGHT", s, "BOTTOMRIGHT", 3, -2)
+        s.label = K.Text(zone, 12, KC.title, "OVERLAY")
+        s.label:SetSize(90, 40)
+        s.label:SetWordWrap(true)
+        s.label:SetJustifyH("CENTER")
+        s.label:SetPoint("CENTER", zone, "TOPLEFT", CX + LABEL_RADIUS * sn, -(CY - LABEL_RADIUS * cs))
         s:SetScript("OnClick", function(_, button)
             if MW.renaming then return end
             menu.Disarm()
@@ -164,44 +216,10 @@ function W:Build(parent)
             if button == "RightButton" then
                 W:Empty()
             else
-                W.zone = "slots"
                 W:Aim()
             end
         end)
         f.slots[p] = s
-    end
-
-    -- What opens it
-    local bind = K.NewFrame("Frame", nil, zone)
-    bind:SetSize(10, 20)
-    bind:SetPoint("TOP", zone, "TOPLEFT", CX, -(CY + 144))
-    bind.label = K.ChatText(bind, 13, KC.grey)
-    bind.label:SetPoint("LEFT")
-    bind.label:SetText("Hotkey")
-    bind.chip = K.NewFrame("Frame", nil, bind)
-    bind.chip:SetHeight(20)
-    bind.chip:SetPoint("LEFT", bind.label, "RIGHT", 8, 0)
-    bind.chip.box = K.Box(bind.chip, 3, 2, "ARTWORK")
-    bind.chip.box:SetPoints(bind.chip)
-    bind.chip.box:SetColors(KC.controlBg, 1, KC.control, 1)
-    bind.chip.text = K.Text(bind.chip, 14, KC.info)
-    bind.chip.text:SetPoint("CENTER", 0, 0)
-    f.bind = bind
-
-    -- Hotkey, then Rename / Delete (own wheels) or Reset (built-in ones)
-    local row = K.NewFrame("Frame", nil, zone)
-    row:SetPoint("TOPLEFT", 0, -(BODY_H - 34))
-    row:SetSize(ZONE_W, 32)
-    f.buttonRow = row
-    f.buttons = {}
-    for i = 1, 4 do
-        local b = K.Button(row, 14)
-        b:SetScript("OnClick", function()
-            if MW.renaming then return end
-            W.zone, W.btn = "buttons", i
-            W:Button(i)
-        end)
-        f.buttons[i] = b
     end
 
     -- The name typed in a box over the wheel (a physical keyboard)
@@ -213,8 +231,8 @@ function W:Build(parent)
     veil:Hide()
     f.veil = veil
     local box = K.NewFrame("Frame", nil, veil)
-    box:SetSize(ZONE_W - 20, 136)
-    box:SetPoint("TOPLEFT", zone, "TOPLEFT", 10, -140)
+    box:SetSize(BOX_W, 136)
+    box:SetPoint("CENTER", zone, "CENTER", 0, 0)
     box.bg = K.Box(box, 4, 2, "BACKGROUND")
     box.bg:SetPoints(box)
     box.bg:SetColors(KC.panel, 1, KC.focus, 1)
@@ -223,7 +241,7 @@ function W:Build(parent)
     box.kicker:SetText("WHEEL NAME")
     local field = K.NewFrame("Frame", nil, box)
     field:SetPoint("TOPLEFT", box.kicker, "BOTTOMLEFT", 0, -8)
-    field:SetSize(ZONE_W - 48, 36)
+    field:SetSize(BOX_W - 28, 36)
     field.box = K.Box(field, 3, 2, "ARTWORK")
     field.box:SetPoints(field)
     field.box:SetColors(KC.boxBg, 1, KC.control, 1)
@@ -239,7 +257,7 @@ function W:Build(parent)
     box.edit = edit
     box.help = K.ChatText(box, 13, KC.help)
     box.help:SetPoint("TOPLEFT", field, "BOTTOMLEFT", 0, -8)
-    box.help:SetWidth(ZONE_W - 48)
+    box.help:SetWidth(BOX_W - 28)
     box.help:SetWordWrap(true)
     box.help:SetSpacing(5)
     box.help:SetText("D-pad left / right picks a name, Cross confirms, Circle cancels. A keyboard can type one too.")
@@ -247,8 +265,8 @@ function W:Build(parent)
 
     -- Recording a hotkey, then confirming it: a box over the wheel
     local hk = K.NewFrame("Frame", nil, veil)
-    hk:SetSize(ZONE_W - 20, 150)
-    hk:SetPoint("TOPLEFT", zone, "TOPLEFT", 10, -130)
+    hk:SetSize(BOX_W, 150)
+    hk:SetPoint("CENTER", zone, "CENTER", 0, 0)
     hk.bg = K.Box(hk, 4, 2, "BACKGROUND")
     hk.bg:SetPoints(hk)
     hk.bg:SetColors(KC.panel, 1, KC.focus, 1)
@@ -256,11 +274,11 @@ function W:Build(parent)
     hk.kicker:SetPoint("TOPLEFT", 14, -14)
     hk.title = K.Text(hk, 17, KC.title)
     hk.title:SetPoint("TOPLEFT", hk.kicker, "BOTTOMLEFT", 0, -8)
-    hk.title:SetWidth(ZONE_W - 48)
+    hk.title:SetWidth(BOX_W - 28)
     hk.title:SetWordWrap(true)
     hk.body = K.ChatText(hk, 13, KC.help)
     hk.body:SetPoint("TOPLEFT", hk.title, "BOTTOMLEFT", 0, -8)
-    hk.body:SetWidth(ZONE_W - 48)
+    hk.body:SetWidth(BOX_W - 28)
     hk.body:SetWordWrap(true)
     hk.body:SetSpacing(5)
     self.hotkeyBox = hk
@@ -276,6 +294,7 @@ function W:Build(parent)
     end)
     if capture.EnableGamePadButton then
         capture:SetScript("OnGamePadButtonDown", function(self, button)
+            if button == "PAD2" then self.circleAt = GetTime() end
             local held = self.held
             if held and held ~= button and IsKeyDown(held) then
                 W:Recorded(held, button)
@@ -287,7 +306,13 @@ function W:Build(parent)
         capture:SetScript("OnGamePadButtonUp", function(self, button)
             if button ~= self.held then return end
             if button == "PAD2" then
+                local long = self.circleAt and GetTime() - self.circleAt >= 1
                 W:StopCapture()
+                local wheel = W:Current()
+                if long and wheel then
+                    MW.ClearHotkey(wheel.key)
+                    menu.Toast(wheel.label .. ": unbound")
+                end
             else
                 W:Recorded(nil, button)
             end
@@ -295,13 +320,48 @@ function W:Build(parent)
     end
     self.capture = capture
 
+    -- The confirmation / recording box: the game's own dialog look
+    local d = K.NewFrame("Frame", nil, f, "BackdropTemplate")
+    d:SetSize(440, 160)
+    d:SetPoint("CENTER", f, "CENTER", 0, 0)
+    d:SetFrameLevel(f:GetFrameLevel() + 60)
+    d:EnableMouse(true)
+    d:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 },
+    })
+    d.text = d:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    d.text:SetFont("Fonts\\FRIZQT__.TTF", 15, "")
+    d.text:SetPoint("TOP", d, "TOP", 0, -28)
+    d.text:SetWidth(390)
+    d.text:SetSpacing(4)
+    d.hintRow = K.NewFrame("Frame", nil, d)
+    d.hintRow:SetSize(1, 30)
+    d.hintRow:SetPoint("BOTTOM", d, "BOTTOM", 0, 22)
+    d.hints = {}
+    for i = 1, 2 do
+        d.hints[i] = K.Hint(d.hintRow, function(press) W:Press(press) end)
+    end
+    d:Hide()
+    self.dialog = d
+
     -- Right: the picker, or for a self-filling wheel what it does
-    self.picker = K.Picker(f, PANEL_W, menu.Render)
-    self.picker:SetPoint("TOPRIGHT")
-    self.picker:SetHeight(BODY_H)
+    self.picker = K.Picker(f, PANEL_W, menu.Render, {
+        bare = true, rowHeight = 38,
+        -- The rows: slices of the outer ring down its right side, from
+        -- under the picker's header
+        ring = { anchor = f, theta = 0.34 },
+        -- y in the picker (0 at its top, down negative): out by the ring's
+        -- curve at that height
+        arc = function(y) return ArcX(PICKER_TOP + y) end,
+    })
+    self.picker:SetPoint("TOPLEFT", f, "CENTER", 30, PICKER_TOP)
+    self.picker:SetHeight(400)
     self.detail = K.Detail(f, PANEL_W)
-    self.detail:SetPoint("TOPRIGHT")
-    self.detail:SetHeight(BODY_H)
+    self.detail:SetPoint("TOPLEFT", f, "CENTER", ARC + 30, 200)
+    self.detail:SetHeight(300)
 end
 
 function W:Show()
@@ -312,6 +372,9 @@ end
 
 function W:Hide()
     self:FinishRename(nil)
+    -- An open confirmation is a no
+    if self.popup then self:AnswerPopup(false) end
+    if self.dialog then self.dialog:Hide() end
     self.pendingSpec = nil
     self:StopCapture()
     self.picker:Close()
@@ -345,7 +408,7 @@ function W:OpenPicker(wheel)
     self.picker:Open({
         kicker = function() return format("Slot %d · %s", W.slot, MW.POSITIONS[(W.slot - 1) % PER_PAGE + 1]) end,
         title = function() return (W:Current() or {}).label or "" end,
-        lists = wheel.lists, rows = 10, current = wheel.slots[self.slot], chooseVerb = "Choose, next",
+        lists = wheel.lists, rows = PICKER_ROWS, current = wheel.slots[self.slot], chooseVerb = "Choose, next",
         -- Already in this wheel: a diamond
         marked = function(e)
             local current = W:Current()
@@ -358,7 +421,7 @@ function W:OpenPicker(wheel)
             if not MW.renaming then W:Fill(e) end
         end,
         onBack = function()
-            W.zone = "slots"
+            W.zone = "rail"
             menu.Render()
         end,
     })
@@ -405,9 +468,119 @@ end
 -- or L1 / L2 / R1 / R2 held + R3. A box shows what it takes over; Cross
 -- saves it (the wheel's old hotkey goes), Circle cancels.
 ---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+-- Confirmations: the game's own pop-up (Forever drives it with the pad:
+-- Cross accepts, Circle cancels). The panel lets the pad go while it is up.
+---------------------------------------------------------------------------
+function W:Confirm(text, acceptLabel, onAccept, onCancel)
+    if IC.InCombat() then return end
+    self.popupReturn = self.zone ~= "popup" and self.zone or self.popupReturn
+    self.zone = "popup"
+    self.popup = { onAccept = onAccept, onCancel = onCancel }
+    self:ShowDialog(text, {
+        K.H({ "A" }, acceptLabel or "OK", "A"),
+        K.H({ "B" }, "Cancel", "B"),
+    })
+    menu.Render()
+end
+
+-- Cross / Circle on the confirmation
+function W:AnswerPopup(accepted)
+    local popup = self.popup
+    self.popup = nil
+    self.dialog:Hide()
+    self.zone = self.popupReturn or "rail"
+    if popup then
+        if accepted then
+            popup.onAccept()
+        elseif popup.onCancel then
+            popup.onCancel()
+        end
+    end
+    menu.Render()
+end
+
+-- The box itself: the game's own dialog look (its dark background and gold
+-- border), its text, and what Cross / Circle do in it
+function W:ShowDialog(text, hints)
+    local d = self.dialog
+    d.text:SetText(text)
+    local x = 0
+    for i, h in ipairs(d.hints) do
+        local hint = hints and hints[i]
+        h:SetShown(hint ~= nil)
+        if hint then
+            h:Set(hint)
+            h:ClearAllPoints()
+            h:SetPoint("LEFT", d.hintRow, "LEFT", x, 0)
+            x = x + h:GetWidth() + 28
+        end
+    end
+    d.hintRow:SetWidth(math.max(1, x - 28))
+    d:SetHeight(math.max(150, d.text:GetStringHeight() + (hints and 100 or 60)))
+    d:Show()
+end
+
+-- A press, or a hold (0.6 s): Triangle and Square do one thing each way
+local HOLD = 0.6
+
+function W:PressOrHold(key, onPress, onHold)
+    if self.holding then return end
+    local started = GetTime()
+    self.holding = key
+    C_Timer.NewTicker(0.05, function(ticker)
+        local held = IsKeyDown and IsKeyDown(key)
+        if held and GetTime() - started >= HOLD then
+            ticker:Cancel()
+            W.holding = nil
+            onHold()
+        elseif not held then
+            ticker:Cancel()
+            W.holding = nil
+            onPress()
+        end
+    end)
+end
+
+-- Triangle: clears the slot; held, renames the wheel (a built-in one:
+-- back to its defaults, once confirmed)
+function W:Triangle(wheel)
+    self:PressOrHold("PAD4", function() W:Empty() end, function()
+        if wheel.id then
+            W:StartRename(wheel)
+            menu.Render()
+        elseif wheel.reset then
+            W:Confirm("Reset the " .. wheel.label .. " wheel to its defaults?", RESET or "Reset", function()
+                MW.ResetWheel(wheel)
+                W:Select(W.index)
+                menu.Toast(wheel.label .. " reset")
+            end)
+        end
+    end)
+end
+
+-- Square: binds the wheel to a button; held, deletes it (once confirmed)
+function W:Square(wheel)
+    self:PressOrHold("PAD3", function() W:StartCapture(wheel) end, function()
+        if not wheel.id then
+            menu.Toast("Built-in wheels can't be deleted.", true)
+            return
+        end
+        W:Confirm('Delete the wheel "' .. wheel.label .. '"?', "Delete", function()
+            MW.Delete(wheel.id)
+            W.key = nil
+            W:Select(W.index)
+            W.popupReturn = "rail"
+            W.zone = "rail"
+            menu.Toast("Wheel deleted")
+        end)
+    end)
+end
+
 function W:StartCapture(wheel)
     if IC.InCombat() or not wheel or wheel.new then return end
     menu.Disarm()
+    self.returnZone = self.zone
     self.zone, self.pendingSpec = "capture", nil
     local c = self.capture
     c.held = nil
@@ -415,6 +588,8 @@ function W:StartCapture(wheel)
     c:EnableKeyboard(true)
     c:SetPropagateKeyboardInput(false)
     if c.EnableGamePadButton then c:EnableGamePadButton(true) end
+    self:ShowDialog("Bind " .. wheel.label .. "\n\n|cffd8ccb0Press a button, or hold L1 / L2 / R1 / R2 and press R3."
+        .. "\nCircle alone cancels; holding Circle unbinds it.|r")
     self.captureToken = (self.captureToken or 0) + 1
     local token = self.captureToken
     C_Timer.After(10, function()
@@ -423,8 +598,9 @@ function W:StartCapture(wheel)
     menu.Render()
 end
 
--- Recording over: back on the slots, or on to the confirmation
+-- Recording over: back where it started, or on to the confirmation
 function W:StopCapture(nextZone)
+    if self.zone == "capture" then self.dialog:Hide() end
     local c = self.capture
     if c and c:IsShown() then
         c:Hide()
@@ -434,7 +610,7 @@ function W:StopCapture(nextZone)
             if c.EnableGamePadButton then c:EnableGamePadButton(false) end
         end
     end
-    if self.zone == "capture" or self.zone == "confirm" then self.zone = nextZone or "slots" end
+    if self.zone == "capture" or self.zone == "confirm" then self.zone = nextZone or self.returnZone or "rail" end
     menu.Render()
 end
 
@@ -447,7 +623,15 @@ function W:Recorded(held, pressed)
     end
     self.pendingSpec = spec
     -- (on the next frame: the press that ended it is still being handled)
-    C_Timer.After(0, function() W:StopCapture("confirm") end)
+    C_Timer.After(0, function()
+        W:StopCapture()
+        local wheel = W:Current()
+        if not wheel then return end
+        local old = MW.HotkeyText(wheel.key)
+        W:Confirm("Bind " .. wheel.label .. " to " .. MW.SpecText(spec) .. "?\n\n|cffd8ccb0Replaces "
+            .. MW.SpecReplaces(spec, wheel.key) .. "." .. (old and ("\nIts old binding (" .. old .. ") goes.") or "") .. "|r",
+            "Bind", function() W:SaveHotkey() end, function() W.pendingSpec = nil end)
+    end)
 end
 
 function W:SaveHotkey()
@@ -457,54 +641,6 @@ function W:SaveHotkey()
         MW.SetHotkey(wheel.key, spec)
         menu.Toast(wheel.label .. ": " .. MW.SpecText(spec))
     end
-    self.zone = "slots"
-    menu.Render()
-end
-
--- The buttons under the wheel: { label, action, armed }
-function W:Buttons(wheel)
-    if not wheel or wheel.new then return {} end
-    local list = { { "Hotkey", function() W:StartCapture(wheel) end } }
-    if MW.CombosText(wheel.key) or MW.KeysText(wheel.key) then
-        list[#list + 1] = { "No hotkey", function()
-            MW.ClearHotkey(wheel.key)
-            menu.Toast(wheel.label .. ": no hotkey")
-        end }
-    end
-    if wheel.id then
-        list[#list + 1] = { "Rename", function() W:StartRename(wheel) end }
-        local armed = menu.IsArmed("delwheel")
-        list[#list + 1] = { armed and "Press again to delete" or "Delete", function()
-            if menu.IsArmed("delwheel") then
-                menu.Disarm()
-                MW.Delete(wheel.id)
-                W.key = nil
-                W:Select(W.index)
-                W.zone = "rail"
-                menu.Toast("Wheel deleted")
-            else
-                menu.Arm("delwheel")
-            end
-        end, armed = armed }
-    elseif wheel.reset then
-        local armed = menu.IsArmed("resetwheel")
-        list[#list + 1] = { armed and "Press again to reset" or wheel.resetLabel, function()
-            if menu.IsArmed("resetwheel") then
-                menu.Disarm()
-                MW.ResetWheel(wheel)
-                W:Select(W.index)
-                menu.Toast(wheel.label .. " reset")
-            else
-                menu.Arm("resetwheel")
-            end
-        end, armed = armed }
-    end
-    return list
-end
-
-function W:Button(i)
-    local b = self:Buttons(self:Current())[i]
-    if b then b[2]() end
     menu.Render()
 end
 
@@ -556,6 +692,7 @@ end
 function W:StartRename(wheel)
     if not wheel.id or IC.InCombat() then return end
     MW.renaming = wheel.id
+    self.renameReturn = self.zone
     self.suggestion = 0
     self.zone = "rename"
     local edit = self.box.edit
@@ -571,7 +708,7 @@ function W:FinishRename(text)
     MW.renaming = nil
     self.box.edit:ClearFocus()
     self.frame.veil:Hide()
-    if self.zone == "rename" then self.zone = "buttons" end
+    if self.zone == "rename" then self.zone = self.renameReturn or "rail" end
     if text then MW.Rename(id, text) end
     menu.Render()
 end
@@ -629,18 +766,20 @@ local AIM_LENGTH = 0.5
 function W:OnStick(stick, x, y, len)
     if stick ~= "Right" and stick ~= "Camera" then return end
     if MW.renaming or (len or 0) < AIM_LENGTH then return end
-    if self.zone == "capture" or self.zone == "confirm" then return end
+    if self.zone == "capture" or self.zone == "confirm" or self.zone == "popup" then return end
     local wheel = self:Current()
     if not wheel or wheel.new then return end
     local angle = math.atan2(x, y) % (2 * math.pi)
     local p = math.floor((angle + math.pi / 8) / (math.pi / 4)) % PER_PAGE + 1
     local slot = self:PageBase() + p
     if slot > wheel.max then return end
-    local zone = Editable(wheel) and "picker" or "slots"
+    -- Pointing at a slot edits it: the picker takes the focus (a wheel
+    -- that fills itself: just the slot)
+    local zone = Editable(wheel) and "picker" or self.zone
     if slot == self.slot and zone == self.zone then return end
-    if self.zone ~= zone then menu.Disarm() end
+    if zone ~= self.zone then menu.Disarm() end
     self.slot, self.zone = slot, zone
-    if zone == "picker" and self.picker.def then
+    if Editable(wheel) and self.picker.def then
         -- On what the slot holds, if anything
         local current = wheel.slots[slot]
         self.picker.def.current = current
@@ -657,15 +796,23 @@ end
 
 function W:Press(name)
     local wheel = self:Current()
-    if self.zone == "list" then self.zone = "slots" end
+    if self.zone == "list" or self.zone == "slots" then self.zone = "rail" end
     if self.zone == "capture" then
+        return true
+    end
+    if self.zone == "popup" then
+        if name == "A" then
+            self:AnswerPopup(true)
+        elseif name == "B" then
+            self:AnswerPopup(false)
+        end
         return true
     end
     if self.zone == "confirm" then
         if name == "A" then
             self:SaveHotkey()
         elseif name == "B" then
-            self.pendingSpec, self.zone = nil, "slots"
+            self.pendingSpec, self.zone = nil, self.returnZone or "rail"
             menu.Render()
         end
         return true
@@ -680,81 +827,47 @@ function W:Press(name)
         end
         return true
     end
+    -- Left / right move between the wheels (left) and the picker or the
+    -- buttons (right); up / down move inside them. The wheel's slot follows
+    -- the right stick only (W:OnStick); L2 / R2 turn its page from the list
+    -- or the buttons, and switch the picker's lists there.
+    if name == "LB" or name == "RB" then return false end
+    if wheel and not wheel.new then
+        if name == "Y" then
+            self:Triangle(wheel)
+            return true
+        elseif name == "X" then
+            self:Square(wheel)
+            return true
+        end
+    end
     if self.zone == "rail" then
         if name == "UP" or name == "DOWN" then
             self:Select(self.index + (name == "UP" and -1 or 1))
         elseif name == "A" or name == "RIGHT" then
             if wheel and wheel.new then
                 self:CreateWheel()
-            elseif wheel then
-                self.zone = "slots"
+            elseif wheel and Editable(wheel) then
+                self.zone = "picker"
             end
+        elseif name == "LT" or name == "RT" then
+            self:StepPage(name == "LT" and -1 or 1)
         else
-            -- L1 / R1 switch tabs, Circle closes
+            -- Circle closes the panel
             return false
         end
         menu.Render()
         return true
     end
     if self.zone == "picker" then
-        -- L1 / R1 stay the panel's tabs; Triangle clears the slot aimed at
-        if name == "LB" or name == "RB" then return false end
-        if name == "Y" then
-            self:Empty()
-            return true
-        end
-        self.picker:Press(name)
-        menu.Render()
-        return true
-    end
-    if self.zone == "buttons" then
-        local count = #self:Buttons(wheel)
-        if name == "LEFT" then
-            if self.btn == 1 then self.zone = "rail" else self.btn = self.btn - 1 end
-        elseif name == "RIGHT" then
-            self.btn = math.min(count, self.btn + 1)
-        elseif name == "UP" then
-            self.zone, self.slot = "slots", math.min(wheel.max, self:PageBase() + 5)
-        elseif name == "A" then
-            self:Button(self.btn)
-            return true
-        elseif name == "B" then
+        if name == "LEFT" or name == "B" then
             self.zone = "rail"
-        elseif name == "LT" or name == "RT" then
-            self:StepPage(name == "LT" and -1 or 1)
-        elseif name == "LB" or name == "RB" then
-            return false
+        elseif name ~= "RIGHT" then
+            self.picker:Press(name)
         end
         menu.Render()
         return true
     end
-    -- On the slots (L1 / R1 stay the panel's tabs, L2 / R2 turn the page)
-    if name == "LB" or name == "RB" then
-        return false
-    elseif name == "LT" or name == "RT" then
-        self:StepPage(name == "LT" and -1 or 1)
-    elseif DIRS[name] then
-        local to = self:Nearest(name)
-        if to and to <= wheel.max then
-            self.slot = to
-        elseif name == "DOWN" then
-            self.zone, self.btn = "buttons", 1
-        elseif name == "LEFT" then
-            self.zone = "rail"
-        end
-    elseif name == "A" then
-        self:Aim()
-        return true
-    elseif name == "Y" then
-        self:Empty()
-        return true
-    elseif name == "X" then
-        self:StartCapture(wheel)
-        return true
-    elseif name == "B" then
-        self.zone = "rail"
-    end
-    menu.Render()
     return true
 end
 
@@ -764,29 +877,37 @@ function W:Help()
     if self.zone == "rename" then
         return { H({ "DPAD_LR" }, "Name", "RIGHT"), H({ "A" }, "Confirm", "A"), H({ "B" }, "Cancel", "B") }
     end
-    if self.zone == "capture" then return { H({ "B" }, "Cancel", "B") } end
+    if self.zone == "popup" then return { H({ "A" }, "Confirm", "A"), H({ "B" }, "Cancel", "B") } end
+    if self.zone == "capture" then return { H({ "B" }, "Cancel (hold: unbind)", "B") } end
     if self.zone == "confirm" then return { H({ "A" }, "Save", "A"), H({ "B" }, "Cancel", "B") } end
-    if self.zone == "picker" then
-        local hints = self.picker:Hints()
-        table.insert(hints, #hints, H({ "Y" }, "Clear", "Y"))
-        return hints
-    end
+    -- Only what does something here: a wheel that fills itself has no slot
+    -- to edit, "New wheel" nothing to page, bind or clear
+    local hints = {}
+    local isNew = not wheel or wheel.new
     if self.zone == "rail" then
-        return { H({ "DPAD" }, "Wheel"), H({ "A" }, wheel and wheel.new and "Create" or "Edit", "A"),
-            H({ "LB", "RB" }, "Tab", "RB"), H({ "B" }, "Close", "B") }
-    end
-    if self.zone == "buttons" then
-        return { H({ "DPAD_LR" }, "Move", "RIGHT"), H({ "A" }, "Select", "A"), H({ "B" }, "Back", "B") }
-    end
-    local hints = { H({ "RS" }, "Point"), H({ "DPAD" }, "Slot") }
-    if Pages(wheel) > 1 then hints[#hints + 1] = H({ "LT", "RT" }, "Page", "RT") end
-    if Editable(wheel) then
+        hints[#hints + 1] = H({ "DPAD" }, "Pick wheel")
+        if isNew then
+            hints[#hints + 1] = H({ "A" }, "Create", "A")
+        elseif Editable(wheel) then
+            hints[#hints + 1] = H({ "RS" }, "Edit slot")
+            hints[#hints + 1] = H({ "A" }, "Edit", "A")
+        end
+        if not isNew and Pages(wheel) > 1 then hints[#hints + 1] = H({ "LT", "RT" }, "Page", "RT") end
+    else
+        hints[#hints + 1] = H({ "RS" }, "Slot")
+        hints[#hints + 1] = H({ "DPAD" }, "Move")
         hints[#hints + 1] = H({ "A" }, "Choose", "A")
-        hints[#hints + 1] = H({ "Y" }, "Clear", "Y")
+        hints[#hints + 1] = H({ "LT", "RT" }, "List", "RT")
     end
-    hints[#hints + 1] = H({ "X" }, "Hotkey", "X")
+    if wheel and not wheel.new then
+        if Editable(wheel) then
+            hints[#hints + 1] = H({ "Y" }, wheel.id and "Clear (hold: rename)"
+                or (wheel.reset and "Clear (hold: reset)" or "Clear"), "Y")
+        end
+        hints[#hints + 1] = H({ "X" }, wheel.id and "Bind (hold: delete)" or "Bind", "X")
+    end
     hints[#hints + 1] = H({ "LB", "RB" }, "Tab", "RB")
-    hints[#hints + 1] = H({ "B" }, "Back", "B")
+    hints[#hints + 1] = H({ "B" }, self.zone == "rail" and "Close" or "Wheels", "B")
     return hints
 end
 
@@ -801,19 +922,40 @@ end
 function W:Render()
     local f = self.frame
     if not f then return end
-    if self.zone == "list" then self.zone = "slots" end
+    if self.zone == "list" or self.zone == "slots" then self.zone = "rail" end
     local wheel, entries = self:Current()
 
-    -- The rail
+    -- The wheels down the ring's left side, centred on it, each out by the
+    -- curve at its height
+    -- Only LIST_SHOWN at once, scrolled to keep the selected one in view
+    local n = #entries
+    local shown = math.min(n, LIST_SHOWN)
+    self.railTop = math.max(1, math.min(self.railTop or 1, n - shown + 1))
+    if self.index < self.railTop then self.railTop = self.index end
+    if self.index > self.railTop + shown - 1 then self.railTop = self.index - shown + 1 end
+    -- The arrows just past the first and last slices, turned with them
+    local function thetaAt(slot)
+        return math.pi - ((shown + 1) / 2 - slot) * K.SEG.STEP
+    end
+    K.RingArrow(self.railUp, f, thetaAt(0.25), true)
+    self.railUp:SetShown(self.railTop > 1)
+    K.RingArrow(self.railDown, f, thetaAt(shown + 0.75), false)
+    self.railDown:SetShown(self.railTop + shown - 1 < n)
     for i, e in ipairs(self.railEntries) do
         local entry = entries[i]
-        e:SetShown(entry ~= nil)
-        if entry then
+        local slot = i - self.railTop + 1
+        e:SetShown(entry ~= nil and slot >= 1 and slot <= shown)
+        if entry and slot >= 1 and slot <= shown then
+            -- Round the ring's left side, centred on it, top first
+            local theta = math.pi - ((shown + 1) / 2 - slot) * K.SEG.STEP
+            e.seg:Place(f, theta)
+            -- The name along its slice
+            K.Rotate(e.label, K.ReadingAngle(theta))
             local active = i == self.index
             e.label:SetText(entry.label)
             e.label:SetTextColor(unpack(active and KC.focus or (entry.new and KC.dimGold or KC.rail)))
-            e.diamond:SetShown(active)
-            e.sel:SetShown(active and self.zone == "rail")
+            e.seg:SetFocus(active and self.zone == "rail")
+            e.seg.fill:SetAlpha(active and 1 or 0.85)
         end
     end
 
@@ -825,20 +967,84 @@ function W:Render()
     local base = self:PageBase()
     f.title:SetText(isNew and "New wheel" or wheel.label)
     local pages = isNew and 1 or Pages(wheel)
-    local kicker = isNew and "Cross makes an empty wheel of your own"
-        or (wheel.builtin and "Built-in wheel" or "Your wheel")
-    if pages > 1 then kicker = kicker .. format(" · page %d / %d (L2 / R2)", base / PER_PAGE + 1, pages) end
-    f.kicker:SetText(kicker)
+    -- Under the count: its page, and what opens it
+    local lines = {}
+    if isNew then lines[1] = "Cross makes one" end
+    if pages > 1 then lines[#lines + 1] = format("Page %d / %d", base / PER_PAGE + 1, pages) end
+    if not isNew then
+        local hotkey = MW.HotkeyText(wheel.key)
+        lines[#lines + 1] = hotkey and ("|cff9fd8e2" .. hotkey .. "|r") or "Not bound"
+    end
+    f.kicker:SetText(table.concat(lines, "\n"))
+    -- The hub shows only what the wheel is bound to
+    f.title:Hide()
+    f.kicker:Hide()
+    f.count:Hide()
+    -- The page dots (the one shown lit), under the binding
+    local pageNow = base / PER_PAGE + 1
+    for i, d in ipairs(f.pageDots) do
+        d:SetShown(pages > 1 and i <= pages)
+        if pages > 1 and i <= pages then
+            d:ClearAllPoints()
+            d:SetPoint("CENTER", d:GetParent(), "TOPLEFT", CX + (i - (pages + 1) / 2) * 15, -(CY + 30))
+            local name = i == pageNow and "gamepad-radialgamemenu-cursorbg-neutral" or "gamepad-radialgamemenu-cursorbg-inactive"
+            if C_Texture.GetAtlasInfo(name) then
+                d:SetAtlas(name)
+            else
+                local v = i == pageNow and 1 or 0.4
+                d:SetColorTexture(v, v, v, 1)
+            end
+        end
+    end
+    local glyphs = not isNew and MW.BindGlyphs(wheel.key)
+    f.bindGlyphs:SetShown(glyphs and true or false)
+    f.bindNone:SetShown(not isNew and not glyphs)
+    if glyphs then
+        local w = f.bindGlyphs:Set(glyphs)
+        f.bindGlyphs:ClearAllPoints()
+        f.bindGlyphs:SetPoint("CENTER", f.bindGlyphs:GetParent(), "TOPLEFT", CX, -CY)
+        f.bindGlyphs:SetWidth(math.max(1, w))
+    end
 
-    local onSlots = self.zone == "slots"
+    -- The slot the right stick picked always shows (the picker fills it)
+    local onSlots = true
     for p, s in ipairs(f.slots) do
         local i = base + p
         local action = slots[i]
-        s:SetShown(i <= max)
-        s:SetLook({ icon = action and (MW.ActionIcon(action) or 134400), discColor = action and KC.iconBg or nil,
-            plus = not action and Editable(wheel), glow = onSlots and i == self.slot,
-            dash = self.zone == "picker" and i == self.slot })
-        s:SetAlpha(isNew and 0.35 or 1)
+        local shown = i <= max
+        s:SetShown(shown)
+        -- (an empty slot: just its "+" and its place, no grey wedge)
+        s.empty:SetShown(false)
+        s.label:SetShown(shown)
+        if shown then
+            local name, icon = action and MW.ActionName(action), action and MW.ActionIcon(action)
+            s.icon:SetShown(action ~= nil)
+            if action then K.SetIcon(s.icon, icon or 134400) end
+            s.plus:SetShown(not action and Editable(wheel) or false)
+            local count = action and action:match("^item:(%d+)$")
+            local getCount = (C_Item and C_Item.GetItemCount) or GetItemCount
+            s.count:SetText(count and getCount and getCount(tonumber(count)) or "")
+            s.label:SetText(name or MW.POSITIONS[p])
+            local focus = (onSlots or self.zone == "picker") and i == self.slot
+            s.label:SetTextColor(unpack(focus and KC.white or (action and KC.title or KC.grey)))
+            s:SetAlpha(isNew and 0.35 or 1)
+            s.empty:SetAlpha(isNew and 0.35 or 1)
+        end
+    end
+    -- The highlight on the slot with the focus (cyan: the picker fills it)
+    local showHighlight = not isNew and self.slot <= max
+    f.highlight:SetShown(showHighlight)
+    if showHighlight then
+        local a = ((self.slot - 1) % PER_PAGE) * math.pi / 4
+        f.highlight:ClearAllPoints()
+        f.highlight:SetPoint("CENTER", f.highlight:GetParent(), "TOPLEFT",
+            CX + WEDGE_RADIUS * math.sin(a), -(CY - WEDGE_RADIUS * math.cos(a)))
+        f.highlight:SetRotation(math.pi - a)
+        if self.zone == "picker" then
+            f.highlight:SetVertexColor(KC.info[1], KC.info[2], KC.info[3])
+        else
+            f.highlight:SetVertexColor(1, 1, 1)
+        end
     end
     local focused = slots[self.slot]
     local showSlot = onSlots or self.zone == "picker"
@@ -846,33 +1052,6 @@ function W:Render()
         or MW.POSITIONS[(self.slot - 1) % PER_PAGE + 1]) or "")
     f.hubName:SetTextColor(unpack(focused and KC.cream or KC.grey))
     f.count:SetText(isNew and "" or format("%d / %d", Count(wheel), max))
-
-    -- What opens it
-    f.bind:SetShown(not isNew)
-    if not isNew then
-        local hotkey = MW.HotkeyText(wheel.key)
-        local chip = f.bind.chip
-        chip.text:SetText(hotkey or "None yet")
-        chip.text:SetTextColor(unpack(hotkey and KC.info or KC.eventOff))
-        chip:SetWidth(chip.text:GetStringWidth() + 16)
-        f.bind:SetWidth(f.bind.label:GetStringWidth() + 8 + chip:GetWidth())
-    end
-
-    -- The buttons
-    local buttons = self:Buttons(wheel)
-    if self.btn > #buttons then self.btn = math.max(1, #buttons) end
-    local shown, flexes = {}, {}
-    for i, b in ipairs(f.buttons) do
-        local def = buttons[i]
-        b:SetShown(def ~= nil)
-        if def then
-            b.label:SetText(def[1])
-            b:SetState({ focus = self.zone == "buttons" and self.btn == i, armed = def.armed })
-            shown[#shown + 1] = b
-            flexes[#flexes + 1] = def.armed and 1.8 or 1
-        end
-    end
-    if #shown > 0 then K.LayoutRow(f.buttonRow, shown, flexes, 8) end
 
     -- Right: the picker (faded unless it has the focus), or the detail
     if Editable(wheel) then
@@ -889,27 +1068,14 @@ function W:Render()
                 .. " spell, an item, a macro or an emote for each slot. Up to " .. MW.MAX .. " wheels." })
         else
             self.detail:Set({ title = wheel.label, tag = "Fills itself", tagColor = KC.slot, body = wheel.info,
-                extra = "Hotkey: " .. (MW.HotkeyText(wheel.key) or "none") .. ". Square records a new one: any controller button, or"
+                extra = "Bound to: " .. (MW.HotkeyText(wheel.key) or "nothing") .. ". Square binds it: any controller button, or"
                     .. " L1 / L2 / R1 / R2 + R3." })
         end
     end
     -- The boxes over the wheel: naming, recording, confirming
-    local hotkeyZone = self.zone == "capture" or self.zone == "confirm"
-    f.veil:SetShown(self.zone == "rename" or hotkeyZone)
+    f.veil:SetShown(self.zone == "rename")
     self.box:SetShown(self.zone == "rename")
-    local hk = self.hotkeyBox
-    hk:SetShown(hotkeyZone)
-    if self.zone == "capture" then
-        hk.kicker:SetText("HOTKEY · " .. (wheel and wheel.label or ""):upper())
-        hk.title:SetText("Press a button")
-        hk.body:SetText("Or hold L1 / L2 / R1 / R2 and press R3. Circle alone (or 10 seconds) cancels.")
-    elseif self.zone == "confirm" and self.pendingSpec and wheel then
-        hk.kicker:SetText("HOTKEY · " .. wheel.label:upper())
-        hk.title:SetText("Open " .. wheel.label .. " with " .. MW.SpecText(self.pendingSpec) .. "?")
-        local old = MW.HotkeyText(wheel.key)
-        hk.body:SetText("Replaces " .. MW.SpecReplaces(self.pendingSpec, wheel.key) .. "."
-            .. (old and ("\nIts old hotkey (" .. old .. ") goes.") or "") .. "\nCross saves, Circle cancels.")
-    end
+    self.hotkeyBox:Hide()
 end
 
 ---------------------------------------------------------------------------
