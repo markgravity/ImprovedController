@@ -501,6 +501,10 @@ function K.Slot(parent, size, iconSize)
     s.icon = K.RoundIcon(s, iconSize, "ARTWORK")
     s.icon:SetDrawLayer("ARTWORK", 1)
     s.icon:SetPoint("CENTER")
+    s.hatch = s:CreateTexture(nil, "ARTWORK", nil, 2)
+    s.hatch:SetTexture(TEX .. "ck_hatch")
+    s.hatch:SetSize(iconSize, iconSize)
+    s.hatch:SetPoint("CENTER")
     s.plus = K.Text(s, size >= 52 and 20 or 18, C.dimGold, "OVERLAY")
     s.plus:SetPoint("CENTER", 0, 1)
     s.plus:SetJustifyH("CENTER")
@@ -515,7 +519,7 @@ function K.Slot(parent, size, iconSize)
     s.dash:SetVertexColor(C.focus[1], C.focus[2], C.focus[3])
     s.dash:SetSize(size + 10, size + 10)
     s.dash:SetPoint("CENTER")
-    -- look = { icon, discColor, plus, glow, dash }
+    -- look = { icon, discColor, plus, hatch (off), glow, dash }
     function s:SetLook(look)
         if look.icon then K.SetIcon(self.icon, look.icon) end
         self.icon:SetShown(look.icon ~= nil)
@@ -523,6 +527,8 @@ function K.Slot(parent, size, iconSize)
         self.disc:SetShown(dc ~= nil)
         if dc then self.disc:SetVertexColor(dc[1], dc[2], dc[3]) end
         self.plus:SetShown(look.plus and true or false)
+        self.hatch:SetShown(look.hatch and true or false)
+        self.icon:SetDesaturated(look.hatch and true or false)
         self.glow:SetShown(look.glow and true or false)
         self.dash:SetShown(look.dash and true or false)
     end

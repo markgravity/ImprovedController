@@ -14,8 +14,9 @@ local KC = K.C
 local menu = {}
 IC.Menu = menu
 
-local W, H = 820, 580
-local RAIL_W, LIST_W, DETAIL_W, GAP, BODY_H = 150, 380, 230, 12, 424
+local W, H = 1000, 580
+local RAIL_W, LIST_W, DETAIL_W, GAP, BODY_H = 150, 490, 300, 12, 424
+local BODY_W = W - 36 -- 964: rail, list and detail with their gaps
 local BUDGET = 420
 local HEIGHT = { header = 32, check = 36, choice = 36, slider = 36, stat = 36, button = 42 }
 local FOCUSABLE = { check = true, choice = true, slider = true, button = true }
@@ -71,61 +72,8 @@ menu.TABS = {
     },
     {
         key = "touchpad", label = "Touchpad",
-        sections = {
-            {
-                key = "click", label = "Touchpad Click",
-                tip = "Click the PS5 touchpad to open a window; where your finger is on the pad picks which.",
-                rows = function(b)
-                    local touch = IC.Touch
-                    local settings = touch.GetSettings()
-                    b.header("Touchpad Click")
-                    b.check({
-                        id = "touchOn", label = "Touchpad click",
-                        get = function() return settings.enabled ~= false end,
-                        set = function(on)
-                            settings.enabled = on
-                            touch.Apply()
-                        end,
-                        tip = "Clicking the touchpad opens a window, picked by where your finger is (top, bottom,"
-                            .. " left, right, centre). Works in combat.",
-                    })
-                    b.slider({
-                        id = "touchCentre", label = "Centre size", min = 0.1, max = 0.8, stepSize = 0.05,
-                        get = function() return settings.centre end,
-                        set = function(v) touch.SetCentre(v) end,
-                        fmt = function(v) return math.floor(v * 100 + 0.5) .. "%" end,
-                        tip = "How big the centre region is. Clicks outside it count as whichever side the"
-                            .. " finger is nearest.",
-                    })
-                    b.header("Regions")
-                    for _, region in ipairs(touch.REGIONS) do
-                        b.choice({
-                            id = "region" .. region, label = touch.REGION_LABELS[region],
-                            text = function() return touch.ActionLabel(settings.regions[region]) end,
-                            step = function(delta) touch.CycleAction(region, delta) end,
-                            tip = "What a click with the finger at the " .. touch.REGION_LABELS[region]:lower()
-                                .. " opens. Only windows this client has a button for are offered.",
-                        })
-                    end
-                end,
-            },
-            {
-                key = "debug", label = "Troubleshooting",
-                tip = "Checks for when a touchpad click doesn't do what you expect.",
-                rows = function(b)
-                    local settings = IC.Touch.GetSettings()
-                    b.header("Troubleshooting")
-                    b.check({
-                        id = "touchDebug", label = "Print clicks to chat",
-                        get = function() return settings.debug end,
-                        set = function(on) settings.debug = on end,
-                        tip = "Each touchpad click prints its region and what it opened to chat.",
-                    })
-                    b.info("/ic padtest prints every gamepad button the game passes on, for 15 seconds."
-                        .. " /ic touchprobe records what the controller reports.")
-                end,
-            },
-        },
+        -- TouchEditor.lua's page: the pad, its settings and the picker
+        sections = {},
     },
 }
 
@@ -533,9 +481,16 @@ function Page:Render()
         self.moreUp:Hide()
         self.moreDown:Hide()
         sec.view:Render(self, self.zone == "list")
-        self.detail:Set(self.zone == "rail" and { title = sec.label, body = resolve(sec.tip) } or sec.view:Detail(self))
+        -- A view may bring its own right-hand panel (the touchpad's picker)
+        if sec.view.ownsSide then
+            self.detail:Hide()
+        else
+            self.detail:Show()
+            self.detail:Set(self.zone == "rail" and { title = sec.label, body = resolve(sec.tip) } or sec.view:Detail(self))
+        end
         return
     end
+    self.detail:Show()
     -- The list, windowed on the focus (the section title above it kept)
     self:Rebuild()
     local rows = self.rows
@@ -755,6 +710,18 @@ function Page:Help()
     return hints
 end
 
+-- A touchpad click while this page is up: its section's view, if it wants it
+function Page:OnTouch()
+    for i, sec in ipairs(self.def.sections) do
+        if sec.view and sec.view.OnTouch then
+            if i ~= self.section then self:SetSection(i) end
+            self.zone = "list"
+            sec.view:OnTouch(self)
+            return
+        end
+    end
+end
+
 menu.NewPage = NewPage
 
 -- A tab added by another file (WheelEditor.lua), placed before the tab `before`
@@ -875,10 +842,10 @@ local function Build()
     f.rbGlyph = K.Glyph(f, 34)
     f.rbGlyph:SetPoint("TOPLEFT", x + 40 + count * 132, -47)
 
-    -- Body: 784 x 424 inside its margins
+    -- Body: 964 x 424 inside its margins
     f.body = K.NewFrame("Frame", nil, f)
     f.body:SetPoint("TOPLEFT", 18, -98)
-    f.body:SetSize(784, 424)
+    f.body:SetSize(BODY_W, BODY_H)
     for _, def in ipairs(menu.TABS) do
         -- A tab may bring its own page (the Wheels tab: the rail or the editor)
         local page = def.page and def.page(NewPage(def)) or NewPage(def)
@@ -977,12 +944,19 @@ local NAV = {
     PADDUP = "UP", PADDDOWN = "DOWN", PADDLEFT = "LEFT", PADDRIGHT = "RIGHT",
     PAD1 = "A", PAD2 = "B", PAD3 = "X", PAD4 = "Y",
     PADLSHOULDER = "LB", PADRSHOULDER = "RB", PADLTRIGGER = "LT", PADRTRIGGER = "RT", ESCAPE = "B",
+    PADBACK = "TOUCH",
 }
 -- Held triggers may add modifiers to the keys
 local PREFIXES = { "", "SHIFT-", "CTRL-", "ALT-", "CTRL-SHIFT-", "ALT-SHIFT-", "ALT-CTRL-", "ALT-CTRL-SHIFT-" }
 local REPEAT = { UP = true, DOWN = true, LEFT = true, RIGHT = true }
 
 function menu.Press(name)
+    -- A touchpad click: the page may read where the finger is
+    if name == "TOUCH" then
+        local page = CurrentPage()
+        if page and page.OnTouch then page:OnTouch() end
+        return
+    end
     -- A destructive button armed: Cross does it, Circle cancels, a move lets it go
     if menu.armed then
         if name == "B" then

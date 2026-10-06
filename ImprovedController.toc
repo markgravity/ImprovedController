@@ -16,4 +16,5 @@ Probe.lua
 ConfigKit.lua
 Menu.lua
 WheelEditor.lua
+TouchEditor.lua
 Options.lua

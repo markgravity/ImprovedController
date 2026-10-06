@@ -1,5 +1,6 @@
--- DualSense touchpad clicks. Clicking the pad opens a window, picked by where
--- the finger is: top, bottom, left, right or the centre.
+-- DualSense touchpad clicks. Clicking the pad runs the action of the region
+-- the finger is on (top, bottom, left, right, the four corners or the
+-- centre): an interface window, a spell, an item or a macro.
 --
 -- Why a click and not a swipe: on Forever, opening a game window from addon
 -- code taints it (its gamepad action bar then trips over a protected call,
@@ -20,33 +21,40 @@ local DEFAULT_CENTRE = 0.35
 local KEY = "PADBACK"     -- what the game calls a touchpad click
 local MODIFIERS = { "", "SHIFT-", "CTRL-", "ALT-", "CTRL-SHIFT-", "ALT-SHIFT-", "CTRL-ALT-", "CTRL-ALT-SHIFT-" }
 
-touch.REGIONS = { "up", "down", "left", "right", "centre" }
-touch.REGION_LABELS = { up = "Top", down = "Bottom", left = "Left", right = "Right", centre = "Centre" }
+touch.REGIONS = { "up", "down", "left", "right", "upleft", "upright", "downleft", "downright", "centre" }
+touch.REGION_LABELS = {
+    up = "Top", down = "Bottom", left = "Left", right = "Right", centre = "Centre",
+    upleft = "Top left", upright = "Top right", downleft = "Bottom left", downright = "Bottom right",
+}
+local DEFAULT_CORNER = 0.5
 
 -- What a region can open: the game's own button for it (the first that
 -- exists in this client). Only actions with a button here are offered.
 local ACTIONS = {
-    { key = "map", label = "World Map", buttons = { "WorldMapMicroButton", "MiniMapWorldMapButton" } },
-    { key = "questlog", label = "Quest Log", buttons = { "QuestLogMicroButton" } },
-    { key = "character", label = "Character", buttons = { "CharacterMicroButton" } },
-    { key = "bags", label = "Bags", buttons = { "MainMenuBarBackpackButton", "BagsBarBackpackButton" } },
-    { key = "spellbook", label = "Spellbook", buttons = { "SpellbookMicroButton", "PlayerSpellsMicroButton" } },
-    { key = "talents", label = "Talents", buttons = { "TalentMicroButton", "PlayerSpellsMicroButton" } },
-    { key = "social", label = "Social", buttons = { "SocialsMicroButton", "FriendsMicroButton" } },
-    { key = "guild", label = "Guild & Communities", buttons = { "GuildMicroButton", "CommunitiesMicroButton" } },
-    { key = "groupfinder", label = "Group Finder", buttons = { "LFGMicroButton", "LFDMicroButton", "GroupFinderMicroButton" } },
-    { key = "pvp", label = "PvP", buttons = { "PVPMicroButton", "HonorMicroButton" } },
-    { key = "collections", label = "Collections", buttons = { "CollectionsMicroButton" } },
-    { key = "achievements", label = "Achievements", buttons = { "AchievementMicroButton" } },
-    { key = "gamemenu", label = "Game Menu", buttons = { "MainMenuMicroButton" } },
-    { key = "icmenu", label = "Improved Controller menu", buttons = { "ImprovedControllerMenuToggle" } },
+    { key = "map", icon = "Interface\\Icons\\INV_Misc_Map_01", label = "World Map", buttons = { "WorldMapMicroButton", "MiniMapWorldMapButton" } },
+    { key = "questlog", icon = "Interface\\Icons\\INV_Misc_Book_08", label = "Quest Log", buttons = { "QuestLogMicroButton" } },
+    { key = "character", icon = "Interface\\Icons\\INV_Chest_Cloth_17", label = "Character", buttons = { "CharacterMicroButton" } },
+    { key = "bags", icon = "Interface\\Icons\\INV_Misc_Bag_08", label = "Bags", buttons = { "MainMenuBarBackpackButton", "BagsBarBackpackButton" } },
+    { key = "spellbook", icon = "Interface\\Icons\\INV_Misc_Book_09", label = "Spellbook", buttons = { "SpellbookMicroButton", "PlayerSpellsMicroButton" } },
+    { key = "talents", icon = "Interface\\Icons\\Ability_Marksmanship", label = "Talents", buttons = { "TalentMicroButton", "PlayerSpellsMicroButton" } },
+    { key = "social", icon = "Interface\\Icons\\INV_Misc_GroupLooking", label = "Social", buttons = { "SocialsMicroButton", "FriendsMicroButton" } },
+    { key = "guild", icon = "Interface\\Icons\\INV_BannerPVP_02", label = "Guild & Communities", buttons = { "GuildMicroButton", "CommunitiesMicroButton" } },
+    { key = "groupfinder", icon = "Interface\\Icons\\INV_Misc_Eye_01", label = "Group Finder", buttons = { "LFGMicroButton", "LFDMicroButton", "GroupFinderMicroButton" } },
+    { key = "pvp", icon = "Interface\\Icons\\Ability_DualWield", label = "PvP", buttons = { "PVPMicroButton", "HonorMicroButton" } },
+    { key = "collections", icon = "Interface\\Icons\\Ability_Mount_RidingHorse", label = "Collections", buttons = { "CollectionsMicroButton" } },
+    { key = "achievements", icon = "Interface\\Icons\\INV_Misc_Note_01", label = "Achievements", buttons = { "AchievementMicroButton" } },
+    { key = "gamemenu", icon = "Interface\\Icons\\INV_Misc_Gear_01", label = "Game Menu", buttons = { "MainMenuMicroButton" } },
+    { key = "icmenu", icon = "Interface\\Icons\\INV_Misc_Gear_02", label = "Improved Controller menu", buttons = { "ImprovedControllerMenuToggle" } },
 }
 local ACTION_BY_KEY = {}
 for _, action in ipairs(ACTIONS) do
     ACTION_BY_KEY[action.key] = action
 end
 
-local DEFAULTS = { up = "map", down = "character", left = "questlog", right = "bags", centre = "none" }
+local DEFAULTS = {
+    up = "map", down = "character", left = "questlog", right = "bags", centre = "none",
+    upleft = "none", upright = "none", downleft = "none", downright = "none",
+}
 
 function touch.GetSettings()
     local db = IC.db
@@ -59,10 +67,15 @@ function touch.GetSettings()
         end
     end
     settings.centre = settings.centre or DEFAULT_CENTRE
+    settings.corner = settings.corner or DEFAULT_CORNER
     return settings
 end
 
 -- The button an action clicks in this client, or nil.
+function touch.IsBound(key)
+    return key ~= nil and key ~= "none"
+end
+
 local function ActionButton(key)
     local action = ACTION_BY_KEY[key]
     for _, name in ipairs(action and action.buttons or {}) do
@@ -84,7 +97,108 @@ function touch.GetActions()
     return list
 end
 
+-- A region holds an interface window ("map"...), or "spell:<id>",
+-- "item:<id>", "macro:<name>" (IC.ActionInfo), or "none"
+local function IsGameAction(key)
+    return type(key) == "string" and key:find(":", 1, true) ~= nil
+end
+
+function touch.ActionIcon(key)
+    if IsGameAction(key) then
+        return select(2, IC.ActionInfo(key))
+    end
+    local action = ACTION_BY_KEY[key]
+    return action and action.icon
+end
+
+-- What the secure click runs for a region's action, or nil
+function touch.Macro(key)
+    if IsGameAction(key) then
+        local kind, value = key:match("^(%a+):(.+)$")
+        if kind == "spell" then
+            local name = IC.ActionInfo(key)
+            return name and ("/cast " .. name)
+        elseif kind == "item" then
+            return "/use item:" .. value
+        elseif kind == "macro" then
+            local _, _, body = GetMacroInfo(value)
+            return body
+        end
+        return nil
+    end
+    local name = ActionButton(key)
+    return name and ("/click " .. name)
+end
+
+-- The interface windows a region can open, for the picker
+function touch.InterfaceEntries()
+    local entries = {}
+    for _, key in ipairs(touch.GetActions()) do
+        if key ~= "none" then
+            entries[#entries + 1] = { action = key, name = touch.ActionLabel(key), icon = touch.ActionIcon(key) }
+        end
+    end
+    return entries
+end
+
+-- The region a finger position falls in (the secure click's own test): by
+-- the centre size and corner reach, and a region turned off gives its area
+-- to its neighbours. nil: every candidate is off.
+function touch.RegionAt(x, y)
+    local settings = touch.GetSettings()
+    local ax, ay = math.abs(x), math.abs(y)
+    local h, v = x > 0 and "right" or "left", y > 0 and "up" or "down"
+    local corner = v .. h
+    local dom, other = h, v
+    if ay >= ax then dom, other = v, h end
+    local order
+    if ax < settings.centre and ay < settings.centre then
+        order = { "centre", dom, other, corner }
+    elseif ax >= settings.corner and ay >= settings.corner then
+        order = { corner, dom, other, "centre" }
+    else
+        local far = dom == h and ((v == "up" and "down" or "up") .. h) or (v .. (h == "right" and "left" or "right"))
+        order = { dom, corner, "centre", far, other }
+    end
+    for _, name in ipairs(order) do
+        if not touch.IsOff(name) then return name end
+    end
+end
+
+-- Where the finger is on the pad now, or nil
+function touch.FingerPosition()
+    if not (C_GamePad and C_GamePad.GetDeviceMappedState) then return nil end
+    local state = C_GamePad.GetDeviceMappedState(C_GamePad.GetActiveDeviceID())
+    local stick = state and state.sticks and state.sticks[PAD_STICK]
+    if stick then return stick.x or 0, stick.y or 0 end
+end
+
+-- A slot turned off: a corner's area becomes its sides', another does
+-- nothing when clicked
+touch.CORNERS = { upleft = true, upright = true, downleft = true, downright = true }
+
+function touch.IsOff(region)
+    local off = touch.GetSettings().off
+    return off ~= nil and off[region] == true
+end
+
+function touch.ToggleOff(region)
+    local settings = touch.GetSettings()
+    settings.off = settings.off or {}
+    settings.off[region] = not settings.off[region] or nil
+    touch.Apply()
+    return settings.off[region] == true
+end
+
+function touch.SetAction(region, key)
+    touch.GetSettings().regions[region] = key or "none"
+    touch.Apply()
+end
+
 function touch.ActionLabel(key)
+    if IsGameAction(key) then
+        return IC.ActionInfo(key) or key
+    end
     local action = ACTION_BY_KEY[key]
     if not action then
         return "Nothing"
@@ -132,13 +246,31 @@ SecureHandlerWrapScript(click, "OnClick", click, [[
     local x, y = stick and stick.x or 0, stick and stick.y or 0
     local ax, ay = x < 0 and -x or x, y < 0 and -y or y
     local centre = self:GetAttribute("ic-centre")
-    local region
+    -- The region under the finger; one turned off gives its area to its
+    -- neighbours (a side to its corners, a corner to its sides, the centre
+    -- to the nearest side): the same as touch.RegionAt
+    local h, v = x > 0 and "right" or "left", y > 0 and "up" or "down"
+    local corner = v .. h
+    local dom, other = h, v
+    if ay >= ax then dom, other = v, h end
+    local order
     if ax < centre and ay < centre then
-        region = "centre"
-    elseif ax > ay then
-        region = x > 0 and "right" or "left"
+        order = newtable("centre", dom, other, corner)
+    elseif ax >= self:GetAttribute("ic-corner") and ay >= self:GetAttribute("ic-corner") then
+        order = newtable(corner, dom, other, "centre")
     else
-        region = y > 0 and "up" or "down"
+        local far = dom == h and ((v == "up" and "down" or "up") .. h) or (v .. (h == "right" and "left" or "right"))
+        order = newtable(dom, corner, "centre", far, other)
+    end
+    local region
+    for _, name in ipairs(order) do
+        if not self:GetAttribute("ic-off-" .. name) then
+            region = name
+            break
+        end
+    end
+    if not region then
+        return false
     end
     self:SetAttribute("ic-region", region)
     local macro = self:GetAttribute("ic-macro-" .. region)
@@ -179,12 +311,17 @@ function touch.Apply()
     local settings = touch.GetSettings()
     click:SetAttribute("ic-keydown", GetCVarSafe("ActionButtonUseKeyDown") == "0" and 0 or 1)
     click:SetAttribute("ic-centre", settings.centre)
+    click:SetAttribute("ic-corner", settings.corner)
     for _, region in ipairs(touch.REGIONS) do
-        local name = ActionButton(settings.regions[region])
-        click:SetAttribute("ic-macro-" .. region, name and ("/click " .. name) or nil)
+        local off = touch.IsOff(region)
+        click:SetAttribute("ic-off-" .. region, off or nil)
+        click:SetAttribute("ic-macro-" .. region, not off and touch.Macro(settings.regions[region]) or nil)
     end
     ClearOverrideBindings(click)
-    if settings.enabled ~= false then
+    -- While the panel is open it owns the touchpad click (it picks the slot
+    -- under the finger); it gives it back when it closes (TouchEditor.lua)
+    local panelOpen = IC.Menu and IC.Menu.IsOpen and IC.Menu.IsOpen()
+    if settings.enabled ~= false and not panelOpen then
         for _, modifier in ipairs(MODIFIERS) do
             SetOverrideBindingClick(click, true, modifier .. KEY, click:GetName(), "LeftButton")
         end
@@ -206,6 +343,11 @@ end
 
 function touch.SetCentre(size)
     touch.GetSettings().centre = math.max(0.1, math.min(0.8, size))
+    touch.Apply()
+end
+
+function touch.SetCorner(size)
+    touch.GetSettings().corner = math.max(0.2, math.min(0.9, size))
     touch.Apply()
 end
 

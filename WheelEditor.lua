@@ -14,8 +14,8 @@ local menu = IC.Menu
 
 local RAIL_W, GAP, BODY_H = 150, 12, 424
 local RAIL_STEP = 34
-local ZONE_W, PANEL_W = 330, 280
-local CX, CY, RADIUS = 165, 196, 104
+local ZONE_W, PANEL_W = 390, 400
+local CX, CY, RADIUS = 195, 196, 104
 local SLOT_SIZE, ICON_SIZE = 50, 36
 local PER_PAGE = 8
 
