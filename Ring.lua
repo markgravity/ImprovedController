@@ -1,8 +1,10 @@
 -- R3 rings. Press R3 (optionally holding L1/L2/R1/R2) to open a ring, point
--- at a slot with either stick (the pick stays when the stick springs back)
--- or step with the D-pad, then press R2 to use it. Circle closes. L1/R1
--- flip pages: every ring is cut into pages of eight, like Forever's native
--- radial menu (GamepadRadial), whose art and layout the ring copies.
+-- at a slot with the right stick (the pick stays when it springs back; the
+-- left stick still moves, as with the native radial) or step with the
+-- D-pad, then press R2 to use it. Circle closes. L1/R1 switch wheels,
+-- D-pad left / right its pages: every ring is cut into pages of eight, like
+-- Forever's native radial menu (GamepadRadial), whose art and layout the
+-- ring copies.
 --
 -- It works in combat: every button is a secure button. R3's snippet reads
 -- the pad (GetGamePadState) to pick the combo; the stick directions arrive
@@ -56,22 +58,41 @@ ring:SetPoint("CENTER", UIParent, "CENTER", 312, 10)
 ring:SetFrameStrata("DIALOG")
 ring:Hide()
 
--- While the ring is up this child captures both sticks (as Controller
--- Forever's and ConsolePort's rings do), so turning a stick to point at a
--- slot doesn't swing the camera or walk the character. It shows and hides
--- with the ring, so the secure show / hide drives it in combat too. The
--- pad state the pick reads (GetGamePadState) is unaffected.
+local function SetCVarSafe(name, value)
+    local setter = (C_CVar and C_CVar.SetCVar) or SetCVar
+    if not setter then return false end
+    local ok, result = pcall(setter, name, value)
+    return ok and result ~= false
+end
+
+local function GetCVarSafe(name)
+    local getter = (C_CVar and C_CVar.GetCVar) or GetCVar
+    local ok, value = pcall(getter, name)
+    return ok and value or nil
+end
+
+-- While the ring is up this child takes the right stick (it aims) so the
+-- camera stays still, and lets the left one through so the character still
+-- moves, as Forever's own radial does: a stick handler's true result
+-- passes that stick on (the game's input binding stack works the same
+-- way). It shows and hides with the ring, so the secure show / hide drives
+-- it in combat too; the pad state the pick reads is unaffected.
+local function TakesStick(stick)
+    return stick == "Camera" or stick == "Right"
+end
+
 local stickCapture = CreateFrame("Frame", nil, ring)
 stickCapture:SetAllPoints(ring)
 if stickCapture.EnableGamePadStick then
     stickCapture:EnableGamePadStick(true)
-    stickCapture:SetScript("OnGamePadStick", function() end)
+    stickCapture:SetScript("OnGamePadStick", function(_, stick)
+        return not TakesStick(stick)
+    end)
 end
 
--- After the ring closes (a slot used, Circle) the stick that pointed is
--- often still pushed: this keeps holding the sticks until both aiming
--- sticks are back near the middle (or 3 s pass), so the camera doesn't
--- swing round and the character doesn't walk off as the ring goes.
+-- After the ring closes (a slot used, Circle) the right stick is often
+-- still pushed: it stays taken until it is back near the middle (or 3 s
+-- pass), so the camera doesn't swing round as the ring goes.
 local RELEASE_SQ, RELEASE_MAX = 0.2 * 0.2, 3
 local afterCapture = CreateFrame("Frame", nil, UIParent)
 afterCapture:SetAllPoints(UIParent)
@@ -79,34 +100,35 @@ afterCapture:SetFrameStrata("DIALOG")
 afterCapture:Hide()
 if afterCapture.EnableGamePadStick then
     afterCapture:EnableGamePadStick(true)
-    afterCapture:SetScript("OnGamePadStick", function() end)
+    afterCapture:SetScript("OnGamePadStick", function(_, stick)
+        return not TakesStick(stick)
+    end)
 end
 
-local function AimSticksPushed()
+local function AimStickPushed()
     if not (C_GamePad and C_GamePad.GetDeviceMappedState) then return false end
     local state = C_GamePad.GetDeviceMappedState(C_GamePad.GetActiveDeviceID())
-    local sticks = state and state.sticks
-    if not sticks then return false end
-    for _, attribute in ipairs({ "ic-stick", "ic-stick2" }) do
-        local stick = sticks[ring:GetAttribute(attribute) or 0]
-        if stick and stick.x and stick.y and stick.x * stick.x + stick.y * stick.y > RELEASE_SQ then
-            return true
-        end
-    end
-    return false
+    local stick = state and state.sticks and state.sticks[ring:GetAttribute("ic-stick") or 0]
+    return stick and stick.x and stick.y and stick.x * stick.x + stick.y * stick.y > RELEASE_SQ or false
 end
 
 afterCapture:SetScript("OnUpdate", function(self, elapsed)
     self.held = (self.held or 0) + elapsed
-    if self.held >= RELEASE_MAX or not AimSticksPushed() then self:Hide() end
+    if self.held >= RELEASE_MAX or not AimStickPushed() then self:Hide() end
 end)
 ring:HookScript("OnHide", function()
-    if AimSticksPushed() then
+    if AimStickPushed() then
         afterCapture.held = 0
         afterCapture:Show()
     end
 end)
 ring:HookScript("OnShow", function() afterCapture:Hide() end)
+
+-- (the camera-speed hold of an earlier version: put back if left set)
+IC.OnLogin(function()
+    for name, value in pairs(IC.db.cameraSaved or {}) do SetCVarSafe(name, value) end
+    IC.db.cameraSaved = nil
+end)
 
 local function SecureButton(name)
     local button = CreateFrame("Button", name, UIParent, "SecureActionButtonTemplate,SecureHandlerBaseTemplate")
@@ -378,8 +400,8 @@ SecureHandlerWrapScript(close, "OnClick", close, [[
     return false
 ]])
 
--- While the ring is up it owns R2, Circle, L1, R1, the D-pad and the stick
--- directions, whatever they do otherwise.
+-- While the ring is up it owns R2, Circle, L1, R1, the D-pad and the right
+-- stick's directions, whatever they do otherwise.
 SecureHandlerWrapScript(ring, "OnShow", ring, [[
     for _, modifier in ipairs(newtable("", "SHIFT-", "CTRL-", "ALT-", "CTRL-SHIFT-", "ALT-SHIFT-", "CTRL-ALT-", "CTRL-ALT-SHIFT-")) do
         self:SetBindingClick(true, modifier .. "PADRTRIGGER", "ImprovedControllerRingUse", "LeftButton")
@@ -391,8 +413,8 @@ SecureHandlerWrapScript(ring, "OnShow", ring, [[
         end
         self:SetBindingClick(true, modifier .. "PADDLEFT", "ImprovedControllerRingPage", "PADDLEFT")
         self:SetBindingClick(true, modifier .. "PADDRIGHT", "ImprovedControllerRingPage", "PADDRIGHT")
-        for _, key in ipairs(newtable("PADRSTICKUP", "PADRSTICKDOWN", "PADRSTICKLEFT", "PADRSTICKRIGHT",
-                "PADLSTICKUP", "PADLSTICKDOWN", "PADLSTICKLEFT", "PADLSTICKRIGHT")) do
+        -- (the right stick aims; the left one is left to move the character)
+        for _, key in ipairs(newtable("PADRSTICKUP", "PADRSTICKDOWN", "PADRSTICKLEFT", "PADRSTICKRIGHT")) do
             self:SetBindingClick(true, modifier .. key, "ImprovedControllerRingAim", key)
         end
     end
@@ -405,17 +427,6 @@ SecureHandlerWrapScript(ring, "OnHide", ring, [[
 -- on: switch it on while the ring is up and put it back after. The old
 -- value is saved so a /reload mid-ring still restores it. If the game
 -- refuses in combat, pointing while pressing R2 and the D-pad still work.
-local function SetCVarSafe(name, value)
-    local setter = (C_CVar and C_CVar.SetCVar) or SetCVar
-    return setter and pcall(setter, name, value)
-end
-
-local function GetCVarSafe(name)
-    local getter = (C_CVar and C_CVar.GetCVar) or GetCVar
-    local ok, value = pcall(getter, name)
-    return ok and value or nil
-end
-
 local function RestoreAxisCVar()
     if ring:IsShown() then
         return
@@ -845,7 +856,8 @@ function IC.ApplyRingBindings()
     end
     bindingsPending = false
     ring:SetAttribute("ic-stick", StickIndex("Right") or 2)
-    ring:SetAttribute("ic-stick2", StickIndex("Left") or 1)
+    -- Only the right stick aims (the left one moves, as with the native radial)
+    ring:SetAttribute("ic-stick2", nil)
     use:SetAttribute("ic-keydown", GetCVarSafe("ActionButtonUseKeyDown") == "0" and 0 or 1)
     trigger:SetAttribute("ic-keydown", use:GetAttribute("ic-keydown"))
     local anyRing = false
@@ -941,3 +953,24 @@ function IC.SuppressCombo(combo, on)
     return true
 end
 
+
+-- Opened by R3, the ring stays invisible for a moment: a quick second R3
+-- (the recent action) closes it before it is ever seen. Opened any other
+-- way (a key binding), it shows at once. Only its look waits; it works
+-- from the first frame.
+local REVEAL_DELAY = 0.2
+local revealToken = 0
+ring:HookScript("OnShow", function()
+    revealToken = revealToken + 1
+    -- (R3 still down: opened by it)
+    if not IsKeyDown or not IsKeyDown("PADRSTICK") then return end
+    local token = revealToken
+    ring:SetAlpha(0)
+    C_Timer.After(REVEAL_DELAY, function()
+        if token == revealToken and ring:IsShown() then ring:SetAlpha(1) end
+    end)
+end)
+ring:HookScript("OnHide", function()
+    revealToken = revealToken + 1
+    ring:SetAlpha(1)
+end)

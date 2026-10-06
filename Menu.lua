@@ -1112,3 +1112,32 @@ end)
 
 -- Another controller in hand (or the General tab's choice): its buttons
 IC.OnPadStyleChanged(function() menu.Render() end)
+
+-- The controller's Menu / Options button pressed twice quickly opens this
+-- panel (once still opens the game's own menu wheel: the button is only
+-- watched, never taken). The game's wheel, opened by the first press, is
+-- closed. Out of combat.
+local DOUBLE = 0.35
+local menuKey = CreateFrame("Frame")
+local wasDown, lastPress = false, 0
+menuKey:SetScript("OnUpdate", function()
+    if not IsKeyDown then return end
+    local down = IsKeyDown("PADFORWARD")
+    if down and not wasDown then
+        local now = GetTime()
+        if now - lastPress <= DOUBLE then
+            lastPress = 0
+            if IC.db and not InCombatLockdown() and not menu.IsOpen() then
+                -- (on the next frame: the game handles the press first)
+                C_Timer.After(0, function()
+                    local radial = _G.GamepadRadial
+                    if radial and radial:IsShown() then radial:Hide() end
+                    if not InCombatLockdown() then menu.Open() end
+                end)
+            end
+        else
+            lastPress = now
+        end
+    end
+    wasDown = down
+end)
