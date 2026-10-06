@@ -396,9 +396,14 @@ for index = 1, SLOTS_PER_PAGE do
     slot.icon = ring:CreateTexture(nil, "OVERLAY", nil, 0)
     slot.icon:SetSize(ICON_SIZE, ICON_SIZE)
     slot.icon:SetPoint("CENTER", ring, "CENTER", dx * ICON_RADIUS, dy * ICON_RADIUS)
+    -- Round, as the wheel editor shows them (ConfigKit's RoundIcon)
     local mask = ring:CreateMaskTexture()
     mask:SetAllPoints(slot.icon)
-    mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    if HasAtlas("CircleMask") then
+        mask:SetAtlas("CircleMask")
+    else
+        mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    end
     slot.icon:AddMaskTexture(mask)
     slot.count = ring:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
     slot.count:SetPoint("BOTTOMRIGHT", slot.icon, "BOTTOMRIGHT", 2, -2)
@@ -430,7 +435,14 @@ local function RefreshVisuals()
         slot.label:SetShown(entry ~= nil)
         slot.count:SetShown(entry ~= nil)
         if entry then
-            slot.icon:SetTexture(entry.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+            -- Without the icon's own square frame (ConfigKit's SetIcon)
+            local icon = entry.icon or 134400
+            if type(icon) == "string" and HasAtlas(icon) then
+                slot.icon:SetAtlas(icon)
+            else
+                slot.icon:SetTexture(icon)
+                slot.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+            end
             slot.count:SetText(entry.type == "item" and ItemCount(entry.value) or "")
             slot.label:SetText(entry.label)
             local usable = entry.type ~= "item" or ItemCount(entry.value) > 0

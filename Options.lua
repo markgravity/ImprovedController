@@ -42,6 +42,7 @@ end)
 -- /ic ring <combo> <ring>  e.g. /ic ring L1 buffs
 -- /ic probe                record the native radial menu's look
 -- /ic touchprobe           record what the touchpad reports
+-- /ic vibe                 test each vibration motor (which side)
 -- /ic glyphs               the controller style, and its glyphs this client has
 SLASH_IMPROVEDCONTROLLER1 = "/ic"
 SLASH_IMPROVEDCONTROLLER2 = "/improvedcontroller"
@@ -72,6 +73,10 @@ SlashCmdList.IMPROVEDCONTROLLER = function(msg)
                     .. (#missing > 0 and ", missing " .. table.concat(missing, " ") or ""))
             end
         end
+        return
+    end
+    if command == "vibe" then
+        IC.Vibe.TestSides()
         return
     end
     if command == "padtest" then

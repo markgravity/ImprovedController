@@ -90,6 +90,16 @@ def patterns():
     icon.polygon(d, [(22, 84), (40, 92), (24, 104)])
     icon.save(path("ic_vibe_purr"), [(m, GOLD), (loop, GREY)])
 
+    # Sweep: left to right and back, arrows both ways over a row of dots
+    m = icon.mask(); d = icon.draw(m)
+    icon.stroke(d, [(24, 64), (104, 64)], 9)
+    icon.polygon(d, [(8, 64), (30, 46), (30, 82)])
+    icon.polygon(d, [(120, 64), (98, 46), (98, 82)])
+    for x in (44, 64, 84):
+        icon.circle(d, x, 40, 6)
+        icon.circle(d, x, 88, 6)
+    icon.save(path("ic_vibe_sweep"), [(m, GOLD)])
+
     # Fade out: bars stepping down
     m = icon.mask(); d = icon.draw(m)
     icon.bar(d, 36, 26, 104, 18)
@@ -141,6 +151,31 @@ def events():
     hand = icon.mask(); d = icon.draw(hand)
     icon.arc(d, 64, 56, 44, 20, 160, 10)
     icon.save(path("ic_event_cast"), [(hand, GOLD), (orb, BLUE), (sparks, GOLD)])
+
+    # Interrupted: the cast's orb struck through by a red bolt
+    orb = icon.mask(); d = icon.draw(orb)
+    icon.circle(d, 64, 64, 32)
+    bolt = icon.mask(); d = icon.draw(bolt)
+    icon.polygon(d, [(84, 8), (52, 62), (70, 62), (40, 120), (90, 52), (70, 52), (96, 8)])
+    icon.save(path("ic_event_interrupted"), [(icon.cut(orb, bolt), BLUE), (bolt, RED)])
+
+    # Cancelled: the orb dimmed, a curved arrow turning back
+    orb = icon.mask(); d = icon.draw(orb)
+    icon.circle(d, 72, 70, 26)
+    back = icon.mask(); d = icon.draw(back)
+    icon.arc(d, 64, 64, 46, 150, 330, 10)
+    icon.polygon(d, [(14, 70), (42, 70), (28, 96)])
+    icon.save(path("ic_event_cancelled"), [(orb, GREY), (back, GOLD)])
+
+    # Pushed back: the cast bar knocked back, a double arrow over it
+    bar = icon.mask(); d = icon.draw(bar)
+    icon.polygon(d, [(14, 74), (114, 74), (114, 100), (14, 100)])
+    fill = icon.mask(); d = icon.draw(fill)
+    icon.polygon(d, [(18, 78), (64, 78), (64, 96), (18, 96)])
+    arrows = icon.mask(); d = icon.draw(arrows)
+    icon.stroke(d, [(70, 24), (50, 42), (70, 60)], 9)
+    icon.stroke(d, [(98, 24), (78, 42), (98, 60)], 9)
+    icon.save(path("ic_event_pushback"), [(bar, STEEL), (fill, GOLD), (arrows, RED)])
 
 
 if __name__ == "__main__":

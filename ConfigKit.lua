@@ -821,6 +821,7 @@ function K.Picker(parent, width, onRender, opts)
         self.entries = list and list.entries() or {}
         self.offset, self.index = 0, nil
         local current = self.def.current
+        if type(current) == "function" then current = current(list) end
         for i, e in ipairs(self.entries) do
             if not e.header and (not self.index or e.action == current) then
                 self.index = i

@@ -1,5 +1,7 @@
 -- The Vibration tab, laid out like the Touchpad tab: the events down the
--- left by group (Combat: critical hit, taken; Progress: level up), the selected one big in the
+-- left by group (Combat: critical hit, taken, spell cast; Progress: level
+-- up), Spell cast's own four (casting, interrupted, cancelled, pushed back)
+-- as the picker's lists (L2 / R2), the selected one big in the
 -- middle with its pattern, and the patterns down the right (Off and Easy
 -- Controller's seven) as slices of a ring around it. Choosing a pattern
 -- sets it and plays it; Triangle plays the event's one again. (Vibration
@@ -20,8 +22,46 @@ end
 local E = { zone = "rail", index = 1 }
 V.Editor = E
 
+-- The selected line on the left (V.RAIL: an event, or Spell cast's four)
+function E:Item()
+    return V.RAIL[self.index]
+end
+
+local function Patterns()
+    local entries = { { action = "off", name = "Off", icon = V.OFF_ICON } }
+    for _, p in ipairs(V.PATTERNS) do
+        entries[#entries + 1] = { action = p.key, name = p.label, icon = p.icon }
+    end
+    return entries
+end
+
+-- The picker on the selected line: one list of patterns per event in it
+-- (Spell cast: Casting, Interrupted, Cancelled, Pushed back; L2 / R2)
+function E:SyncPicker()
+    local item = self:Item()
+    if self.pickerFor == item.key then return end
+    self.pickerFor = item.key
+    local lists = {}
+    for _, sub in ipairs(item.subs) do
+        lists[#lists + 1] = { key = sub.key, label = #item.subs > 1 and sub.label or "Vibration", sub = sub,
+            entries = Patterns }
+    end
+    self.picker:Open({
+        lists = lists, rows = PICKER_ROWS, chooseVerb = "Set",
+        current = function(list) return V.EventPattern(list.sub.key) or "off" end,
+        onChoose = function(e) E:Set(e) end,
+        onBack = function()
+            E.zone = "rail"
+            menu.Render()
+        end,
+    })
+end
+
+-- The event being set: the selected line's, its list in the picker
 function E:Event()
-    return V.EVENTS[self.index]
+    local item = self:Item()
+    self:SyncPicker()
+    return item.subs[self.picker.list] or item.subs[1]
 end
 
 -- The left side's lines: each group's name, then its events
@@ -29,8 +69,8 @@ local function Lines()
     local lines = {}
     for _, group in ipairs(V.GROUPS) do
         lines[#lines + 1] = { header = group.label }
-        for i, event in ipairs(V.EVENTS) do
-            if event.group == group.key then lines[#lines + 1] = { index = i } end
+        for i, item in ipairs(V.RAIL) do
+            if item.group == group.key then lines[#lines + 1] = { index = i } end
         end
     end
     return lines
@@ -82,21 +122,7 @@ function E:Build(parent)
     })
     self.picker:SetPoint("TOPLEFT", f, "CENTER", 30, PICKER_TOP)
     self.picker:SetHeight(400)
-    self.picker:Open({
-        lists = { { key = "patterns", label = "Vibration", entries = function()
-            local entries = { { action = "off", name = "Off", icon = V.OFF_ICON } }
-            for _, p in ipairs(V.PATTERNS) do
-                entries[#entries + 1] = { action = p.key, name = p.label, icon = p.icon }
-            end
-            return entries
-        end } },
-        rows = PICKER_ROWS, chooseVerb = "Set",
-        onChoose = function(e) E:Set(e) end,
-        onBack = function()
-            E.zone = "rail"
-            menu.Render()
-        end,
-    })
+    self:SyncPicker()
 end
 
 function E:Show()
@@ -114,7 +140,7 @@ end
 -- The picker on the event's pattern
 function E:Aim()
     self.zone = "picker"
-    self.picker.def.current = V.EventPattern(self:Event().key) or "off"
+    self:SyncPicker()
     self.picker:LoadList()
     menu.Render()
 end
@@ -127,13 +153,30 @@ function E:Set(e)
     menu.Render()
 end
 
--- Triangle: feel the event's pattern again
+-- Triangle: feel the event's pattern again (Spell cast: a whole cast
+-- played out, each of its four where it would come; a critical hit: a
+-- combo of them)
 function E:Try()
-    local pattern = V.EventPattern(self:Event().key)
-    if not pattern then
-        menu.Toast(self:Event().label .. " is off", true)
-    elseif not V.Settings().enabled then
+    if not V.Settings().enabled then
         menu.Toast("Vibration is off (Home tab)", true)
+        return
+    end
+    local item = self:Item()
+    if #item.subs > 1 then
+        V.SimulateCast(function(label)
+            if label then menu.Toast(item.label .. ": " .. label) end
+        end)
+        return
+    end
+    local event = self:Event()
+    local pattern = V.EventPattern(event.key)
+    if not pattern then
+        menu.Toast(event.label .. " is off", true)
+    elseif event.combo then
+        -- A run of crits, each hit varied as in a real combo
+        V.SimulateCombo(event.key, function(n)
+            menu.Toast(event.label .. (n > 1 and " x" .. n or ""))
+        end)
     else
         V.Play(pattern)
     end
@@ -146,6 +189,13 @@ end
 -- up / down move inside them.
 function E:Press(name)
     if name == "LB" or name == "RB" then return false end
+    -- L2 / R2: Spell cast's events, from either side
+    if name == "LT" or name == "RT" then
+        self:SyncPicker()
+        self.picker:Press(name)
+        menu.Render()
+        return true
+    end
     if name == "Y" then
         self:Try()
         return true
@@ -160,7 +210,7 @@ function E:Press(name)
         return true
     end
     if name == "UP" or name == "DOWN" then
-        self.index = math.max(1, math.min(#V.EVENTS, self.index + (name == "UP" and -1 or 1)))
+        self.index = math.max(1, math.min(#V.RAIL, self.index + (name == "UP" and -1 or 1)))
     elseif name == "RIGHT" or name == "A" then
         self:Aim()
         return true
@@ -182,6 +232,7 @@ function E:Help()
         hints[#hints + 1] = H({ "DPAD" }, "Pick event")
         hints[#hints + 1] = H({ "A" }, "Edit", "A")
     end
+    if #self:Item().subs > 1 then hints[#hints + 1] = H({ "LT", "RT" }, "Event", "RT") end
     hints[#hints + 1] = H({ "Y" }, "Try it", "Y")
     hints[#hints + 1] = H({ "LB", "RB" }, "Tab", "RB")
     hints[#hints + 1] = H({ "B" }, self.zone == "picker" and "Events" or "Close", "B")
@@ -215,22 +266,29 @@ function E:Render()
             r.label:SetText(line.header:upper())
             r.label:SetTextColor(unpack(KC.dimGold))
         else
-            local event = V.EVENTS[line.index]
+            -- Off: none of its events vibrates
+            local item = V.RAIL[line.index]
+            local on = false
+            for _, sub in ipairs(item.subs) do
+                if V.EventPattern(sub.key) then on = true end
+            end
             local isSel = line.index == self.index
             r.seg:SetShown(true)
             r.seg:SetFocus(isSel and self.zone == "rail")
-            r.label:SetText(event.label .. (V.EventPattern(event.key) and "" or "  |cffff7a5cOff|r"))
+            r.label:SetText(item.label .. (on and "" or "  |cffff7a5cOff|r"))
             r.label:SetTextColor(unpack(isSel and KC.focus or KC.rail))
         end
         K.Rotate(r.label, K.ReadingAngle(theta))
     end
-    -- The selected event, its pattern under it
+    -- The selected event (Spell cast: the one in the picker), its pattern
+    -- under it
     local event = self:Event()
     local pattern = V.Pattern(V.EventPattern(event.key))
     f.big:SetLook({ icon = event.icon, discColor = KC.iconBg, hatch = not pattern,
         dash = true })
     f.big:SetAlpha((settings.enabled and pattern) and 1 or 0.45)
-    f.pattern:SetText(pattern and pattern.label or "|cffff7a5cOff|r")
+    local name = #self:Item().subs > 1 and event.label .. ": " or ""
+    f.pattern:SetText(name .. (pattern and pattern.label or "|cffff7a5cOff|r"))
     self.picker:Show()
     self.picker:SetAlpha(self.zone == "picker" and 1 or 0.5)
     self.picker:Render()
@@ -247,4 +305,5 @@ end
 
 hooksecurefunc(menu, "Close", function()
     E.zone = "rail"
+    V.StopSimulation()
 end)
