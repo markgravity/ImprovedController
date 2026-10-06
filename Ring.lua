@@ -779,12 +779,21 @@ local function Rebuild()
         local build = IC.RingBuilders[ringKey]
         if build then
             local entries = build()
-            local pages = math.max(1, math.ceil(#entries / SLOTS_PER_PAGE))
+            -- Cut into pages of eight; a wheel whose entries come in groups
+            -- (entries.groups: lists) starts each group on a page of its own
+            local pageLists = {}
+            for _, group in ipairs(entries.groups or { entries }) do
+                for first = 1, #group, SLOTS_PER_PAGE do
+                    pageLists[#pageLists + 1] = { unpack(group, first, math.min(#group, first + SLOTS_PER_PAGE - 1)) }
+                end
+            end
+            if #pageLists == 0 then pageLists[1] = {} end
+            local pages = #pageLists
             for number = 1, pages do
                 local key = ringKey .. number
                 local pageEntries = {}
                 for index = 1, SLOTS_PER_PAGE do
-                    local entry = entries[(number - 1) * SLOTS_PER_PAGE + index]
+                    local entry = pageLists[number][index]
                     if not entry then
                         break
                     end
