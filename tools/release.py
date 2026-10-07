@@ -5,7 +5,8 @@ on every version tag (v0.2.0, v0.3.0-beta1...). Python standard library only.
     python tools/release.py notes          this version's CHANGELOG section
     python tools/release.py curseforge     upload the zip to CurseForge
 
-CurseForge needs the CF_API_KEY environment variable (a GitHub secret). The
+CurseForge needs CF_API_KEY: a GitHub secret in CI, or a line in the local
+.env (git-ignored) when run by hand. The
 project ID comes from the TOC (## X-Curse-Project-ID), the game version from
 CF_GAME_VERSION (default 1.60.1, WoW Forever) or CF_GAME_VERSION_ID.
 """
@@ -21,6 +22,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ADDON = "ImprovedController"
 API = "https://wow.curseforge.com/api"
+
+
+def load_env():
+    """Fill missing environment variables from a local, git-ignored .env (KEY=value lines)."""
+    env = ROOT / ".env"
+    if not env.is_file():
+        return
+    for line in env.read_text(encoding="utf-8").splitlines():
+        key, sep, value = line.partition("=")
+        if sep and not key.strip().startswith("#"):
+            os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+
+
+load_env()
 
 
 def toc_field(name):

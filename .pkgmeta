@@ -10,4 +10,5 @@ ignore:
   - .claude
   - .github
   - .gitignore
+  - .env
   - tpl.lua
