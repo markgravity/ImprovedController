@@ -108,12 +108,26 @@ function O.Apply()
         end
     end
     for key, m in pairs(macros) do
-        local b = SecureButton(key)
-        b:RegisterForClicks(onDown and "AnyDown" or "AnyUp")
-        b:SetAttribute("ic-single", m.single)
-        b:SetAttribute("ic-double", m.double)
-        SetOverrideBindingClick(owner, false, key, b:GetName(), "LeftButton")
+        -- Only with its own click's action: a double click alone would leave
+        -- the single click doing nothing (the game's own action, autorun on
+        -- L3, can't be run from here), so the button stays the game's
+        if m.single then
+            local b = SecureButton(key)
+            b:RegisterForClicks(onDown and "AnyDown" or "AnyUp")
+            b:SetAttribute("ic-single", m.single)
+            b:SetAttribute("ic-double", m.double)
+            SetOverrideBindingClick(owner, false, key, b:GetName(), "LeftButton")
+        end
     end
+end
+
+-- A double click set, its click not: it does nothing until the click has one
+function O.Inactive(b)
+    if not b.double or not O.Get(b.id) then return false end
+    for _, other in ipairs(O.BUTTONS) do
+        if other.key == b.key and not other.double then return O.Get(other.id) == nil end
+    end
+    return false
 end
 
 -- An action for a button (nil / "none": back to the game's own)
