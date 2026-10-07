@@ -14,6 +14,7 @@ RingContent.lua
 MyWheels.lua
 Ring.lua
 Touchpad.lua
+Override.lua
 Vibration.lua
 Probe.lua
 ConfigKit.lua
@@ -21,6 +22,7 @@ RecentSlot.lua
 Menu.lua
 WheelEditor.lua
 TouchEditor.lua
+OverrideEditor.lua
 VibeEditor.lua
 GeneralEditor.lua
 BagCleaner.lua

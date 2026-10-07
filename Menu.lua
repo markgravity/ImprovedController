@@ -48,6 +48,11 @@ menu.TABS = {
         sections = {},
     },
     {
+        key = "override", label = "Override",
+        -- OverrideEditor.lua's page: the buttons, the big slot, the picker
+        sections = {},
+    },
+    {
         key = "vibration", label = "Vibration",
         -- VibeEditor.lua's page: the events, the big slot, the patterns
         sections = {},
