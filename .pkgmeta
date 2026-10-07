@@ -1,0 +1,13 @@
+package-as: ImprovedController
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+ignore:
+  - tools
+  - dist
+  - .claude
+  - .github
+  - .gitignore
+  - tpl.lua
