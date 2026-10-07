@@ -30,8 +30,9 @@ end
 
 local function Patterns()
     local entries = { { action = "off", name = "Off", icon = V.OFF_ICON } }
+    -- (the actions' own patterns only come with Match the action)
     for _, p in ipairs(V.PATTERNS) do
-        entries[#entries + 1] = { action = p.key, name = p.label, icon = p.icon }
+        if not p.action then entries[#entries + 1] = { action = p.key, name = p.label, icon = p.icon } end
     end
     return entries
 end
@@ -46,13 +47,11 @@ function E:SyncPicker()
     if item.castKind then
         self.picker:Open({
             lists = { { key = item.key, label = "Vibration", entries = function()
-                -- Off, Match the action (gathering, crafting), the general
-                -- sets, then that kind's actions'
+                -- Off, Match the action, then the general sets (each action's
+                -- own set only comes with Match the action)
                 local entries = {}
                 for _, p in ipairs(V.CAST_PRESETS) do
-                    local fits = (p.auto and item.castKind ~= "spell") or (p.action and p.action == item.castKind)
-                        or (not p.auto and not p.action)
-                    if fits then
+                    if not p.action then
                         entries[#entries + 1] = { action = p.key, name = p.label, icon = p.auto and item.icon or p.icon }
                     end
                 end
@@ -352,20 +351,7 @@ function E:Render()
         f.big:SetAlpha((settings.enabled and on) and 1 or 0.45)
         local text = on and preset.label or "|cffff7a5cOff|r"
         if on and preset.auto then
-            -- Each action its own: which pattern, two to a line
-            local parts, line = {}, {}
-            for _, a in ipairs(V.CAST_ACTIONS) do
-                if a.kind == item.castKind then
-                    local pattern = V.Pattern(a.pattern)
-                    line[#line + 1] = a.label .. ": " .. (pattern and pattern.label or "—")
-                    if #line == 2 then
-                        parts[#parts + 1] = table.concat(line, "  ·  ")
-                        line = {}
-                    end
-                end
-            end
-            if #line > 0 then parts[#parts + 1] = table.concat(line, "  ·  ") end
-            text = text .. "|n|cffb9ab8c" .. table.concat(parts, "|n") .. "|r"
+            text = text .. "|n|cffb9ab8cEach action its own feel|r"
         elseif on then
             local parts = {}
             for _, phase in ipairs(V.CAST_PHASES) do

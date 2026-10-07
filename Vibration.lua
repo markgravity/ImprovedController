@@ -2,7 +2,8 @@
 -- Forever's Vibration module (moust4ki, MIT License, see
 -- LICENSE-EasyController.md): its patterns, played on the two
 -- standard motors at one strength for all. Three events: you level up, you
--- land a critical hit (damage or heal), you take one. Each has a pattern of
+-- land a critical hit (damage or heal), you take one; casts, matched to
+-- what they are (fire, Hearthstone, mining, tailoring...). Each has a pattern of
 -- its own, or none, grouped as Easy Controller does (Combat, Progress). Set
 -- in the Vibration tab (VibeEditor.lua); on / off
 -- and strength in the General tab.
@@ -69,6 +70,29 @@ V.PATTERNS = {
     { key = "shimmer", label = "Shimmer", action = true,   -- enchanting: magic swelling and fading
         steps = { { 0.1, 0.1, 0.1 }, { 0.3, 0.3, 0.1 }, { 0.5, 0.5, 0.1 }, { 0.3, 0.3, 0.1 }, { 0.1, 0.1, 0.1 },
             { 0, 0, 0.1 } } },
+    -- Spells, by family
+    { key = "kindle", label = "Kindle", action = true,     -- fire: crackling, building heat
+        steps = { { 0.3, 0.15, 0.1 }, { 0.1, 0.35, 0.1 }, { 0.45, 0.25, 0.1 }, { 0.15, 0.4, 0.1 }, { 0.55, 0.45, 0.1 },
+            { 0.2, 0.2, 0.1 } } },
+    { key = "frost", label = "Frost", action = true,       -- frost: thin, crisp, cold ticks
+        steps = { { 0.08, 0.3, 0.1 }, { 0, 0, 0.12 }, { 0.08, 0.25, 0.1 }, { 0.05, 0.1, 0.2 } } },
+    { key = "arcane", label = "Arcane", action = true,     -- arcane: bolts flying side to side
+        steps = { { 0.5, 0, 0.1 }, { 0, 0, 0.12 }, { 0, 0.5, 0.1 }, { 0, 0, 0.12 } } },
+    { key = "shadow", label = "Shadow", action = true,     -- shadow: a low, heavy throb
+        steps = { { 0.55, 0.05, 0.25 }, { 0.2, 0, 0.2 }, { 0.4, 0.05, 0.2 }, { 0.1, 0, 0.2 } } },
+    { key = "radiance", label = "Radiance", action = true, -- holy: light swelling, both sides
+        steps = { { 0.1, 0.1, 0.15 }, { 0.25, 0.25, 0.15 }, { 0.4, 0.4, 0.2 }, { 0.25, 0.25, 0.15 } } },
+    { key = "mend", label = "Mend", action = true,         -- healing: a calm, slow pulse
+        steps = { { 0.3, 0.3, 0.15 }, { 0.12, 0.12, 0.15 }, { 0, 0, 0.3 } } },
+    { key = "static", label = "Static", action = true,     -- nature, lightning: jittery crackle
+        steps = { { 0.4, 0, 0.1 }, { 0, 0.45, 0.1 }, { 0.2, 0.2, 0.1 }, { 0.5, 0.1, 0.1 }, { 0, 0, 0.1 },
+            { 0.1, 0.5, 0.1 } } },
+    { key = "draw", label = "Draw", action = true,         -- aimed shots: the bowstring, tighter and tighter
+        steps = { { 0.08, 0.08, 0.2 }, { 0.16, 0.16, 0.2 }, { 0.26, 0.26, 0.2 }, { 0.36, 0.36, 0.2 } } },
+    { key = "hearth", label = "Hearth", action = true,     -- Hearthstone, teleports: a long hum rising
+        steps = { { 0.08, 0.08, 0.3 }, { 0.15, 0.15, 0.3 }, { 0.25, 0.25, 0.3 }, { 0.12, 0.12, 0.2 } } },
+    { key = "ritual", label = "Ritual", action = true,     -- summoning: deep slow beats
+        steps = { { 0.6, 0.3, 0.15 }, { 0, 0, 0.35 }, { 0.35, 0.6, 0.15 }, { 0, 0, 0.35 } } },
 }
 -- Each pattern's icon, drawn in the radial menu's style (tools/make_vibe_icons.py)
 local VIBE_ICONS = "Interface\\AddOns\\ImprovedController\\textures\\ic_vibe_"
@@ -144,6 +168,25 @@ V.CAST_ACTIONS = {
     { key = "engineering", label = "Engineering", kind = "craft", pattern = "gears", spell = 4036 },
     { key = "enchanting", label = "Enchanting", kind = "craft", pattern = "shimmer", spell = 7411 },
     { key = "firstaid", label = "First Aid", kind = "craft", pattern = "sew", spell = 3273 },
+    -- Spells, by family (every rank shares its name: the first's ID names them)
+    { key = "fire", label = "Fire", kind = "spell", pattern = "kindle",
+        spells = { 133, 11366, 2120, 2948, 348, 6353, 1949, 5740, 5676 } },
+    { key = "frostSpells", label = "Frost", kind = "spell", pattern = "frost", spells = { 116, 10, 120 } },
+    { key = "arcaneSpells", label = "Arcane", kind = "spell", pattern = "arcane",
+        spells = { 5143, 12051, 118, 2912 } },
+    { key = "shadowSpells", label = "Shadow", kind = "spell", pattern = "shadow",
+        spells = { 686, 689, 1120, 5138, 15407, 8092, 5782, 755, 6201, 693 } },
+    { key = "holy", label = "Holy", kind = "spell", pattern = "radiance",
+        spells = { 585, 14914, 2006, 7328, 2008, 20484, 879, 10318 } },
+    { key = "healing", label = "Healing", kind = "spell", pattern = "mend",
+        spells = { 2050, 2054, 2060, 2061, 596, 5185, 8936, 740, 331, 8004, 1064, 635, 19750 } },
+    { key = "nature", label = "Nature", kind = "spell", pattern = "static",
+        spells = { 403, 421, 5176, 339, 16914, 2637, 6795 } },
+    { key = "shots", label = "Shots", kind = "spell", pattern = "draw", spells = { 19434, 1510, 2643 } },
+    { key = "travel", label = "Hearthstone", kind = "spell", pattern = "hearth",
+        spells = { 8690, 556, 3561, 3562, 3563, 3565, 3566, 3567, 10059, 11416, 11417, 11418, 11419, 11420 } },
+    { key = "summon", label = "Summoning", kind = "spell", pattern = "ritual",
+        spells = { 688, 697, 712, 691, 698, 5784, 883, 982, 1122 } },
 }
 -- "Match the action": the set of the action going on
 table.insert(V.CAST_PRESETS, 2, { key = "auto", label = "Match the action", auto = true,
@@ -163,8 +206,9 @@ local PHASE = { cast = "cast", interrupted = "interrupted", cancelled = "cancell
 V.CAST_PHASES = { "cast", "interrupted", "cancelled", "pushback" }
 
 V.CAST_KINDS = {
-    { key = "spell", label = "Spell", icon = EVENT_ICONS .. "cast", preset = "sweep",
-        tip = "Casting or channelling a spell or an ability." },
+    { key = "spell", label = "Spell", icon = EVENT_ICONS .. "cast", preset = "auto", fallback = "sweep",
+        tip = "Casting or channelling a spell or an ability. Match the action: fire, frost, healing,"
+            .. " Hearthstone... each its own; any other spell, Sweep." },
     { key = "gather", label = "Gathering", icon = EVENT_ICONS .. "gather", preset = "auto",
         tip = "Herbalism, mining, skinning, fishing, opening a chest or a lock." },
     { key = "craft", label = "Crafting", icon = EVENT_ICONS .. "craft", preset = "auto",
@@ -238,7 +282,10 @@ V.castAction = nil
 function V.EventPattern(eventKey)
     if PHASE[eventKey] then
         local preset = PRESET[V.CastPreset(V.castKind)]
-        if preset and preset.auto then preset = PRESET[V.castAction] or PRESET.subtle end
+        if preset and preset.auto then
+            local kind = CAST_KIND[V.castKind]
+            preset = PRESET[V.castAction] or PRESET[kind and kind.fallback or "subtle"]
+        end
         return preset and preset[PHASE[eventKey]] or nil
     end
     local cfg = V.Settings().events[eventKey]
@@ -615,7 +662,7 @@ local function SpellName(id)
     return GetSpellInfo and (GetSpellInfo(id))
 end
 
-local gatherByName, craftByName
+local gatherByName, craftByName, spellByName
 local function Names()
     if gatherByName then return end
     gatherByName, craftByName = {}, {}
@@ -625,9 +672,14 @@ local function Names()
             if name then gatherByName[name] = action end
         end
     end
+    spellByName = {}
     for _, a in ipairs(V.CAST_ACTIONS) do
         local name = a.kind == "craft" and SpellName(a.spell)
         if name then craftByName[name] = a.key end
+        for _, id in ipairs(a.spells or {}) do
+            name = SpellName(id)
+            if name and not spellByName[name] then spellByName[name] = a.key end
+        end
     end
 end
 
@@ -655,7 +707,10 @@ local function CastKind(spellID)
     end
     if spellID and not secret(spellID) then
         local name = SpellName(spellID)
-        if name and not secret(name) and gatherByName[name] then return "gather", gatherByName[name] end
+        if name and not secret(name) then
+            if gatherByName[name] then return "gather", gatherByName[name] end
+            return "spell", spellByName[name]
+        end
     end
     return "spell", nil
 end

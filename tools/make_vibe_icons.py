@@ -357,7 +357,102 @@ def actions():
     icon.save(path("ic_vibe_shimmer"), [(m, BLUE)])
 
 
+def spells():
+    """Spell actions: one per family of spells (fire, frost...)"""
+    # Kindle (fire): a flame, two tongues licking up
+    f = icon.mask(); d = icon.draw(f)
+    pts = [(64 + 40 * math.cos(math.radians(a)), 84 + 34 * math.sin(math.radians(a))) for a in range(-10, 191, 6)]
+    pts += [(26, 70), (34, 46), (44, 58), (52, 20), (66, 46), (76, 8), (90, 44), (98, 36), (104, 74)]
+    icon.polygon(d, pts)
+    core = icon.mask(); d = icon.draw(core)
+    pts = [(64 + 20 * math.cos(math.radians(a)), 96 + 16 * math.sin(math.radians(a))) for a in range(-10, 191, 6)]
+    pts += [(46, 88), (56, 62), (64, 76), (72, 54), (84, 90)]
+    icon.polygon(d, pts)
+    icon.save(path("ic_vibe_kindle"), [(f, RED), (core, GOLD)])
+
+    # Frost: a snowflake
+    m = icon.mask(); d = icon.draw(m)
+    for k in range(6):
+        a = math.radians(k * 60 - 90)
+        x1, y1 = 64 + 52 * math.cos(a), 64 + 52 * math.sin(a)
+        icon.stroke(d, [(64, 64), (x1, y1)], 9)
+        for side in (-1, 1):
+            b2 = a + side * math.radians(40)
+            mx, my = 64 + 32 * math.cos(a), 64 + 32 * math.sin(a)
+            icon.stroke(d, [(mx, my), (mx + 16 * math.cos(b2), my + 16 * math.sin(b2))], 6)
+    icon.save(path("ic_vibe_frost"), [(m, BLUE)])
+
+    # Arcane: three missiles streaking in
+    m = icon.mask(); d = icon.draw(m)
+    for i, (x, y) in enumerate(((88, 30), (100, 64), (88, 98))):
+        icon.circle(d, x, y, 11)
+        icon.stroke(d, [(x - 12, y), (x - 62 + i * 4, y + (y - 64) * 0.4)], 5)
+    icon.save(path("ic_vibe_arcane"), [(m, BLUE)])
+
+    # Shadow: a dark orb in a swirl
+    orb = icon.mask(); d = icon.draw(orb)
+    icon.circle(d, 64, 64, 30)
+    sw = icon.mask(); d = icon.draw(sw)
+    icon.arc(d, 64, 64, 46, 200, 330, 9)
+    icon.arc(d, 64, 64, 46, 20, 150, 9)
+    icon.save(path("ic_vibe_shadow"), [(sw, GREY), (orb, ((200, 150, 255), (110, 50, 170), (45, 15, 80)))])
+
+    # Radiance (holy, resurrection): a sun
+    m = icon.mask(); d = icon.draw(m)
+    icon.circle(d, 64, 64, 26)
+    for k in range(12):
+        a = math.radians(k * 30)
+        icon.stroke(d, [(64 + 36 * math.cos(a), 64 + 36 * math.sin(a)),
+                        (64 + (54 if k % 2 == 0 else 46) * math.cos(a), 64 + (54 if k % 2 == 0 else 46) * math.sin(a))], 7)
+    icon.save(path("ic_vibe_radiance"), [(m, GOLD)])
+
+    # Mend (healing): a green cross in a soft ring
+    ring = icon.mask(); d = icon.draw(ring)
+    icon.arc(d, 64, 64, 50, 0, 360, 7)
+    c = icon.mask(); d = icon.draw(c)
+    icon.polygon(d, [(52, 26), (76, 26), (76, 52), (102, 52), (102, 76), (76, 76), (76, 102), (52, 102),
+                     (52, 76), (26, 76), (26, 52), (52, 52)])
+    icon.save(path("ic_vibe_mend"), [(ring, GOLD), (c, GREEN)])
+
+    # Static (nature, lightning): a bolt
+    m = icon.mask(); d = icon.draw(m)
+    icon.polygon(d, [(76, 6), (32, 70), (60, 70), (46, 122), (98, 52), (68, 52), (88, 6)])
+    icon.save(path("ic_vibe_static"), [(m, GOLD)])
+
+    # Draw (aimed shots): a bow drawn back, an arrow on its string
+    bow = icon.mask(); d = icon.draw(bow)
+    icon.arc(d, 34, 64, 56, -64, 64, 10)
+    st = icon.mask(); d = icon.draw(st)
+    icon.stroke(d, [(58, 14), (18, 64), (58, 114)], 3)
+    ar = icon.mask(); d = icon.draw(ar)
+    icon.stroke(d, [(18, 64), (106, 64)], 6)
+    icon.polygon(d, [(100, 50), (124, 64), (100, 78)])
+    icon.save(path("ic_vibe_draw"), [(st, GREY), (bow, LEATHER), (ar, STEEL)])
+
+    # Hearth (Hearthstone, teleports): a hearthstone
+    stone = icon.mask(); d = icon.draw(stone)
+    ell = [(64 + 46 * math.cos(math.radians(a)), 66 + 38 * math.sin(math.radians(a))) for a in range(0, 360, 6)]
+    icon.polygon(d, ell)
+    sw = icon.mask(); d = icon.draw(sw)
+    pts = [(64 + (4 + t * 0.9) * math.cos(math.radians(t * 12)), 66 + (4 + t * 0.75) * math.sin(math.radians(t * 12)))
+           for t in range(0, 34)]
+    icon.stroke(d, pts, 6)
+    icon.save(path("ic_vibe_hearth"), [(icon.cut(stone, sw), GREY), (sw, BLUE)])
+
+    # Ritual (summoning): a rune circle
+    ring = icon.mask(); d = icon.draw(ring)
+    icon.arc(d, 64, 64, 50, 0, 360, 7)
+    st = icon.mask(); d = icon.draw(st)
+    pts = []
+    for k in range(6):
+        a = math.radians(-90 + k * 144)
+        pts.append((64 + 44 * math.cos(a), 64 + 44 * math.sin(a)))
+    icon.stroke(d, pts, 5)
+    icon.save(path("ic_vibe_ritual"), [(ring, RED), (st, GOLD)])
+
+
 if __name__ == "__main__":
     patterns()
     actions()
+    spells()
     events()
