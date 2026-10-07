@@ -1,4 +1,5 @@
-"""The Vibration tab's icons in the radial menu's style (radial_icon.py):
+"""The Vibration tab's icons in the addon logo's style (line_icon.py: cream
+outlines, green accents; shapes drawn with radial_icon's helpers):
 textures/ic_vibe_<pattern>.tga for the patterns and Off, and
 textures/ic_event_<event>.tga for the events.
 
@@ -10,6 +11,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 from radial_icon import BLUE, GOLD, GREEN, GREY, LEATHER, RED, STEEL, Icon, preview  # noqa: E402
+from line_icon import render  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "textures")
 icon = Icon()
@@ -31,25 +33,25 @@ def patterns():
     m = icon.mask(); d = icon.draw(m)
     icon.circle(d, 64, 64, 10)
     waves(d, 64, 64, 1, 26, 0, 6, 40)
-    icon.save(path("ic_vibe_micro"), [(m, GOLD)])
+    render(path("ic_vibe_micro"), [(m, GOLD)])
 
     m = icon.mask(); d = icon.draw(m)
     icon.stroke(d, [(14, 76), (44, 76), (58, 28), (72, 100), (84, 76), (114, 76)], 10)
-    icon.save(path("ic_vibe_tick"), [(m, GOLD)])
+    render(path("ic_vibe_tick"), [(m, GOLD)])
 
     m = icon.mask(); d = icon.draw(m)
     icon.stroke(d, [(10, 78), (28, 78), (38, 34), (50, 96), (60, 78), (68, 78), (78, 34), (90, 96), (100, 78),
                     (118, 78)], 9)
-    icon.save(path("ic_vibe_double"), [(m, GOLD)])
+    render(path("ic_vibe_double"), [(m, GOLD)])
 
     m = icon.mask(); d = icon.draw(m)
     icon.circle(d, 64, 64, 12)
     waves(d, 64, 64, 3, 24, 16, 7, 55)
-    icon.save(path("ic_vibe_pulse"), [(m, GOLD)])
+    render(path("ic_vibe_pulse"), [(m, GOLD)])
 
     m = icon.mask(); d = icon.draw(m)
     icon.stroke(d, [(x, 64 + 18 * math.sin((x - 12) / 104 * 6 * math.pi)) for x in range(12, 117, 2)], 10)
-    icon.save(path("ic_vibe_long"), [(m, GOLD)])
+    render(path("ic_vibe_long"), [(m, GOLD)])
 
     heart = icon.mask(); d = icon.draw(heart)
     pts = []
@@ -61,25 +63,25 @@ def patterns():
     icon.polygon(d, pts)
     line = icon.mask(); d = icon.draw(line)
     icon.stroke(d, [(8, 66), (36, 66), (46, 44), (58, 90), (70, 34), (80, 66), (120, 66)], 7)
-    icon.save(path("ic_vibe_heart"), [(heart, RED), (line, GOLD)])
+    render(path("ic_vibe_heart"), [(heart, RED), (line, GOLD)])
 
     m = icon.mask(); d = icon.draw(m)
     icon.bar(d, 36, 74, 104, 18)
     icon.bar(d, 64, 52, 104, 18)
     icon.bar(d, 92, 26, 104, 18)
-    icon.save(path("ic_vibe_rise"), [(m, GOLD)])
+    render(path("ic_vibe_rise"), [(m, GOLD)])
 
     # Impact: a heavy fist-like burst, short and hard: a wide star, waves
     burst = icon.mask(); d = icon.draw(burst)
     icon.star(d, 64, 64, 44, 22, 8, turn=-90)
     hit = icon.mask(); d = icon.draw(hit)
     waves(d, 64, 64, 1, 52, 0, 8, 35)
-    icon.save(path("ic_vibe_impact"), [(burst, RED), (hit, GOLD)])
+    render(path("ic_vibe_impact"), [(burst, RED), (hit, GOLD)])
 
     m = icon.mask(); d = icon.draw(m)
     icon.stroke(d, [(8, 78), (20, 78), (28, 38), (38, 94), (46, 78), (52, 78), (60, 38), (70, 94), (78, 78),
                     (84, 78), (92, 38), (102, 94), (110, 78), (120, 78)], 8)
-    icon.save(path("ic_vibe_triple"), [(m, GOLD)])
+    render(path("ic_vibe_triple"), [(m, GOLD)])
 
     # Purr: small soft bumps in a row, over and over
     m = icon.mask(); d = icon.draw(m)
@@ -88,7 +90,7 @@ def patterns():
     loop = icon.mask(); d = icon.draw(loop)
     icon.arc(d, 64, 72, 46, 20, 160, 7)
     icon.polygon(d, [(22, 84), (40, 92), (24, 104)])
-    icon.save(path("ic_vibe_purr"), [(m, GOLD), (loop, GREY)])
+    render(path("ic_vibe_purr"), [(m, GOLD), (loop, GREY)])
 
     # Sweep: left to right and back, arrows both ways over a row of dots
     m = icon.mask(); d = icon.draw(m)
@@ -98,21 +100,21 @@ def patterns():
     for x in (44, 64, 84):
         icon.circle(d, x, 40, 6)
         icon.circle(d, x, 88, 6)
-    icon.save(path("ic_vibe_sweep"), [(m, GOLD)])
+    render(path("ic_vibe_sweep"), [(m, GOLD)])
 
     # Fade out: bars stepping down
     m = icon.mask(); d = icon.draw(m)
     icon.bar(d, 36, 26, 104, 18)
     icon.bar(d, 64, 52, 104, 18)
     icon.bar(d, 92, 74, 104, 18)
-    icon.save(path("ic_vibe_fade"), [(m, GOLD)])
+    render(path("ic_vibe_fade"), [(m, GOLD)])
 
     rings = icon.mask(); d = icon.draw(rings)
     icon.circle(d, 64, 64, 10)
     waves(d, 64, 64, 2, 26, 16, 7, 50)
     slash = icon.mask(); d = icon.draw(slash)
     icon.stroke(d, [(28, 100), (100, 28)], 11)
-    icon.save(path("ic_vibe_off"), [(rings, GREY), (slash, RED)])
+    render(path("ic_vibe_off"), [(rings, GREY), (slash, RED)])
 
 
 def events():
@@ -121,14 +123,14 @@ def events():
     icon.polygon(d, [(64, 34), (100, 72), (78, 72), (78, 110), (50, 110), (50, 72), (28, 72)])
     star = icon.mask(); d = icon.draw(star)
     icon.star(d, 64, 22, 16, 7, 5)
-    icon.save(path("ic_event_levelup"), [(arrow, GOLD), (star, GOLD)])
+    render(path("ic_event_levelup"), [(arrow, GOLD), (star, GOLD)])
 
     # You crit: a jagged gold burst, a red core
     burst = icon.mask(); d = icon.draw(burst)
     icon.star(d, 64, 64, 56, 30, 10, turn=-72)
     core = icon.mask(); d = icon.draw(core)
     icon.star(d, 64, 64, 26, 14, 6, turn=-90)
-    icon.save(path("ic_event_crit"), [(burst, GOLD), (core, RED)])
+    render(path("ic_event_crit"), [(burst, GOLD), (core, RED)])
 
     # You get crit: a red burst behind a cracked steel shield
     burst = icon.mask(); d = icon.draw(burst)
@@ -140,7 +142,7 @@ def events():
     icon.polygon(d, [(28, 22), (100, 22)] + right + left)
     crack = icon.mask(); d = icon.draw(crack)
     icon.stroke(d, [(66, 24), (58, 46), (72, 60), (56, 82), (66, 98)], 4)
-    icon.save(path("ic_event_critted"), [(burst, RED), (icon.cut(shield, crack), STEEL)])
+    render(path("ic_event_critted"), [(burst, RED), (icon.cut(shield, crack), STEEL)])
 
     # Low health: a red heart, mostly drained (the top cut out), a pulse line
     heart = icon.mask(); d = icon.draw(heart)
@@ -157,7 +159,7 @@ def events():
     empty = icon.cut(heart, full)
     line = icon.mask(); d = icon.draw(line)
     icon.stroke(d, [(6, 66), (34, 66), (44, 46), (56, 88), (66, 56), (74, 66), (122, 66)], 6)
-    icon.save(path("ic_event_lowhp"), [(empty, GREY), (full, RED), (line, GOLD)])
+    render(path("ic_event_lowhp"), [(empty, GREY), (full, RED), (line, GOLD)])
 
     # Spell cast: a glowing orb in a cupped hand of waves (a cast's loop)
     orb = icon.mask(); d = icon.draw(orb)
@@ -167,7 +169,7 @@ def events():
     icon.star(d, 100, 30, 9, 3, 4)
     hand = icon.mask(); d = icon.draw(hand)
     icon.arc(d, 64, 56, 44, 20, 160, 10)
-    icon.save(path("ic_event_cast"), [(hand, GOLD), (orb, BLUE), (sparks, GOLD)])
+    render(path("ic_event_cast"), [(hand, GOLD), (orb, BLUE), (sparks, GOLD)])
 
     # Slot change: a small wheel, one slice lit
     wheel = icon.mask(); d = icon.draw(wheel)
@@ -182,7 +184,7 @@ def events():
     icon.polygon(d, pts)
     hub = icon.mask(); d = icon.draw(hub)
     icon.circle(d, 64, 64, 14)
-    icon.save(path("ic_event_wheel"), [(icon.cut(wheel, lit), STEEL), (lit, GOLD), (hub, GOLD)])
+    render(path("ic_event_wheel"), [(icon.cut(wheel, lit), STEEL), (lit, GOLD), (hub, GOLD)])
 
     # Gathering: a pickaxe, a herb leaf beside it
     leaf = icon.mask(); d = icon.draw(leaf)
@@ -199,7 +201,7 @@ def events():
     icon.stroke(d, [(22, 112), (80, 40)], 10)
     head = icon.mask(); d = icon.draw(head)
     icon.stroke(d, [(52, 16), (82, 26), (104, 48), (114, 70)], 11)
-    icon.save(path("ic_event_gather"), [(leaf, GREEN), (stem, GREEN), (handle, LEATHER), (head, STEEL)])
+    render(path("ic_event_gather"), [(leaf, GREEN), (stem, GREEN), (handle, LEATHER), (head, STEEL)])
 
     # Crafting: a hammer over an anvil
     anvil = icon.mask(); d = icon.draw(anvil)
@@ -209,14 +211,14 @@ def events():
     icon.stroke(d, [(30, 58), (82, 16)], 9)
     hammer = icon.mask(); d = icon.draw(hammer)
     icon.polygon(d, [(70, 6), (104, 36), (92, 48), (58, 18)])
-    icon.save(path("ic_event_craft"), [(anvil, STEEL), (handle, LEATHER), (hammer, GOLD)])
+    render(path("ic_event_craft"), [(anvil, STEEL), (handle, LEATHER), (hammer, GOLD)])
 
     # Interrupted: the cast's orb struck through by a red bolt
     orb = icon.mask(); d = icon.draw(orb)
     icon.circle(d, 64, 64, 32)
     bolt = icon.mask(); d = icon.draw(bolt)
     icon.polygon(d, [(84, 8), (52, 62), (70, 62), (40, 120), (90, 52), (70, 52), (96, 8)])
-    icon.save(path("ic_event_interrupted"), [(icon.cut(orb, bolt), BLUE), (bolt, RED)])
+    render(path("ic_event_interrupted"), [(icon.cut(orb, bolt), BLUE), (bolt, RED)])
 
     # Cancelled: the orb dimmed, a curved arrow turning back
     orb = icon.mask(); d = icon.draw(orb)
@@ -224,7 +226,7 @@ def events():
     back = icon.mask(); d = icon.draw(back)
     icon.arc(d, 64, 64, 46, 150, 330, 10)
     icon.polygon(d, [(14, 70), (42, 70), (28, 96)])
-    icon.save(path("ic_event_cancelled"), [(orb, GREY), (back, GOLD)])
+    render(path("ic_event_cancelled"), [(orb, GREY), (back, GOLD)])
 
     # Pushed back: the cast bar knocked back, a double arrow over it
     bar = icon.mask(); d = icon.draw(bar)
@@ -234,7 +236,7 @@ def events():
     arrows = icon.mask(); d = icon.draw(arrows)
     icon.stroke(d, [(70, 24), (50, 42), (70, 60)], 9)
     icon.stroke(d, [(98, 24), (78, 42), (98, 60)], 9)
-    icon.save(path("ic_event_pushback"), [(bar, STEEL), (fill, GOLD), (arrows, RED)])
+    render(path("ic_event_pushback"), [(bar, STEEL), (fill, GOLD), (arrows, RED)])
 
 
 def leaf_shape(d, cx, cy, rx, ry, turn):
@@ -256,7 +258,7 @@ def actions():
     icon.stroke(d, [(64, 118), (64, 64)], 6)
     a = icon.mask(); d = icon.draw(a)
     icon.polygon(d, [(64, 10), (86, 36), (72, 36), (72, 52), (56, 52), (56, 36), (42, 36)])
-    icon.save(path("ic_vibe_pluck"), [(m, GREEN), (a, GOLD)])
+    render(path("ic_vibe_pluck"), [(m, GREEN), (a, GOLD)])
 
     # Pickaxe (mining): the pick, a spark where it lands
     h = icon.mask(); d = icon.draw(h)
@@ -265,14 +267,14 @@ def actions():
     icon.stroke(d, [(52, 16), (82, 26), (104, 48), (114, 70)], 11)
     sp = icon.mask(); d = icon.draw(sp)
     icon.star(d, 104, 100, 18, 7, 6)
-    icon.save(path("ic_vibe_pickaxe"), [(h, LEATHER), (hd, STEEL), (sp, GOLD)])
+    render(path("ic_vibe_pickaxe"), [(h, LEATHER), (hd, STEEL), (sp, GOLD)])
 
     # Cut (skinning): a curved knife, its handle
     blade = icon.mask(); d = icon.draw(blade)
     icon.polygon(d, [(34, 82), (88, 24), (110, 18), (100, 40), (48, 94)])
     hdl = icon.mask(); d = icon.draw(hdl)
     icon.stroke(d, [(18, 110), (40, 88)], 13)
-    icon.save(path("ic_vibe_skin"), [(blade, STEEL), (hdl, LEATHER)])
+    render(path("ic_vibe_skin"), [(blade, STEEL), (hdl, LEATHER)])
 
     # Line (fishing): a hook on its line, a bobber
     line = icon.mask(); d = icon.draw(line)
@@ -280,7 +282,7 @@ def actions():
     icon.arc(d, 52, 84, 14, -10, 200, 7)
     bob = icon.mask(); d = icon.draw(bob)
     icon.circle(d, 64, 40, 13)
-    icon.save(path("ic_vibe_reel"), [(line, STEEL), (bob, RED)])
+    render(path("ic_vibe_reel"), [(line, STEEL), (bob, RED)])
 
     # Tumbler (opening): a key
     k = icon.mask(); d = icon.draw(k)
@@ -290,7 +292,7 @@ def actions():
     icon.stroke(d, [(110, 64), (110, 80)], 9)
     hole = icon.mask(); d = icon.draw(hole)
     icon.circle(d, 38, 64, 9)
-    icon.save(path("ic_vibe_click"), [(icon.cut(k, hole), GOLD)])
+    render(path("ic_vibe_click"), [(icon.cut(k, hole), GOLD)])
 
     # Anvil (blacksmithing): a hammer striking, sparks
     hdl = icon.mask(); d = icon.draw(hdl)
@@ -300,7 +302,7 @@ def actions():
     sp = icon.mask(); d = icon.draw(sp)
     icon.star(d, 104, 24, 14, 5, 6)
     icon.star(d, 116, 52, 9, 3, 5)
-    icon.save(path("ic_vibe_hammer"), [(hdl, LEATHER), (hd, STEEL), (sp, GOLD)])
+    render(path("ic_vibe_hammer"), [(hdl, LEATHER), (hd, STEEL), (sp, GOLD)])
 
     # Stitch (tailoring): a needle, its thread in loops
     n = icon.mask(); d = icon.draw(n)
@@ -310,7 +312,7 @@ def actions():
     th = icon.mask(); d = icon.draw(th)
     icon.arc(d, 70, 86, 16, 0, 180, 5)
     icon.arc(d, 38, 86, 16, 180, 360, 5)
-    icon.save(path("ic_vibe_sew"), [(icon.cut(n, eye), STEEL), (th, RED)])
+    render(path("ic_vibe_sew"), [(icon.cut(n, eye), STEEL), (th, RED)])
 
     # Punch (leatherworking): a hide, an awl through it
     hide = icon.mask(); d = icon.draw(hide)
@@ -319,7 +321,7 @@ def actions():
     holes = icon.mask(); d = icon.draw(holes)
     for x in (42, 64, 86):
         icon.circle(d, x, 70, 5)
-    icon.save(path("ic_vibe_punch"), [(icon.cut(hide, holes), LEATHER)])
+    render(path("ic_vibe_punch"), [(icon.cut(hide, holes), LEATHER)])
 
     # Bubbles (alchemy): a flask, bubbles rising
     f = icon.mask(); d = icon.draw(f)
@@ -330,7 +332,7 @@ def actions():
     b = icon.mask(); d = icon.draw(b)
     for x, y, r in ((54, 84, 5), (72, 94, 4), (66, 74, 3.5)):
         icon.circle(d, x, y, r)
-    icon.save(path("ic_vibe_bubble"), [(f, STEEL), (icon.cut(liq, b), GREEN)])
+    render(path("ic_vibe_bubble"), [(f, STEEL), (icon.cut(liq, b), GREEN)])
 
     # Sizzle (cooking): a pan, heat waves over it
     pan = icon.mask(); d = icon.draw(pan)
@@ -339,7 +341,7 @@ def actions():
     w = icon.mask(); d = icon.draw(w)
     for x in (40, 58, 76):
         icon.stroke(d, [(x, 66), (x - 6, 54), (x + 2, 42), (x - 4, 30)], 5)
-    icon.save(path("ic_vibe_sizzle"), [(pan, STEEL), (w, RED)])
+    render(path("ic_vibe_sizzle"), [(pan, STEEL), (w, RED)])
 
     # Ratchet (engineering): a gear
     g = icon.mask(); d = icon.draw(g)
@@ -347,14 +349,14 @@ def actions():
     icon.circle(d, 64, 64, 40)
     hole = icon.mask(); d = icon.draw(hole)
     icon.circle(d, 64, 64, 14)
-    icon.save(path("ic_vibe_gears"), [(icon.cut(g, hole), STEEL)])
+    render(path("ic_vibe_gears"), [(icon.cut(g, hole), STEEL)])
 
     # Shimmer (enchanting): a big sparkle, two small
     m = icon.mask(); d = icon.draw(m)
     icon.star(d, 60, 66, 46, 12, 4)
     icon.star(d, 102, 28, 16, 5, 4)
     icon.star(d, 102, 102, 12, 4, 4)
-    icon.save(path("ic_vibe_shimmer"), [(m, BLUE)])
+    render(path("ic_vibe_shimmer"), [(m, BLUE)])
 
 
 def spells():
@@ -368,7 +370,7 @@ def spells():
     pts = [(64 + 20 * math.cos(math.radians(a)), 96 + 16 * math.sin(math.radians(a))) for a in range(-10, 191, 6)]
     pts += [(46, 88), (56, 62), (64, 76), (72, 54), (84, 90)]
     icon.polygon(d, pts)
-    icon.save(path("ic_vibe_kindle"), [(f, RED), (core, GOLD)])
+    render(path("ic_vibe_kindle"), [(f, RED), (core, GOLD)])
 
     # Frost: a snowflake
     m = icon.mask(); d = icon.draw(m)
@@ -380,14 +382,14 @@ def spells():
             b2 = a + side * math.radians(40)
             mx, my = 64 + 32 * math.cos(a), 64 + 32 * math.sin(a)
             icon.stroke(d, [(mx, my), (mx + 16 * math.cos(b2), my + 16 * math.sin(b2))], 6)
-    icon.save(path("ic_vibe_frost"), [(m, BLUE)])
+    render(path("ic_vibe_frost"), [(m, BLUE)])
 
     # Arcane: three missiles streaking in
     m = icon.mask(); d = icon.draw(m)
     for i, (x, y) in enumerate(((88, 30), (100, 64), (88, 98))):
         icon.circle(d, x, y, 11)
         icon.stroke(d, [(x - 12, y), (x - 62 + i * 4, y + (y - 64) * 0.4)], 5)
-    icon.save(path("ic_vibe_arcane"), [(m, BLUE)])
+    render(path("ic_vibe_arcane"), [(m, BLUE)])
 
     # Shadow: a dark orb in a swirl
     orb = icon.mask(); d = icon.draw(orb)
@@ -395,7 +397,7 @@ def spells():
     sw = icon.mask(); d = icon.draw(sw)
     icon.arc(d, 64, 64, 46, 200, 330, 9)
     icon.arc(d, 64, 64, 46, 20, 150, 9)
-    icon.save(path("ic_vibe_shadow"), [(sw, GREY), (orb, ((200, 150, 255), (110, 50, 170), (45, 15, 80)))])
+    render(path("ic_vibe_shadow"), [(sw, GREY), (orb, ((200, 150, 255), (110, 50, 170), (45, 15, 80)))])
 
     # Radiance (holy, resurrection): a sun
     m = icon.mask(); d = icon.draw(m)
@@ -404,7 +406,7 @@ def spells():
         a = math.radians(k * 30)
         icon.stroke(d, [(64 + 36 * math.cos(a), 64 + 36 * math.sin(a)),
                         (64 + (54 if k % 2 == 0 else 46) * math.cos(a), 64 + (54 if k % 2 == 0 else 46) * math.sin(a))], 7)
-    icon.save(path("ic_vibe_radiance"), [(m, GOLD)])
+    render(path("ic_vibe_radiance"), [(m, GOLD)])
 
     # Mend (healing): a green cross in a soft ring
     ring = icon.mask(); d = icon.draw(ring)
@@ -412,12 +414,12 @@ def spells():
     c = icon.mask(); d = icon.draw(c)
     icon.polygon(d, [(52, 26), (76, 26), (76, 52), (102, 52), (102, 76), (76, 76), (76, 102), (52, 102),
                      (52, 76), (26, 76), (26, 52), (52, 52)])
-    icon.save(path("ic_vibe_mend"), [(ring, GOLD), (c, GREEN)])
+    render(path("ic_vibe_mend"), [(ring, GOLD), (c, GREEN)])
 
     # Static (nature, lightning): a bolt
     m = icon.mask(); d = icon.draw(m)
     icon.polygon(d, [(76, 6), (32, 70), (60, 70), (46, 122), (98, 52), (68, 52), (88, 6)])
-    icon.save(path("ic_vibe_static"), [(m, GOLD)])
+    render(path("ic_vibe_static"), [(m, GOLD)])
 
     # Draw (aimed shots): a bow drawn back, an arrow on its string
     bow = icon.mask(); d = icon.draw(bow)
@@ -427,7 +429,7 @@ def spells():
     ar = icon.mask(); d = icon.draw(ar)
     icon.stroke(d, [(18, 64), (106, 64)], 6)
     icon.polygon(d, [(100, 50), (124, 64), (100, 78)])
-    icon.save(path("ic_vibe_draw"), [(st, GREY), (bow, LEATHER), (ar, STEEL)])
+    render(path("ic_vibe_draw"), [(st, GREY), (bow, LEATHER), (ar, STEEL)])
 
     # Hearth (Hearthstone, teleports): a hearthstone
     stone = icon.mask(); d = icon.draw(stone)
@@ -437,7 +439,7 @@ def spells():
     pts = [(64 + (4 + t * 0.9) * math.cos(math.radians(t * 12)), 66 + (4 + t * 0.75) * math.sin(math.radians(t * 12)))
            for t in range(0, 34)]
     icon.stroke(d, pts, 6)
-    icon.save(path("ic_vibe_hearth"), [(icon.cut(stone, sw), GREY), (sw, BLUE)])
+    render(path("ic_vibe_hearth"), [(icon.cut(stone, sw), GREY), (sw, BLUE)])
 
     # Ritual (summoning): a rune circle
     ring = icon.mask(); d = icon.draw(ring)
@@ -448,7 +450,7 @@ def spells():
         a = math.radians(-90 + k * 144)
         pts.append((64 + 44 * math.cos(a), 64 + 44 * math.sin(a)))
     icon.stroke(d, pts, 5)
-    icon.save(path("ic_vibe_ritual"), [(ring, RED), (st, GOLD)])
+    render(path("ic_vibe_ritual"), [(ring, RED), (st, GOLD)])
 
 
 if __name__ == "__main__":

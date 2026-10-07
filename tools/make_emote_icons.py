@@ -1,4 +1,5 @@
-"""The emotes' icons in the radial menu's style (radial_icon.py):
+"""The emotes' icons in the addon logo's style (line_icon.py: cream
+outlines, green accents; shapes drawn with radial_icon's helpers):
 textures/ic_emote_<token>.tga, one per emote in RingContent.lua's IC.EMOTES.
 
 Run: python3 tools/make_emote_icons.py   (needs Pillow)
@@ -9,6 +10,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 from radial_icon import BLUE, GOLD, GREEN, GREY, LEATHER, RED, STEEL, Icon, preview  # noqa: E402
+from line_icon import render  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "textures")
 icon = Icon()
@@ -17,7 +19,7 @@ ALL = []
 
 def save(token, layers):
     path = os.path.join(OUT, "ic_emote_" + token + ".tga")
-    icon.save(path, layers)
+    render(path, layers)
     ALL.append(path)
 
 

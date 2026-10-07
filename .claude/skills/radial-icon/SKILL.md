@@ -64,3 +64,15 @@ Palettes: `GOLD` (the default, like the native icons), `RED`, `GREY`, `STEEL`,
   add `RED` for danger / emphasis, `STEEL` for armour and blades, `GREY` for "off".
 - No text in icons; no thin details (they vanish at slot size).
 - Keep a transparent background; the outline and shadow come from `render()`.
+
+## The logo's line style (every icon now)
+
+The addon's logo (`tools/addon_logo.png`, turned into `textures/ic_addon.tga`
+by `tools/make_addon_icon.py`) is cream line art with green accents. The emote
+icons follow it: `tools/line_icon.py`'s `render(path, layers)` takes the same
+(mask, palette) layers as `icon.save` but draws each filled shape as a cream
+outline (RED / GREEN / BLUE layers in green), gaps where a front shape crosses
+one behind, and a soft dark shadow. `tools/make_emote_icons.py` and
+`tools/make_vibe_icons.py` (patterns, events, spells) use it: every icon of
+the addon is in this style now; draw
+new shapes with the same helpers and pass them to `render`.
