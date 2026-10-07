@@ -39,6 +39,14 @@ The [release workflow](.github/workflows/release.yml) checks the tag matches the
 zip, creates the GitHub release with the changelog section, and uploads to CurseForge when
 `CF_API_KEY` is set. A tag with a suffix (`v0.3.0-beta1`) makes a pre-release / beta.
 
+## Support
+
+Improved Controller is free and always will be. If it makes your game better and you'd like to
+say thanks, you can buy me a coffee:
+
+- [Ko-fi](https://ko-fi.com/markgravity)
+- [PayPal](https://paypal.me/markgravity)
+
 ## Credits
 
 Parts of the code are adapted from
