@@ -9,7 +9,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
-from radial_icon import BLUE, GOLD, GREY, RED, STEEL, Icon, preview  # noqa: E402
+from radial_icon import BLUE, GOLD, GREEN, GREY, LEATHER, RED, STEEL, Icon, preview  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "textures")
 icon = Icon()
@@ -184,6 +184,33 @@ def events():
     icon.circle(d, 64, 64, 14)
     icon.save(path("ic_event_wheel"), [(icon.cut(wheel, lit), STEEL), (lit, GOLD), (hub, GOLD)])
 
+    # Gathering: a pickaxe, a herb leaf beside it
+    leaf = icon.mask(); d = icon.draw(leaf)
+    pts = []
+    for i in range(40):
+        t = i / 40 * 2 * math.pi
+        x, y = 22 * math.cos(t), 11 * math.sin(t)
+        a = math.radians(-40)
+        pts.append((94 + x * math.cos(a) - y * math.sin(a), 96 + x * math.sin(a) + y * math.cos(a)))
+    icon.polygon(d, pts)
+    stem = icon.mask(); d = icon.draw(stem)
+    icon.stroke(d, [(70, 120), (80, 108), (94, 96)], 5)
+    handle = icon.mask(); d = icon.draw(handle)
+    icon.stroke(d, [(22, 112), (80, 40)], 10)
+    head = icon.mask(); d = icon.draw(head)
+    icon.stroke(d, [(52, 16), (82, 26), (104, 48), (114, 70)], 11)
+    icon.save(path("ic_event_gather"), [(leaf, GREEN), (stem, GREEN), (handle, LEATHER), (head, STEEL)])
+
+    # Crafting: a hammer over an anvil
+    anvil = icon.mask(); d = icon.draw(anvil)
+    icon.polygon(d, [(14, 74), (98, 74), (114, 66), (114, 84), (92, 90), (84, 98), (88, 112), (40, 112),
+                     (44, 98), (36, 90), (14, 86)])
+    handle = icon.mask(); d = icon.draw(handle)
+    icon.stroke(d, [(30, 58), (82, 16)], 9)
+    hammer = icon.mask(); d = icon.draw(hammer)
+    icon.polygon(d, [(70, 6), (104, 36), (92, 48), (58, 18)])
+    icon.save(path("ic_event_craft"), [(anvil, STEEL), (handle, LEATHER), (hammer, GOLD)])
+
     # Interrupted: the cast's orb struck through by a red bolt
     orb = icon.mask(); d = icon.draw(orb)
     icon.circle(d, 64, 64, 32)
@@ -210,6 +237,127 @@ def events():
     icon.save(path("ic_event_pushback"), [(bar, STEEL), (fill, GOLD), (arrows, RED)])
 
 
+def leaf_shape(d, cx, cy, rx, ry, turn):
+    pts = []
+    for i in range(40):
+        t = i / 40 * 2 * math.pi
+        x, y = rx * math.cos(t), ry * math.sin(t)
+        a = math.radians(turn)
+        pts.append((cx + x * math.cos(a) - y * math.sin(a), cy + x * math.sin(a) + y * math.cos(a)))
+    icon.polygon(d, pts)
+
+
+def actions():
+    """The action patterns' icons (gathering, crafting)"""
+    # Rustle (herbalism): two leaves and a stem, a pull arrow
+    m = icon.mask(); d = icon.draw(m)
+    leaf_shape(d, 46, 76, 24, 11, -35)
+    leaf_shape(d, 82, 76, 24, 11, 35)
+    icon.stroke(d, [(64, 118), (64, 64)], 6)
+    a = icon.mask(); d = icon.draw(a)
+    icon.polygon(d, [(64, 10), (86, 36), (72, 36), (72, 52), (56, 52), (56, 36), (42, 36)])
+    icon.save(path("ic_vibe_pluck"), [(m, GREEN), (a, GOLD)])
+
+    # Pickaxe (mining): the pick, a spark where it lands
+    h = icon.mask(); d = icon.draw(h)
+    icon.stroke(d, [(22, 112), (80, 40)], 10)
+    hd = icon.mask(); d = icon.draw(hd)
+    icon.stroke(d, [(52, 16), (82, 26), (104, 48), (114, 70)], 11)
+    sp = icon.mask(); d = icon.draw(sp)
+    icon.star(d, 104, 100, 18, 7, 6)
+    icon.save(path("ic_vibe_pickaxe"), [(h, LEATHER), (hd, STEEL), (sp, GOLD)])
+
+    # Cut (skinning): a curved knife, its handle
+    blade = icon.mask(); d = icon.draw(blade)
+    icon.polygon(d, [(34, 82), (88, 24), (110, 18), (100, 40), (48, 94)])
+    hdl = icon.mask(); d = icon.draw(hdl)
+    icon.stroke(d, [(18, 110), (40, 88)], 13)
+    icon.save(path("ic_vibe_skin"), [(blade, STEEL), (hdl, LEATHER)])
+
+    # Line (fishing): a hook on its line, a bobber
+    line = icon.mask(); d = icon.draw(line)
+    icon.stroke(d, [(64, 6), (64, 76)], 5)
+    icon.arc(d, 52, 84, 14, -10, 200, 7)
+    bob = icon.mask(); d = icon.draw(bob)
+    icon.circle(d, 64, 40, 13)
+    icon.save(path("ic_vibe_reel"), [(line, STEEL), (bob, RED)])
+
+    # Tumbler (opening): a key
+    k = icon.mask(); d = icon.draw(k)
+    icon.circle(d, 38, 64, 22)
+    icon.stroke(d, [(56, 64), (114, 64)], 11)
+    icon.stroke(d, [(94, 64), (94, 84)], 9)
+    icon.stroke(d, [(110, 64), (110, 80)], 9)
+    hole = icon.mask(); d = icon.draw(hole)
+    icon.circle(d, 38, 64, 9)
+    icon.save(path("ic_vibe_click"), [(icon.cut(k, hole), GOLD)])
+
+    # Anvil (blacksmithing): a hammer striking, sparks
+    hdl = icon.mask(); d = icon.draw(hdl)
+    icon.stroke(d, [(22, 108), (74, 56)], 10)
+    hd = icon.mask(); d = icon.draw(hd)
+    icon.polygon(d, [(58, 30), (96, 68), (82, 82), (44, 44)])
+    sp = icon.mask(); d = icon.draw(sp)
+    icon.star(d, 104, 24, 14, 5, 6)
+    icon.star(d, 116, 52, 9, 3, 5)
+    icon.save(path("ic_vibe_hammer"), [(hdl, LEATHER), (hd, STEEL), (sp, GOLD)])
+
+    # Stitch (tailoring): a needle, its thread in loops
+    n = icon.mask(); d = icon.draw(n)
+    icon.stroke(d, [(28, 108), (104, 20)], 7)
+    eye = icon.mask(); d = icon.draw(eye)
+    icon.circle(d, 98, 28, 3.5)
+    th = icon.mask(); d = icon.draw(th)
+    icon.arc(d, 70, 86, 16, 0, 180, 5)
+    icon.arc(d, 38, 86, 16, 180, 360, 5)
+    icon.save(path("ic_vibe_sew"), [(icon.cut(n, eye), STEEL), (th, RED)])
+
+    # Punch (leatherworking): a hide, an awl through it
+    hide = icon.mask(); d = icon.draw(hide)
+    icon.polygon(d, [(18, 40), (44, 30), (64, 40), (86, 30), (112, 42), (104, 70), (112, 98), (84, 108),
+                     (64, 98), (42, 108), (16, 96), (26, 70)])
+    holes = icon.mask(); d = icon.draw(holes)
+    for x in (42, 64, 86):
+        icon.circle(d, x, 70, 5)
+    icon.save(path("ic_vibe_punch"), [(icon.cut(hide, holes), LEATHER)])
+
+    # Bubbles (alchemy): a flask, bubbles rising
+    f = icon.mask(); d = icon.draw(f)
+    icon.circle(d, 64, 84, 32)
+    icon.polygon(d, [(54, 18), (74, 18), (74, 60), (54, 60)])
+    liq = icon.mask(); d = icon.draw(liq)
+    icon.circle(d, 64, 88, 24)
+    b = icon.mask(); d = icon.draw(b)
+    for x, y, r in ((54, 84, 5), (72, 94, 4), (66, 74, 3.5)):
+        icon.circle(d, x, y, r)
+    icon.save(path("ic_vibe_bubble"), [(f, STEEL), (icon.cut(liq, b), GREEN)])
+
+    # Sizzle (cooking): a pan, heat waves over it
+    pan = icon.mask(); d = icon.draw(pan)
+    leaf_shape(d, 56, 88, 40, 14, 0)
+    icon.stroke(d, [(92, 86), (122, 76)], 9)
+    w = icon.mask(); d = icon.draw(w)
+    for x in (40, 58, 76):
+        icon.stroke(d, [(x, 66), (x - 6, 54), (x + 2, 42), (x - 4, 30)], 5)
+    icon.save(path("ic_vibe_sizzle"), [(pan, STEEL), (w, RED)])
+
+    # Ratchet (engineering): a gear
+    g = icon.mask(); d = icon.draw(g)
+    icon.star(d, 64, 64, 50, 38, 10, turn=-90)
+    icon.circle(d, 64, 64, 40)
+    hole = icon.mask(); d = icon.draw(hole)
+    icon.circle(d, 64, 64, 14)
+    icon.save(path("ic_vibe_gears"), [(icon.cut(g, hole), STEEL)])
+
+    # Shimmer (enchanting): a big sparkle, two small
+    m = icon.mask(); d = icon.draw(m)
+    icon.star(d, 60, 66, 46, 12, 4)
+    icon.star(d, 102, 28, 16, 5, 4)
+    icon.star(d, 102, 102, 12, 4, 4)
+    icon.save(path("ic_vibe_shimmer"), [(m, BLUE)])
+
+
 if __name__ == "__main__":
     patterns()
+    actions()
     events()

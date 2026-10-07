@@ -1,11 +1,11 @@
 -- The Vibration tab, laid out like the Touchpad tab: the events down the
--- left by group (Combat: critical hit, taken, spell cast; Progress: level
--- up), Spell cast's own four (casting, interrupted, cancelled, pushed back)
--- as the picker's lists (L2 / R2), the selected one big in the
--- middle with its pattern, and the patterns down the right (Off and Easy
--- Controller's seven) as slices of a ring around it. Choosing a pattern
--- sets it and plays it; Triangle plays the event's one again. (Vibration
--- on / off and its strength: the General tab.)
+-- left by group (Combat; Casting: spell, gathering, crafting; Wheel;
+-- Progress), the selected one big in the middle with its pattern, and its
+-- choices down the right as slices of a ring around it: an event's
+-- patterns, or for a kind of cast the ready-made sets for its four moments
+-- (casting, interrupted, cancelled, pushed back). Choosing one sets it and
+-- plays it; Triangle plays it again. (Vibration on / off and its strength:
+-- the General tab.)
 local _, IC = ...
 
 local K = IC.ConfigKit
@@ -23,7 +23,7 @@ end
 local E = { zone = "rail", index = 1 }
 V.Editor = E
 
--- The selected line on the left (V.RAIL: an event, or Spell cast's four)
+-- The selected line on the left (V.RAIL: an event, or a kind of cast)
 function E:Item()
     return V.RAIL[self.index]
 end
@@ -37,11 +37,37 @@ local function Patterns()
 end
 
 -- The picker on the selected line: one list of patterns per event in it
--- (Spell cast: Casting, Interrupted, Cancelled, Pushed back; L2 / R2)
+-- (a kind of cast: the ready-made sets)
 function E:SyncPicker()
     local item = self:Item()
     if self.pickerFor == item.key then return end
     self.pickerFor = item.key
+    -- A kind of cast: one list, the ready-made sets
+    if item.castKind then
+        self.picker:Open({
+            lists = { { key = item.key, label = "Vibration", entries = function()
+                -- Off, Match the action (gathering, crafting), the general
+                -- sets, then that kind's actions'
+                local entries = {}
+                for _, p in ipairs(V.CAST_PRESETS) do
+                    local fits = (p.auto and item.castKind ~= "spell") or (p.action and p.action == item.castKind)
+                        or (not p.auto and not p.action)
+                    if fits then
+                        entries[#entries + 1] = { action = p.key, name = p.label, icon = p.auto and item.icon or p.icon }
+                    end
+                end
+                return entries
+            end } },
+            rows = PICKER_ROWS, chooseVerb = "Set",
+            current = function() return V.CastPreset(item.castKind) end,
+            onChoose = function(e) E:Set(e) end,
+            onBack = function()
+                E.zone = "rail"
+                menu.Render()
+            end,
+        })
+        return
+    end
     local lists = {}
     for _, sub in ipairs(item.subs) do
         lists[#lists + 1] = { key = sub.key, label = #item.subs > 1 and sub.label or "Vibration", sub = sub,
@@ -148,6 +174,15 @@ function E:Aim()
 end
 
 function E:Set(e)
+    local item = self:Item()
+    if item.castKind then
+        V.SetCastPreset(item.castKind, e.action)
+        menu.Toast(item.label .. ": " .. e.name)
+        -- Felt as a cast would go with it
+        if e.action ~= "off" then self:Try() end
+        menu.Render()
+        return
+    end
     local event = self:Event()
     V.SetEventPattern(event.key, e.action)
     if e.action ~= "off" then V.Play(e.action) end
@@ -155,7 +190,7 @@ function E:Set(e)
     menu.Render()
 end
 
--- Triangle: feel the event's pattern again (Spell cast: a whole cast
+-- Triangle: feel the event's pattern again (a kind of cast: a whole cast
 -- played out, each of its four where it would come; a critical hit: a
 -- combo of them)
 function E:Try()
@@ -164,10 +199,14 @@ function E:Try()
         return
     end
     local item = self:Item()
-    if #item.subs > 1 then
+    if item.castKind then
+        if V.CastPreset(item.castKind) == "off" then
+            menu.Toast(item.label .. " is off", true)
+            return
+        end
         V.SimulateCast(function(label)
             if label then menu.Toast(item.label .. ": " .. label) end
-        end)
+        end, item.castKind)
         return
     end
     local event = self:Event()
@@ -198,7 +237,7 @@ end
 -- up / down move inside them.
 function E:Press(name)
     if name == "LB" or name == "RB" then return false end
-    -- L2 / R2: Spell cast's events, from either side
+    -- L2 / R2: an item's lists, from either side
     if name == "LT" or name == "RT" then
         self:SyncPicker()
         self.picker:Press(name)
@@ -288,8 +327,12 @@ function E:Render()
                 -- Off: none of its events vibrates
                 local item = V.RAIL[line.index]
                 local on = false
-                for _, sub in ipairs(item.subs) do
-                    if V.EventPattern(sub.key) then on = true end
+                if item.castKind then
+                    on = V.CastPreset(item.castKind) ~= "off"
+                else
+                    for _, sub in ipairs(item.subs) do
+                        if V.EventPattern(sub.key) then on = true end
+                    end
                 end
                 local isSel = line.index == self.index
                 r.seg:SetShown(true)
@@ -300,8 +343,46 @@ function E:Render()
             K.Rotate(r.label, K.ReadingAngle(theta))
         end
     end
-    -- The selected event (Spell cast: the one in the picker), its pattern
-    -- under it
+    -- A kind of cast: its set, and what each moment plays
+    local item = self:Item()
+    if item.castKind then
+        local preset = V.Preset(V.CastPreset(item.castKind))
+        local on = preset and preset.key ~= "off"
+        f.big:SetLook({ icon = item.icon, discColor = KC.iconBg, hatch = not on, dash = true })
+        f.big:SetAlpha((settings.enabled and on) and 1 or 0.45)
+        local text = on and preset.label or "|cffff7a5cOff|r"
+        if on and preset.auto then
+            -- Each action its own: which pattern, two to a line
+            local parts, line = {}, {}
+            for _, a in ipairs(V.CAST_ACTIONS) do
+                if a.kind == item.castKind then
+                    local pattern = V.Pattern(a.pattern)
+                    line[#line + 1] = a.label .. ": " .. (pattern and pattern.label or "—")
+                    if #line == 2 then
+                        parts[#parts + 1] = table.concat(line, "  ·  ")
+                        line = {}
+                    end
+                end
+            end
+            if #line > 0 then parts[#parts + 1] = table.concat(line, "  ·  ") end
+            text = text .. "|n|cffb9ab8c" .. table.concat(parts, "|n") .. "|r"
+        elseif on then
+            local parts = {}
+            for _, phase in ipairs(V.CAST_PHASES) do
+                local pattern = V.Pattern(preset[phase])
+                local label = phase == "cast" and "Casting" or (phase:sub(1, 1):upper() .. phase:sub(2))
+                if phase == "pushback" then label = "Pushed back" end
+                parts[#parts + 1] = label .. ": " .. (pattern and pattern.label or "—")
+            end
+            text = text .. "|n|cffb9ab8c" .. table.concat(parts, "|n") .. "|r"
+        end
+        f.pattern:SetText(text)
+        self.picker:Show()
+        self.picker:SetAlpha(self.zone == "picker" and 1 or 0.5)
+        self.picker:Render()
+        return
+    end
+    -- The selected event, its pattern under it
     local event = self:Event()
     local pattern = V.Pattern(V.EventPattern(event.key))
     f.big:SetLook({ icon = event.icon, discColor = KC.iconBg, hatch = not pattern,

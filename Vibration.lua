@@ -41,6 +41,34 @@ V.PATTERNS = {
         steps = { { 0.7, 0, 0.15 }, { 0.4, 0.4, 0.15 }, { 0, 0.7, 0.15 }, { 0.4, 0.4, 0.15 } } },
     { key = "fade", label = "Fade out",
         steps = { { 1, 1, 0.15 }, { 0.6, 0.6, 0.15 }, { 0.3, 0.3, 0.2 } } },
+    -- Actions, felt as they go (a cast's loop): gathering, then crafting
+    { key = "pluck", label = "Rustle", action = true,      -- herbalism: leaves, then the pull
+        steps = { { 0.2, 0.3, 0.1 }, { 0.3, 0.2, 0.1 }, { 0, 0, 0.15 }, { 0.25, 0.35, 0.1 }, { 0, 0, 0.25 } } },
+    { key = "pickaxe", label = "Pickaxe", action = true,   -- mining: a hard strike, its ring, a swing
+        steps = { { 1, 0.8, 0.12 }, { 0.25, 0.15, 0.1 }, { 0, 0, 0.55 } } },
+    { key = "skin", label = "Cut", action = true,          -- skinning: the knife drawn back and forth
+        steps = { { 0.5, 0.1, 0.15 }, { 0.1, 0.5, 0.15 }, { 0, 0, 0.15 } } },
+    { key = "reel", label = "Line", action = true,         -- fishing: a still line, a bob now and then
+        steps = { { 0.12, 0.12, 0.5 }, { 0.45, 0.35, 0.1 }, { 0.12, 0.12, 0.4 } } },
+    { key = "click", label = "Tumbler", action = true,     -- opening, a lock: small clicks, then give
+        steps = { { 0.3, 0.3, 0.1 }, { 0, 0, 0.2 }, { 0.35, 0.35, 0.1 }, { 0, 0, 0.35 } } },
+    { key = "hammer", label = "Anvil", action = true,      -- blacksmithing: hammer and its rebound
+        steps = { { 0.9, 1, 0.1 }, { 0, 0, 0.15 }, { 0.45, 0.55, 0.1 }, { 0, 0, 0.45 } } },
+    { key = "sew", label = "Stitch", action = true,        -- tailoring, first aid: quick small stitches
+        steps = { { 0.3, 0.2, 0.1 }, { 0, 0, 0.1 }, { 0.3, 0.2, 0.1 }, { 0, 0, 0.1 }, { 0.3, 0.2, 0.1 },
+            { 0, 0, 0.3 } } },
+    { key = "punch", label = "Punch", action = true,       -- leatherworking: the awl through hide
+        steps = { { 0.6, 0.35, 0.12 }, { 0.15, 0.1, 0.1 }, { 0, 0, 0.35 } } },
+    { key = "bubble", label = "Bubbles", action = true,    -- alchemy: a brew, bubbling here and there
+        steps = { { 0.2, 0, 0.1 }, { 0, 0, 0.15 }, { 0, 0.3, 0.1 }, { 0, 0, 0.1 }, { 0.25, 0.25, 0.1 },
+            { 0, 0, 0.25 } } },
+    { key = "sizzle", label = "Sizzle", action = true,     -- cooking: a pan, never quite still
+        steps = { { 0.15, 0.3, 0.1 }, { 0.1, 0.2, 0.1 }, { 0.2, 0.25, 0.1 }, { 0.1, 0.15, 0.1 } } },
+    { key = "gears", label = "Ratchet", action = true,     -- engineering: a wrench, notch by notch
+        steps = { { 0.5, 0.2, 0.1 }, { 0, 0, 0.1 }, { 0.2, 0.5, 0.1 }, { 0, 0, 0.1 } } },
+    { key = "shimmer", label = "Shimmer", action = true,   -- enchanting: magic swelling and fading
+        steps = { { 0.1, 0.1, 0.1 }, { 0.3, 0.3, 0.1 }, { 0.5, 0.5, 0.1 }, { 0.3, 0.3, 0.1 }, { 0.1, 0.1, 0.1 },
+            { 0, 0, 0.1 } } },
 }
 -- Each pattern's icon, drawn in the radial menu's style (tools/make_vibe_icons.py)
 local VIBE_ICONS = "Interface\\AddOns\\ImprovedController\\textures\\ic_vibe_"
@@ -55,6 +83,7 @@ end
 -- default state and pattern
 V.GROUPS = {
     { key = "combat", label = "Combat" },
+    { key = "casting", label = "Casting" },
     { key = "wheel", label = "Wheel" },
     { key = "progress", label = "Progress" },
 }
@@ -89,23 +118,74 @@ V.EVENTS = {
 local EVENT = {}
 for _, e in ipairs(V.EVENTS) do EVENT[e.key] = e end
 
--- What the Vibration tab lists: each event, but a spell cast's four as one
--- ("Spell cast"), each of them a list of its own in the picker
+-- A cast's four moments (its loop, interrupted, cancelled, pushed back)
+-- take their patterns from one ready-made set, chosen per kind of cast
+V.CAST_PRESETS = {
+    { key = "off", label = "Off", icon = V.OFF_ICON },
+    { key = "subtle", label = "Subtle", cast = "purr", interrupted = "tick", cancelled = "micro", pushback = "micro" },
+    { key = "sweep", label = "Sweep", cast = "sweep", interrupted = "impact", cancelled = "micro", pushback = "tick" },
+    { key = "pulse", label = "Pulse", cast = "pulse", interrupted = "double", cancelled = "micro", pushback = "micro" },
+    { key = "heart", label = "Heartbeat", cast = "heart", interrupted = "impact", cancelled = "tick", pushback = "micro" },
+    { key = "alerts", label = "Alerts only", interrupted = "impact", cancelled = "micro", pushback = "tick" },
+}
+-- The actions a cast can be (gathering, crafting), each with a set of its
+-- own: its pattern while casting, the usual alerts when it ends badly
+V.CAST_ACTIONS = {
+    { key = "herbalism", label = "Herbalism", kind = "gather", pattern = "pluck", spell = 2366 },
+    { key = "mining", label = "Mining", kind = "gather", pattern = "pickaxe", spell = 2575 },
+    { key = "skinning", label = "Skinning", kind = "gather", pattern = "skin", spell = 8613 },
+    { key = "fishing", label = "Fishing", kind = "gather", pattern = "reel", spell = 7620 },
+    { key = "opening", label = "Opening", kind = "gather", pattern = "click", spell = 3365 },
+    { key = "blacksmithing", label = "Blacksmithing", kind = "craft", pattern = "hammer", spell = 2018 },
+    { key = "tailoring", label = "Tailoring", kind = "craft", pattern = "sew", spell = 3908 },
+    { key = "leatherworking", label = "Leatherworking", kind = "craft", pattern = "punch", spell = 2108 },
+    { key = "alchemy", label = "Alchemy", kind = "craft", pattern = "bubble", spell = 2259 },
+    { key = "cooking", label = "Cooking", kind = "craft", pattern = "sizzle", spell = 2550 },
+    { key = "engineering", label = "Engineering", kind = "craft", pattern = "gears", spell = 4036 },
+    { key = "enchanting", label = "Enchanting", kind = "craft", pattern = "shimmer", spell = 7411 },
+    { key = "firstaid", label = "First Aid", kind = "craft", pattern = "sew", spell = 3273 },
+}
+-- "Match the action": the set of the action going on
+table.insert(V.CAST_PRESETS, 2, { key = "auto", label = "Match the action", auto = true,
+    icon = VIBE_ICONS .. "shimmer" })
+for _, a in ipairs(V.CAST_ACTIONS) do
+    V.CAST_PRESETS[#V.CAST_PRESETS + 1] = { key = a.key, label = a.label, action = a.kind, cast = a.pattern,
+        interrupted = "impact", cancelled = "micro", pushback = "tick" }
+end
+
+local PRESET = {}
+for _, p in ipairs(V.CAST_PRESETS) do
+    p.icon = p.icon or VIBE_ICONS .. (p.cast or p.interrupted)
+    PRESET[p.key] = p
+end
+-- (which field of a set each moment uses)
+local PHASE = { cast = "cast", interrupted = "interrupted", cancelled = "cancelled", pushback = "pushback" }
+V.CAST_PHASES = { "cast", "interrupted", "cancelled", "pushback" }
+
+V.CAST_KINDS = {
+    { key = "spell", label = "Spell", icon = EVENT_ICONS .. "cast", preset = "sweep",
+        tip = "Casting or channelling a spell or an ability." },
+    { key = "gather", label = "Gathering", icon = EVENT_ICONS .. "gather", preset = "auto",
+        tip = "Herbalism, mining, skinning, fishing, opening a chest or a lock." },
+    { key = "craft", label = "Crafting", icon = EVENT_ICONS .. "craft", preset = "auto",
+        tip = "Making something with a profession (cast with its window open)." },
+}
+local CAST_KIND = {}
+for _, k in ipairs(V.CAST_KINDS) do CAST_KIND[k.key] = k end
+
+-- What the Vibration tab lists: each event, and the kinds of cast (each a
+-- set for its four moments)
 V.RAIL = {}
-do
-    local parents = {}
-    for _, e in ipairs(V.EVENTS) do
-        if e.parent then
-            local item = parents[e.parent]
-            if not item then
-                item = { key = e.parent, group = e.group, label = "Spell cast", icon = e.icon, subs = {} }
-                parents[e.parent] = item
-                V.RAIL[#V.RAIL + 1] = item
+for _, e in ipairs(V.EVENTS) do
+    if e.parent then
+        if e.key == "cast" then
+            for _, k in ipairs(V.CAST_KINDS) do
+                V.RAIL[#V.RAIL + 1] = { key = "cast_" .. k.key, group = "casting", label = k.label, icon = k.icon,
+                    castKind = k.key, tip = k.tip, subs = { e } }
             end
-            item.subs[#item.subs + 1] = e
-        else
-            V.RAIL[#V.RAIL + 1] = { key = e.key, group = e.group, label = e.label, icon = e.icon, subs = { e } }
         end
+    else
+        V.RAIL[#V.RAIL + 1] = { key = e.key, group = e.group, label = e.label, icon = e.icon, subs = { e } }
     end
 end
 
@@ -114,6 +194,10 @@ function V.Settings()
     IC.db.vibration = IC.db.vibration or {}
     local s = IC.db.vibration
     if s.enabled == nil then s.enabled = true end
+    s.casts = s.casts or {}
+    for _, k in ipairs(V.CAST_KINDS) do
+        if not PRESET[s.casts[k.key]] then s.casts[k.key] = k.preset end
+    end
     s.intensity = s.intensity or 0.8
     s.events = s.events or {}
     for _, e in ipairs(V.EVENTS) do
@@ -131,8 +215,32 @@ function V.Pattern(key)
     return PATTERN[key]
 end
 
--- An event's pattern, or nil when it is off
+-- A kind of cast's set ("off": none)
+function V.CastPreset(kind)
+    return V.Settings().casts[kind or "spell"] or "off"
+end
+
+function V.SetCastPreset(kind, presetKey)
+    V.Settings().casts[kind] = PRESET[presetKey] and presetKey or "off"
+end
+
+function V.Preset(key)
+    return PRESET[key]
+end
+
+-- The cast in progress' kind (Gathering, Crafting...; spell by default)
+-- and action (Mining, Tailoring...; nil for a spell)
+V.castKind = "spell"
+V.castAction = nil
+
+-- An event's pattern, or nil when it is off (a cast's moments: from the
+-- set of the kind of cast going on)
 function V.EventPattern(eventKey)
+    if PHASE[eventKey] then
+        local preset = PRESET[V.CastPreset(V.castKind)]
+        if preset and preset.auto then preset = PRESET[V.castAction] or PRESET.subtle end
+        return preset and preset[PHASE[eventKey]] or nil
+    end
     local cfg = V.Settings().events[eventKey]
     return cfg and cfg.on and cfg.pattern or nil
 end
@@ -383,8 +491,16 @@ function V.SimulateCombo(eventKey, onStep)
     sim[#sim + 1] = C_Timer.NewTimer(t, function() wipe(sim) end)
 end
 
-function V.SimulateCast(onStep)
+function V.SimulateCast(onStep, kind, action)
     V.StopSimulation()
+    V.castKind = kind or "spell"
+    -- (Match the action: a likely one of that kind)
+    if not action then
+        for _, a in ipairs(V.CAST_ACTIONS) do
+            if a.kind == kind then action = action or a.key end
+        end
+    end
+    V.castAction = action
     local function at(t, fn)
         sim[#sim + 1] = C_Timer.NewTimer(t, fn)
     end
@@ -417,6 +533,7 @@ function V.SimulateCast(onStep)
     at(10, function()
         V.EndLoop("cast")
         wipe(sim)
+        V.castKind, V.castAction = "spell", nil
         onStep(nil)
     end)
 end
@@ -484,7 +601,67 @@ local function interrupter(by)
     return secret(by) or (by ~= nil and by ~= "")
 end
 
-local function CastStarted(event)
+-- Gathering: these spells (by their names in the game's language), each
+-- an action
+local GATHER_IDS = {
+    herbalism = { 2366, 2368, 3570, 11993 },
+    mining = { 2575, 2576, 3564, 10248 },
+    skinning = { 8613, 8617, 8618, 10768 },
+    fishing = { 7620, 7731, 7732, 18248 },
+    opening = { 3365, 6247, 6477, 6478, 21651, 1804 },
+}
+local function SpellName(id)
+    if C_Spell and C_Spell.GetSpellName then return C_Spell.GetSpellName(id) end
+    return GetSpellInfo and (GetSpellInfo(id))
+end
+
+local gatherByName, craftByName
+local function Names()
+    if gatherByName then return end
+    gatherByName, craftByName = {}, {}
+    for action, ids in pairs(GATHER_IDS) do
+        for _, id in ipairs(ids) do
+            local name = SpellName(id)
+            if name then gatherByName[name] = action end
+        end
+    end
+    for _, a in ipairs(V.CAST_ACTIONS) do
+        local name = a.kind == "craft" and SpellName(a.spell)
+        if name then craftByName[name] = a.key end
+    end
+end
+
+-- The profession whose window is open (its name, in the game's language)
+local function OpenProfession()
+    if _G.CraftFrame and _G.CraftFrame:IsShown() then
+        local name = GetCraftDisplaySkillLine and GetCraftDisplaySkillLine()
+        return name or SpellName(7411)
+    end
+    if (_G.TradeSkillFrame and _G.TradeSkillFrame:IsShown())
+        or (_G.ProfessionsFrame and _G.ProfessionsFrame:IsShown()) then
+        if GetTradeSkillLine then return (GetTradeSkillLine()) or "" end
+        local info = C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo and C_TradeSkillUI.GetBaseProfessionInfo()
+        return info and info.professionName or ""
+    end
+end
+
+-- A cast's kind and action
+local function CastKind(spellID)
+    Names()
+    local profession = OpenProfession()
+    if profession then
+        if secret(profession) then return "craft", nil end
+        return "craft", craftByName[profession]
+    end
+    if spellID and not secret(spellID) then
+        local name = SpellName(spellID)
+        if name and not secret(name) and gatherByName[name] then return "gather", gatherByName[name] end
+    end
+    return "spell", nil
+end
+
+local function CastStarted(event, _, _, spellID)
+    V.castKind, V.castAction = CastKind(spellID)
     cast.ended = false
     cast.channelEnd = nil
     if event == "UNIT_SPELLCAST_CHANNEL_START" and UnitChannelInfo then
