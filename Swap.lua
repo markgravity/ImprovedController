@@ -1,10 +1,12 @@
--- Swap: with the bags open, R2 + R3 (or the button(s) bound in the
--- General tab) opens a panel listing what is safe to throw away; so does
--- Triangle in the loot window once the bags are full, where each destroy
--- is a swap: the junk goes, the loot that didn't fit comes in its place. What it lists: junk (grey items, white
--- "junk"), and cheap white gear and odds and ends no profession, quest or
--- class uses. Laid out as Forever's loot
--- window: a list of item cards, the picked one's tooltip beside it. Cross
+-- Destroy / Swap: with the bags open, R2 + R3 (or the button(s) bound in
+-- the General tab) opens a panel listing what is safe to throw away
+-- ("Destroy"); so does Triangle in the loot window once the bags are full
+-- ("Swap"), where each destroy is a swap: the junk goes, the loot that
+-- didn't fit comes in its place. What it lists: junk (grey items, white
+-- "junk") and cheap white gear; with no junk, every white item that can
+-- go (gear, food, trade goods), the least useful first. Laid out as
+-- Forever's loot window: a list of item cards, the picked one's tooltip
+-- beside it. Cross
 -- destroys the picked item (press twice: once to arm), holding Square and
 -- letting go destroys them all, Circle closes. Never in combat.
 local _, IC = ...
@@ -16,16 +18,17 @@ local SW = {}
 IC.Swap = SW
 
 local HOLD_ALL = 1.2          -- Square held this long, then let go: destroy all
-local CHEAP = 100             -- a stack worth less than this (copper) is "cheap"
 local DEFAULT_KEY = "PADRTRIGGER+PADRSTICK"   -- one button, or "held+pressed"
 
 ---------------------------------------------------------------------------
 -- Finding what to throw away
 ---------------------------------------------------------------------------
--- Item classes never offered: consumables, containers, reagents,
--- projectiles, quivers, recipes, trade goods, quest items, keys
-local KEEP_CLASS = { [0] = true, [1] = true, [5] = true, [6] = true, [7] = true, [9] = true, [11] = true,
-    [12] = true, [13] = true }
+-- Item classes never offered: containers, reagents, projectiles,
+-- quivers, recipes, quest items, keys
+local KEEP_CLASS = { [1] = true, [5] = true, [6] = true, [9] = true, [11] = true, [12] = true, [13] = true }
+-- Offered only with no junk at all: consumables (food, potions...) and
+-- trade goods (cloth, leather, herbs...), the things kept for later
+local SPARE_CLASS = { [0] = true, [7] = true }
 
 local function ItemInfo(id)
     if C_Item and C_Item.GetItemInfo then return C_Item.GetItemInfo(id) end
@@ -43,47 +46,114 @@ local function NumSlots(bag)
     return GetContainerNumSlots and GetContainerNumSlots(bag) or 0
 end
 
--- Why an item can go, or nil
-local function Reason(info)
-    local _, _, quality, _, _, _, _, _, _, _, sellPrice, classID, subclassID = ItemInfo(info.itemID)
-    quality = quality or info.quality
-    if quality == nil then return nil end
-    if quality == 0 then return "Junk" end
-    if quality ~= 1 or not classID or KEEP_CLASS[classID] then return nil end
-    -- Never something with a Use (Hearthstone...) or that can't be sold
-    -- (quest-like, special)
-    local getSpell = (C_Item and C_Item.GetItemSpell) or GetItemSpell
-    if info.hasNoValue or (sellPrice or 0) == 0 or (getSpell and getSpell(info.itemID)) then return nil end
-    if classID == 15 and subclassID == 0 then return "Junk" end
-    local value = (sellPrice or 0) * (info.stackCount or 1)
-    if (classID == 2 or classID == 4 or classID == 15) and value < CHEAP and not info.hasNoValue then
-        return "Cheap"
-    end
-    return nil
+-- Both scale with the player's level: white gear sells for about its
+-- level squared in copper, and a few levels matter more early on
+local function PlayerLevel()
+    return math.max(1, UnitLevel("player") or 1)
 end
 
+-- A stack worth less than this (copper) is "Cheap": 1 silver at level 10,
+-- 9 at 30, 36 at 60 (never under 20 copper)
+local function Cheap()
+    local level = PlayerLevel()
+    return math.max(20, level * level)
+end
+
+-- At or under this item level is "Low level": a quarter of the player's
+-- level under it (at least 3): 7 at level 10, 23 at 30, 45 at 60
+local function LowLevel()
+    local level = PlayerLevel()
+    return level - math.max(3, math.ceil(level / 4))
+end
+
+-- "Requires Level %d": the one red tooltip line that only means "later"
+local MIN_LEVEL = ITEM_MIN_LEVEL and ("^" .. ITEM_MIN_LEVEL:gsub("%%d", "%%d+") .. "$")
+
+-- A red line on its tooltip (a class, an armour or weapon type the player
+-- can't use), its level apart
+local function Unusable(bag, slot)
+    local tips = C_TooltipInfo
+    if not (tips and tips.GetBagItem) then return false end
+    local ok, data = pcall(tips.GetBagItem, bag, slot)
+    if not ok or not data or not data.lines then return false end
+    for _, line in ipairs(data.lines) do
+        local c, text = line.leftColor, line.leftText
+        if c and c.r and c.r > 0.9 and c.g < 0.2 and c.b < 0.2 and text and text ~= ""
+            and not (MIN_LEVEL and text:match(MIN_LEVEL)) then
+            return true
+        end
+    end
+    return false
+end
+
+-- Why an item can go, its rank (lower goes first) and whether it is a
+-- spare (consumable, trade good), or nil.
+-- Junk: greys, white "junk". White gear and odds and ends (sellable, no
+-- Use; never the classes kept) and spares: "Unusable", "Low level",
+-- "Cheap" (a stack worth less than Cheap()), or just "Common"
+local function Reason(info, bag, slot)
+    local _, _, quality, itemLevel, minLevel, _, _, _, _, _, sellPrice, classID, subclassID = ItemInfo(info.itemID)
+    -- (not cached yet: its class is known at once all the same)
+    if not classID and C_Item and C_Item.GetItemInfoInstant then
+        classID, subclassID = select(6, C_Item.GetItemInfoInstant(info.itemID))
+    end
+    quality = quality or info.quality
+    if quality == nil then return nil end
+    if quality == 0 then return "Junk", 0 end
+    if quality ~= 1 or not classID or KEEP_CLASS[classID] then return nil end
+    sellPrice = sellPrice or 0
+    local spare = SPARE_CLASS[classID] or false
+    -- Never something that can't be sold (quest-like, special), nor gear or
+    -- odds and ends with a Use (Hearthstone...): a spare's Use is what it is
+    local getSpell = (C_Item and C_Item.GetItemSpell) or GetItemSpell
+    if info.hasNoValue or sellPrice == 0 or (not spare and getSpell and getSpell(info.itemID)) then return nil end
+    if classID == 15 and subclassID == 0 then return "Junk", 0 end
+    if not spare and classID ~= 2 and classID ~= 4 and classID ~= 15 then return nil end
+    if classID == 2 or classID == 4 then
+        if Unusable(bag, slot) then return "Unusable", 1, spare end
+    end
+    if classID ~= 15 then
+        -- (trade goods have an item level but no use level: theirs alone isn't "low")
+        local level = (minLevel and minLevel > 1) and minLevel or (classID ~= 7 and itemLevel)
+        if level and level > 0 and level <= LowLevel() then return "Low level", 2, spare end
+    end
+    if sellPrice * (info.stackCount or 1) < Cheap() then return "Cheap", 3, spare end
+    return "Common", 4, spare
+end
+
+-- Junk, and the white gear worth least; with no junk at all, every white
+-- item that can go, food and trade goods too: the unusable first, then
+-- the low level, the cheapest first in each
 function SW.Scan()
-    local list = {}
+    local list, junk = {}, false
     local last = NUM_BAG_SLOTS or 4
     for bag = 0, last do
         for slot = 1, NumSlots(bag) do
             local info = SlotInfo(bag, slot)
             if info and info.itemID and not info.isLocked then
-                local reason = Reason(info)
+                local reason, rank, spare = Reason(info, bag, slot)
                 if reason then
                     local sellPrice = select(11, ItemInfo(info.itemID)) or 0
+                    junk = junk or rank == 0
                     list[#list + 1] = {
                         bag = bag, slot = slot, itemID = info.itemID, link = info.hyperlink,
                         icon = info.iconFileID, count = info.stackCount or 1, quality = info.quality or 0,
-                        value = sellPrice * (info.stackCount or 1), reason = reason,
+                        value = sellPrice * (info.stackCount or 1), reason = reason, rank = rank, spare = spare,
                     }
                 end
             end
         end
     end
-    -- Junk first, then the cheapest
+    if junk then
+        -- With junk to throw away, only the white gear worth next to nothing
+        local kept = {}
+        for _, e in ipairs(list) do
+            if e.rank == 0 or (not e.spare and e.value < Cheap()) then kept[#kept + 1] = e end
+        end
+        list = kept
+    end
     table.sort(list, function(a, b)
-        if (a.reason == "Junk") ~= (b.reason == "Junk") then return a.reason == "Junk" end
+        if a.rank ~= b.rank then return a.rank < b.rank end
         return a.value < b.value
     end)
     return list
@@ -177,11 +247,15 @@ summary:SetPoint("BOTTOM", panel, "BOTTOM", 0, 9)
 summary:SetJustifyH("CENTER")
 
 local more = { up = panel:CreateTexture(nil, "OVERLAY"), down = panel:CreateTexture(nil, "OVERLAY") }
+-- (the game's scroll bar arrows, drawn the right way up)
 for key, t in pairs(more) do
-    t:SetSize(20, 20)
-    if not Atlas(t, "gamepad-smartnavcursor-arrowscroll") then t:SetTexture("Interface\\AddOns\\ImprovedController\\textures\\ic_tri") end
-    t:SetPoint(key == "up" and "TOP" or "BOTTOM", panel, key == "up" and "TOP" or "BOTTOM", 0, key == "up" and -22 or 20)
-    if key == "up" then t:SetTexCoord(0, 1, 1, 0) end
+    t:SetSize(17, 11)
+    if not Atlas(t, key == "up" and "minimal-scrollbar-arrow-top" or "minimal-scrollbar-arrow-bottom") then
+        t:SetSize(20, 20)
+        t:SetTexture("Interface\\AddOns\\ImprovedController\\textures\\ic_tri")
+        if key == "up" then t:SetTexCoord(0, 1, 1, 0) end
+    end
+    t:SetPoint(key == "up" and "TOP" or "BOTTOM", panel, key == "up" and "TOP" or "BOTTOM", 0, key == "up" and -26 or 24)
 end
 
 -- The rows: an item card each
@@ -306,6 +380,18 @@ local function Glyph(key)
     return IC.GlyphText(key, 24)
 end
 
+-- The tooltip shows as the bag window's does: the game's own setting
+-- (CVar GamepadDisableTooltips), which R3 turns on and off in both
+local function TipsOff()
+    local get = C_CVar and C_CVar.GetCVarBool or GetCVarBool
+    return get and get("GamepadDisableTooltips") or false
+end
+
+function SW.SetTipsOff(off)
+    local set = C_CVar and C_CVar.SetCVar or SetCVar
+    if set then set("GamepadDisableTooltips", off and "1" or "0") end
+end
+
 function SW.Render()
     local items = SW.items
     local n = #items
@@ -315,7 +401,9 @@ function SW.Render()
     SW.top = math.max(1, math.min(SW.top, math.max(1, n - ROWS + 1)))
     local total = 0
     for _, e in ipairs(items) do total = total + e.value end
-    titleText:SetText("Swap")
+    -- From the loot window a destroy loots in the junk's place: a swap
+    local swap = SW.origin == "loot"
+    titleText:SetText(swap and "Swap" or "Destroy")
     local focused = SW.focus ~= "bags"
     glow:SetVertexColor(FocusColor())
     glow:SetShown(focused and IC.HasAtlas("gamepad-uiframemetal-focus"))
@@ -355,7 +443,7 @@ function SW.Render()
             r.stroke:SetAlpha(selected and 0 or 1)
         end
     end
-    local e = focused and items[SW.index]
+    local e = focused and not TipsOff() and items[SW.index]
     if e then
         -- Over the bag side (the panel sits left of the bags, with little room
         -- further left); no "equipped" comparison beside it
@@ -368,13 +456,11 @@ function SW.Render()
     elseif GameTooltip:GetOwner() == panel then
         GameTooltip:Hide()
     end
-    -- From the loot window a destroy loots in the junk's place: a swap
-    local swap = SW.origin == "loot"
     local destroy = SW.armed and ("|cffff5c3cAgain to " .. (swap and "swap" or "destroy") .. "|r")
         or (swap and "Swap" or "Destroy")
     local all = swap and " Swap All (hold)   " or " Destroy All (hold)   "
     if not focused then
-        hints:SetText(Glyph("LT") .. " / " .. Glyph("RT") .. " Swap")
+        hints:SetText(Glyph("LT") .. " / " .. Glyph("RT") .. (swap and " Swap" or " Destroy"))
     else
         -- (L2 / R2 hand the pad to the window it was opened from)
         local back = SW.origin == "loot" and " Loot   " or " Bags   "
@@ -403,7 +489,7 @@ end
 local KEYS = {
     PADDUP = "UP", PADDDOWN = "DOWN", PADDLEFT = "LEFT", PADDRIGHT = "RIGHT",
     PAD1 = "A", PAD2 = "B", PAD3 = "X", ESCAPE = "B",
-    PADLTRIGGER = "SWITCH", PADRTRIGGER = "SWITCH",
+    PADLTRIGGER = "SWITCH", PADRTRIGGER = "SWITCH", PADRSTICK = "TIP",
 }
 -- Kept while the bags have the focus: the way back
 local SWITCH_KEYS = { PADLTRIGGER = true, PADRTRIGGER = true }
@@ -430,6 +516,14 @@ function SW.Press(name, down)
         return
     end
     if SW.focus == "bags" then return end
+    -- R3: the tooltip shown or not, as in the bag window
+    if name == "TIP" then
+        if down then
+            SW.SetTipsOff(not TipsOff())
+            SW.Render()
+        end
+        return
+    end
     if name == "X" then
         -- Hold, then let go: all of them
         if down then
@@ -672,6 +766,7 @@ end
 
 local watcher = CreateFrame("Frame")
 local wasDown = false
+local tipsBefore      -- the tooltip setting before the opening press
 watcher:SetScript("OnUpdate", function()
     if not IC.db then return end
     Suppress()
@@ -682,8 +777,16 @@ watcher:SetScript("OnUpdate", function()
     local held, pressed = Parts(SW.OpenKey())
     local down = IsKeyDown(pressed) and (not held or IsKeyDown(held))
     -- The moment the combination is made
-    if down and not wasDown and AnyBagOpen() then SW.Open() end
+    if down and not wasDown and AnyBagOpen() then
+        -- An R3 in it has also reached the bag window, which turned its
+        -- tooltips over: back as they were
+        if pressed == "PADRSTICK" and tipsBefore ~= nil and TipsOff() ~= tipsBefore then
+            SW.SetTipsOff(tipsBefore)
+        end
+        SW.Open()
+    end
     wasDown = down
+    if not down then tipsBefore = TipsOff() end
 end)
 
 -- The panel takes the pad's buttons itself while it has the focus: the bag

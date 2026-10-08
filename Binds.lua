@@ -1,5 +1,5 @@
 -- Every controller press the addon answers, in one place: the wheels' R3
--- combos, bag clean-up, the Swap panel, the minimap labels' hotkey,
+-- combos, bag clean-up, the Destroy / Swap panel, the minimap labels' hotkey,
 -- the touchpad click, the actions put on presses (Override.lua) and the
 -- menu's double press.
 -- Each feature keeps its own setting; this file reads and writes them
@@ -231,7 +231,7 @@ Add({
 })
 
 Add({
-    id = "swap", label = "Swap", group = "Bags", tab = "general",
+    id = "destroy", label = "Destroy", group = "Bags", tab = "general",
     icon = TEX .. "ic_emote_no", context = "bags",
     -- Watched, not taken; on an R3 combo the wheels leave it to the panel
     -- while the bags are open (Swap.lua)
