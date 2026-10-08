@@ -1,5 +1,6 @@
 <Bindings>
 	<Binding name="CLICK ImprovedControllerMenuToggle:LeftButton" header="IMPROVEDCONTROLLER" category="ADDONS"/>
+	<Binding name="CLICK ImprovedControllerNodeScan:LeftButton" category="ADDONS"/>
 	<Binding name="CLICK ImprovedControllerWheel_buffs:LeftButton" category="ADDONS"/>
 	<Binding name="CLICK ImprovedControllerWheel_consumables:LeftButton" category="ADDONS"/>
 	<Binding name="CLICK ImprovedControllerWheel_emotes:LeftButton" category="ADDONS"/>

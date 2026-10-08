@@ -18,6 +18,7 @@ MyWheels.lua
 Ring.lua
 Touchpad.lua
 Override.lua
+NodeScan.lua
 Vibration.lua
 Probe.lua
 ConfigKit.lua
@@ -28,5 +29,7 @@ TouchEditor.lua
 OverrideEditor.lua
 VibeEditor.lua
 GeneralEditor.lua
+Gather.lua
+GatherEditor.lua
 BagCleaner.lua
 Options.lua

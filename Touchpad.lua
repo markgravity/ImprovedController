@@ -42,6 +42,7 @@ local ACTIONS = {
     { key = "collections", icon = "Interface\\Icons\\Ability_Mount_RidingHorse", label = "Collections", buttons = { "CollectionsMicroButton" } },
     { key = "achievements", icon = "Interface\\Icons\\INV_Misc_Note_01", label = "Achievements", buttons = { "AchievementMicroButton" } },
     { key = "gamemenu", icon = "Interface\\Icons\\INV_Misc_Gear_01", label = "Game Menu", buttons = { "MainMenuMicroButton" } },
+    { key = "nodes", icon = "Interface\\Icons\\INV_Misc_Flower_02", label = "Minimap labels", buttons = { "ImprovedControllerNodeScan" } },
     { key = "icmenu", icon = "Interface\\Icons\\INV_Misc_Gear_02", label = "Improved Controller menu", buttons = { "ImprovedControllerMenuToggle" } },
 }
 local ACTION_BY_KEY = {}

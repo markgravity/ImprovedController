@@ -1,0 +1,139 @@
+-- The Gather tab, laid out like the General tab (IC.SettingsPage): the
+-- minimap labels and their hotkey, the skill colours, the alerts, and the
+-- player's gathering skills. Gather.lua does the work.
+local _, IC = ...
+
+local menu = IC.Menu
+local Gather = IC.Gather
+local N = IC.NodeScan
+local Item, OnOff = IC.SettingsItem, IC.SettingsOnOff
+
+local TEX = "Interface\\AddOns\\ImprovedController\\textures\\"
+local ICON = "Interface\\Icons\\"
+local HERB, ORE = ICON .. "INV_Misc_Flower_02", ICON .. "INV_Ore_Copper_01"
+
+local function S()
+    return Gather.Settings()
+end
+
+-- A choice of values: { { value, name, icon }... } on a setting's key
+local function Choice(key, label, choices)
+    local byValue = {}
+    for _, c in ipairs(choices) do byValue[c[1]] = c end
+    return {
+        value = function() return tostring(S()[key]) end,
+        text = function()
+            local c = byValue[S()[key]]
+            return c and c[2] or tostring(S()[key])
+        end,
+        options = function()
+            local list = {}
+            for _, c in ipairs(choices) do
+                list[#list + 1] = { action = tostring(c[1]), name = c[2], icon = c[3] }
+            end
+            return list
+        end,
+        choose = function(action)
+            for _, c in ipairs(choices) do
+                if tostring(c[1]) == action then
+                    S()[key] = c[1]
+                    menu.Toast(label .. ": " .. c[2])
+                end
+            end
+            Gather.ApplyAlert()
+        end,
+    }
+end
+
+local SKILL_TIP = "Herbs and ore are coloured by the skill point they give, as the game colours recipes:"
+    .. " orange always, yellow mostly, green rarely, grey never; red is beyond your skill."
+
+local ITEMS = {
+    Item({
+        key = "labels", group = "labels", label = "Labels",
+        icon = HERB,
+        tip = "Every dot on the minimap gets its name beside it, a herb's or ore's in its skill colour."
+            .. " Square records a hotkey that shows / hides them: one button, or hold one"
+            .. " and press another (recording the same one again unbinds it). The buttons keep their own"
+            .. " actions too. Also a touchpad corner or override action, and Key Bindings > AddOns"
+            .. " (Minimap labels).",
+        bindable = true,
+        chord = true,
+        binding = function() return Gather.Key() end,
+        keyText = function(size) return Gather.KeyText(size) end,
+        bind = function(key) Gather.SetKey(key ~= Gather.Key() and key or nil) end,
+        note = function()
+            if not N.Supported() then return "This client can't read the minimap." end
+        end,
+    }, OnOff(function() return S().labels end, function(on) Gather.SetLabels(on) end, "Labels")),
+    Item({
+        key = "colors", group = "labels", label = "Skill colours",
+        icon = HERB,
+        tip = SKILL_TIP,
+    }, OnOff(function() return S().colors end, function(on) S().colors = on end, "Skill colours")),
+    Item({
+        key = "need", group = "labels", label = "Skill needed",
+        icon = HERB,
+        tip = "A herb or ore beyond your skill (red) shows the skill it needs after its name: Bruiseweed (100).",
+    }, OnOff(function() return S().need end, function(on) S().need = on end, "Skill needed")),
+    Item({
+        key = "alert", group = "alert", label = "Alerts",
+        icon = TEX .. "ic_vibe_rise",
+        tip = "The minimap is read every few seconds; a node worth having that appears pulses the controller,"
+            .. " plays a sound and says what and where. Not in combat.",
+    }, OnOff(function() return S().alert end, function(on)
+        S().alert = on
+        Gather.ApplyAlert()
+    end, "Alerts")),
+    Item({
+        key = "alertFor", group = "alert", label = "Alert for",
+        icon = ORE,
+        tip = "Which nodes alert. Skill colours decide the first two.",
+    }, Choice("alertFor", "Alert for", {
+        { "skill", "Skill-ups (orange, yellow, green)", HERB },
+        { "gather", "Any I can gather", HERB },
+        { "any", "Any herb or ore", ORE },
+        { "all", "Anything on the minimap", ICON .. "INV_Misc_Map_01" },
+    })),
+    Item({
+        key = "alertWith", group = "alert", label = "Alert with",
+        icon = TEX .. "ic_vibe_pulse",
+        tip = "How an alert tells you. The message at the top of the screen always shows; vibration needs"
+            .. " Vibration on (General tab).",
+    }, Choice("alertWith", "Alert with", {
+        { "both", "Vibration and sound", TEX .. "ic_vibe_pulse" },
+        { "vibe", "Vibration", TEX .. "ic_vibe_pulse" },
+        { "sound", "Sound", ICON .. "INV_Misc_Bell_01" },
+        { "show", "Message only", ICON .. "INV_Misc_Note_01" },
+    })),
+    Item({
+        key = "interval", group = "alert", label = "Look every",
+        icon = TEX .. "ic_vibe_rise",
+        tip = "How often the minimap is read for alerts.",
+    }, Choice("interval", "Look every", {
+        { 2, "2 seconds", TEX .. "ic_vibe_rise" }, { 3, "3 seconds", TEX .. "ic_vibe_rise" },
+        { 5, "5 seconds", TEX .. "ic_vibe_rise" }, { 10, "10 seconds", TEX .. "ic_vibe_rise" },
+    })),
+    Item({
+        key = "skills", group = "skills", label = "Your skills",
+        icon = ICON .. "Trade_Herbalism",
+        tip = SKILL_TIP,
+        text = function()
+            local parts = {}
+            for _, kind in ipairs({ "herb", "ore" }) do
+                local skill = N.Skill(kind)
+                parts[#parts + 1] = N.SkillName(kind) .. ": " .. (skill or "not learnt")
+            end
+            return table.concat(parts, "|n")
+        end,
+    }),
+}
+
+local GROUPS = {
+    { key = "labels", label = "Minimap" },
+    { key = "alert", label = "Alerts" },
+    { key = "skills", label = "Skills" },
+}
+
+menu.AddTab({ key = "gather", label = "Gather", sections = {} }, "vibration")
+IC.GatherEditor = IC.SettingsPage("gather", "Gather", GROUPS, ITEMS)
