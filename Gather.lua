@@ -36,11 +36,25 @@ function Gather.Settings()
     return s
 end
 
--- A herb or ore's skill colour, or nil (not one, its profession not
--- learnt, or colours off)
-function Gather.SkillColor(name)
+-- A colour the game gave a name itself that says something: not plain
+-- white, nor the tooltips' usual gold
+local function Telling(c)
+    if not c then return false end
+    if c[1] > 0.95 and c[2] > 0.95 and c[3] > 0.95 then return false end
+    if c[1] > 0.95 and math.abs(c[2] - 0.82) < 0.04 and c[3] < 0.06 then return false end
+    return true
+end
+
+-- A node's skill colour (a name for alerts): the game's own when it gives
+-- one, else worked out from the skill; nil when it isn't a herb or ore, its
+-- profession isn't learnt, or colours are off
+function Gather.SkillColor(node)
     if not Gather.Settings().colors then return nil end
-    local state = N.State(name)
+    if type(node) == "table" then
+        if N.Kind(node.name) and Telling(node.gameColor) then return node.gameColor end
+        node = node.name
+    end
+    local state = N.State(node)
     return state and N.COLORS[state]
 end
 
@@ -103,6 +117,24 @@ local function Rescan()
     scanEast, scanNorth = PlayerPos()
 end
 
+-- Where a label can go round its dot (x, y its centre): right, left,
+-- above, below; the rectangle it would take
+local GAP = 2
+local SIDES = { "right", "left", "above", "below" }
+local function LabelRect(side, x, y, w, h)
+    local half = DOT / 2
+    if side == "right" then return x + half + GAP, y - h / 2, w, h end
+    if side == "left" then return x - half - GAP - w, y - h / 2, w, h end
+    if side == "above" then return x - w / 2, y + half, w, h end
+    return x - w / 2, y - half - h, w, h
+end
+
+local function Overlap(ax, ay, aw, ah, bx, by, bw, bh)
+    local w = math.min(ax + aw, bx + bw) - math.max(ax, bx)
+    local h = math.min(ay + ah, by + bh) - math.max(ay, by)
+    return (w > 0 and h > 0) and w * h or 0
+end
+
 -- Each node where it is now: its place at the scan, less how far the
 -- player has walked since, turned with a turning minimap
 local function Place()
@@ -116,6 +148,8 @@ local function Place()
     local facing = get("rotateMinimap") == "1" and N.Facing() or 0
     local c, s = math.cos(facing), math.sin(facing)
     local edge = radius - 4
+    -- Where each dot is, and its label's words and colour
+    local shown = {}
     for i, node in ipairs(nodes) do
         local p = Pin(i)
         local east, north = node.east - de, node.north - dn
@@ -125,22 +159,46 @@ local function Place()
         else
             p:ClearAllPoints()
             p:SetPoint("CENTER", overlay, "CENTER", x, y)
-            local color = Gather.SkillColor(node.name)
-            local r, g, b = 1, 1, 1
-            if color then r, g, b = color[1], color[2], color[3] end
-            p.label:SetTextColor(r, g, b)
+            local color = Gather.SkillColor(node) or KC.white
+            p.label:SetTextColor(color[1], color[2], color[3])
             p.label:SetText(Gather.LabelText(node))
-            -- Beside it, on the side towards the minimap's middle
-            p.label:ClearAllPoints()
-            if x > 0 then
-                p.label:SetPoint("RIGHT", p, "LEFT", -2, 0)
-            else
-                p.label:SetPoint("LEFT", p, "RIGHT", 2, 0)
-            end
+            p.x, p.y = x, y
             p:Show()
+            shown[#shown + 1] = p
         end
     end
     for i = #nodes + 1, #pins do pins[i]:Hide() end
+    -- Each label on the first side clear of the dots and the labels placed
+    -- already: the side it had (no flicker), then towards the middle first
+    local taken = {}
+    for _, p in ipairs(shown) do
+        taken[#taken + 1] = { p.x - DOT / 2, p.y - DOT / 2, DOT, DOT, p }
+    end
+    for _, p in ipairs(shown) do
+        local w, h = p.label:GetStringWidth(), p.label:GetStringHeight()
+        local order = { p.side }
+        local inward = p.x > 0 and "left" or "right"
+        order[#order + 1] = inward
+        for _, side in ipairs(SIDES) do order[#order + 1] = side end
+        local best, bestCost
+        for _, side in ipairs(order) do
+            local lx, ly = LabelRect(side, p.x, p.y, w, h)
+            local cost = 0
+            for _, t in ipairs(taken) do
+                if t[5] ~= p then cost = cost + Overlap(lx, ly, w, h, t[1], t[2], t[3], t[4]) end
+            end
+            -- (past the minimap's edge counts against it too)
+            local far = math.max(math.abs(lx), math.abs(lx + w))
+            if far > radius then cost = cost + (far - radius) * h end
+            if not bestCost or cost < bestCost then best, bestCost = side, cost end
+            if cost == 0 then break end
+        end
+        p.side = best
+        local lx, ly = LabelRect(best, p.x, p.y, w, h)
+        taken[#taken + 1] = { lx, ly, w, h, p }
+        p.label:ClearAllPoints()
+        p.label:SetPoint("BOTTOMLEFT", overlay, "CENTER", lx, ly)
+    end
 end
 
 overlay:SetScript("OnUpdate", function(self, elapsed)
@@ -263,7 +321,7 @@ end
 
 -- "Silverleaf x2" in its colour
 local function Label(node)
-    local c = Gather.SkillColor(node.name) or KC.white
+    local c = Gather.SkillColor(node) or KC.white
     local name = node.count > 1 and (node.name .. " x" .. node.count) or node.name
     return string.format("|cff%02x%02x%02x%s|r", c[1] * 255, c[2] * 255, c[3] * 255, name)
 end
@@ -325,14 +383,18 @@ IC.OnLogin(function()
     Gather.ApplyAlert()
 end)
 
--- /ic nodes [step <n>|debug]
+-- /ic nodes [step <n>|debug]: labels on / off, the scan's spacing, one scan
+-- printed dot by dot
 function Gather.Command(option, value)
     value = tonumber(value)
     if option == "step" and value and value >= 2 then
         N.step = value
     elseif option == "debug" then
-        N.debug = not N.debug
-        if N.debug then Rescan() end
+        -- One scan, each dot printed
+        N.debug = true
+        N.Scan()
+        N.debug = false
+        return
     elseif option then
         IC.Print("usage: /ic nodes [step <n>|debug]")
         return
@@ -340,5 +402,5 @@ function Gather.Command(option, value)
         lastToggle = 0
         return Gather.Toggle()
     end
-    IC.Print(string.format("Minimap nodes: step %d, debug %s", N.step, N.debug and "on" or "off"))
+    IC.Print("Minimap nodes: step " .. N.step)
 end

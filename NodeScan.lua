@@ -69,14 +69,14 @@ function N.Kind(name)
 end
 
 -- The player's skill in a kind's profession (nil: not learnt)
-local skills
+local skills, bonuses
 local function ReadSkills()
-    skills = {}
+    skills, bonuses = {}, {}
     if not (GetProfessions and GetProfessionInfo) then return end
     for _, index in pairs({ GetProfessions() }) do
-        local _, _, rank, _, _, _, line = GetProfessionInfo(index)
+        local _, _, rank, _, _, _, line, modifier = GetProfessionInfo(index)
         for kind, id in pairs(SKILL_LINE) do
-            if line == id then skills[kind] = rank end
+            if line == id then skills[kind], bonuses[kind] = rank, modifier end
         end
     end
 end
@@ -84,6 +84,12 @@ end
 function N.Skill(kind)
     if not skills then ReadSkills() end
     return skills[kind]
+end
+
+-- Its racial / item bonus, included in N.Skill (nil: none reported)
+function N.SkillBonus(kind)
+    if not skills then ReadSkills() end
+    return bonuses[kind]
 end
 
 function N.SkillName(kind)
@@ -147,23 +153,43 @@ local function Points(radius, cx, cy, reach)
     return grid
 end
 
+-- A tooltip line's own colour, as { r, g, b }, or nil
+local function LineColor(line)
+    local c = line.leftColor
+    if type(c) ~= "table" then return nil end
+    if c.GetRGB then return { c:GetRGB() } end
+    if c.r then return { c.r, c.g, c.b } end
+end
+
 -- name -> how many dots of it are at a point (two dots of one herb under it
--- list it twice). The player's own arrow is left out.
+-- list it twice), and name -> the colour the game gives it. The player's
+-- own arrow is left out.
 local function NamesAt(px, py, me)
-    local counts = {}
+    local counts, colors = {}, {}
     Minimap:UpdateMouseoverAtPoint(px, py)
     local data = C_TooltipInfo.GetMinimapMouseover()
     for _, line in ipairs(data and data.lines or {}) do
         local text = line.leftText
         if type(text) == "string" and not Secret(text) then
-            text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", ""):gsub("|A.-|a", "")
-            for name in text:gmatch("[^\n]+") do
-                name = strtrim(name)
-                if name ~= "" and name ~= me then counts[name] = (counts[name] or 0) + 1 end
+            local lineColor = LineColor(line)
+            for piece in text:gmatch("[^\n]+") do
+                -- (a name may carry its own colour code)
+                local hex = piece:match("|c%x%x(%x%x%x%x%x%x)")
+                local name = strtrim((piece:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
+                    :gsub("|A.-|a", "")))
+                if name ~= "" and name ~= me then
+                    counts[name] = (counts[name] or 0) + 1
+                    if hex then
+                        colors[name] = { tonumber(hex:sub(1, 2), 16) / 255, tonumber(hex:sub(3, 4), 16) / 255,
+                            tonumber(hex:sub(5, 6), 16) / 255 }
+                    else
+                        colors[name] = colors[name] or lineColor
+                    end
+                end
             end
         end
     end
-    return counts
+    return counts, colors
 end
 
 -- Points that read the same name next to each other are one dot: its
@@ -199,6 +225,7 @@ local function Group(hits)
         end
         home[#home + 1] = hit
         home.count = math.max(home.count, hit.count)
+        home.color = home.color or hit.color
     end
     -- Minimap units to yards east / north of the player
     local radius = Minimap:GetWidth() / 2
@@ -215,11 +242,15 @@ local function Group(hits)
         end
         x, y = x / #g, y / #g
         if N.debug then
-            IC.Print(string.format("  %s x%d: %d point(s) at %.0f,%.0f", g.name, g.count, #g, x, y))
+            local kind, need = N.Kind(g.name)
+            local col = g.color and string.format("%02x%02x%02x", g.color[1] * 255, g.color[2] * 255, g.color[3] * 255)
+            IC.Print(string.format("  %s x%d: %d point(s) at %.0f,%.0f; game colour %s; needs %s, skill %s (bonus %s) -> %s",
+                g.name, g.count, #g, x, y, col or "none", tostring(need), tostring(kind and N.Skill(kind)),
+                tostring(kind and N.SkillBonus(kind)), tostring(N.State(g.name))))
         end
         local ex, ny = x * yards, y * yards
         -- A turning minimap has the way you face up
-        found[#found + 1] = { name = g.name, count = g.count, x = x, y = y,
+        found[#found + 1] = { name = g.name, count = g.count, x = x, y = y, gameColor = g.color,
             east = ex * c - ny * s, north = ex * s + ny * c }
     end
     return found
@@ -238,8 +269,9 @@ function N.Scan(x, y, reach)
     if Minimap.SetUsingSoftCursor then Minimap:SetUsingSoftCursor(true) end
     local hits = {}
     for _, p in ipairs(Points(radius, x, y, reach)) do
-        for name, count in pairs(NamesAt((mx + p.x) * e, (my + p.y) * e, me)) do
-            hits[#hits + 1] = { name = name, x = p.x, y = p.y, count = count }
+        local counts, colors = NamesAt((mx + p.x) * e, (my + p.y) * e, me)
+        for name, count in pairs(counts) do
+            hits[#hits + 1] = { name = name, x = p.x, y = p.y, count = count, color = colors[name] }
         end
     end
     -- The hover point off the minimap again
