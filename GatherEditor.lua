@@ -52,7 +52,7 @@ local ITEMS = {
     Item({
         key = "labels", group = "labels", label = "Labels",
         icon = HERB,
-        tip = "Every dot on the minimap gets its name beside it, a herb's or ore's in its skill colour."
+        tip = "Every herb and ore on the minimap gets its name beside it, in its skill colour."
             .. " Square records a hotkey that shows / hides them: one button, or hold one"
             .. " and press another (recording the same one again unbinds it). The buttons keep their own"
             .. " actions too. Also a touchpad corner or override action, and Key Bindings > AddOns"

@@ -1,6 +1,6 @@
 -- Gathering with the minimap (NodeScan.lua reads it):
---   labels: each dot on the minimap gets its name beside it, a herb's or
---     ore's coloured by the skill it gives (as the game colours recipes).
+--   labels: each herb and ore on the minimap gets its name beside it,
+--     coloured by the skill it gives (as the game colours recipes).
 --     Shown and hidden by a hotkey (recorded
 --     in the Gather tab, one button or one held + one pressed), a touchpad
 --     corner / button override action, or the key binding;
@@ -112,8 +112,12 @@ end
 
 local nodes, scanEast, scanNorth = {}, nil, nil
 
+-- The herbs and ore on the minimap (NPCs, players, quest givers left out)
 local function Rescan()
-    nodes = N.Scan()
+    nodes = {}
+    for _, node in ipairs(N.Scan()) do
+        if N.Kind(node.name) then nodes[#nodes + 1] = node end
+    end
     scanEast, scanNorth = PlayerPos()
 end
 

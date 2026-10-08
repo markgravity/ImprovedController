@@ -8,7 +8,9 @@
 -- Forever's loot window: a list of item cards, the picked one's tooltip
 -- beside it. Cross
 -- destroys the picked item (press twice: once to arm), holding Square and
--- letting go destroys them all, Circle closes. Never in combat.
+-- letting go destroys them all, Circle closes, R3 shows / hides the
+-- tooltip. From the loot window Cross swaps and Triangle destroys only.
+-- Never in combat.
 local _, IC = ...
 
 local K = IC.ConfigKit
@@ -456,15 +458,20 @@ function SW.Render()
     elseif GameTooltip:GetOwner() == panel then
         GameTooltip:Hide()
     end
-    local destroy = SW.armed and ("|cffff5c3cAgain to " .. (swap and "swap" or "destroy") .. "|r")
-        or (swap and "Swap" or "Destroy")
+    local function Armed(by, word, again)
+        return (SW.armed and SW.armedBy == by) and ("|cffff5c3cAgain to " .. again .. "|r") or word
+    end
+    -- From the loot window: Cross swaps, Triangle destroys only
+    local press = swap
+        and (Glyph("A") .. " " .. Armed("A", "Swap", "swap") .. "   " .. Glyph("Y") .. " " .. Armed("Y", "Destroy", "destroy"))
+        or (Glyph("A") .. " " .. Armed("A", "Destroy", "destroy"))
     local all = swap and " Swap All (hold)   " or " Destroy All (hold)   "
     if not focused then
         hints:SetText(Glyph("LT") .. " / " .. Glyph("RT") .. (swap and " Swap" or " Destroy"))
     else
         -- (L2 / R2 hand the pad to the window it was opened from)
         local back = SW.origin == "loot" and " Loot   " or " Bags   "
-        hints:SetText((n > 0 and (Glyph("A") .. " " .. destroy .. "   " .. Glyph("X") .. all) or "")
+        hints:SetText((n > 0 and (press .. "   " .. Glyph("X") .. all) or "")
             .. Glyph("LT") .. " / " .. Glyph("RT") .. back .. Glyph("B") .. " Close")
     end
     legend:SetWidth(math.max(PANEL_W, hints:GetStringWidth() + 28))
@@ -488,7 +495,7 @@ end
 ---------------------------------------------------------------------------
 local KEYS = {
     PADDUP = "UP", PADDDOWN = "DOWN", PADDLEFT = "LEFT", PADDRIGHT = "RIGHT",
-    PAD1 = "A", PAD2 = "B", PAD3 = "X", ESCAPE = "B",
+    PAD1 = "A", PAD2 = "B", PAD3 = "X", PAD4 = "Y", ESCAPE = "B",
     PADLTRIGGER = "SWITCH", PADRTRIGGER = "SWITCH", PADRSTICK = "TIP",
 }
 -- Kept while the bags have the focus: the way back
@@ -548,15 +555,16 @@ function SW.Press(name, down)
     elseif name == "DOWN" then Move(1)
     elseif name == "LEFT" then Move(-ROWS)
     elseif name == "RIGHT" then Move(ROWS)
-    elseif name == "A" then
+    elseif name == "A" or (name == "Y" and SW.origin == "loot") then
+        -- From the loot window Cross swaps, Triangle only destroys
         local e = SW.items[SW.index]
         if not e then return end
-        if SW.armed ~= e then
-            SW.armed = e
+        if SW.armed ~= e or SW.armedBy ~= name then
+            SW.armed, SW.armedBy = e, name
             return SW.Render()
         end
         SW.armed = nil
-        SW.Destroy(e)
+        SW.Destroy(e, name == "Y")
     end
 end
 
@@ -603,12 +611,13 @@ panel:SetScript("OnUpdate", function()
     end
 end)
 
-function SW.Destroy(e)
+-- noLoot: from the loot window, destroy only (no swap)
+function SW.Destroy(e, noLoot)
     if IC.InCombat() then return end
     local name = e.link or "item"
     if DestroyOne(e) then
         IC.Print("destroyed " .. name .. (e.count > 1 and (" x" .. e.count) or ""))
-        SW.LootAfter("one")
+        if not noLoot then SW.LootAfter("one") end
     elseif blocked then
         IC.Print("the game doesn't let addons destroy items here.")
     end
