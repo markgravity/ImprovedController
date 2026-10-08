@@ -36,25 +36,25 @@ for combo, key in pairs(COMBO_HOLD) do HOLD_COMBO[key] = combo end
 -- held (or nil), pressed, double
 function B.Parse(spec)
     if not spec then return nil end
-    local pressed, double = spec:match("^(.-):double$")
-    pressed = pressed or spec
+    local base = spec:match("^(.-):double$")
+    local pressed, double = base or spec, base ~= nil
     local held, rest = pressed:match("^(.-)%+(.+)$")
-    if held then return held, rest, double ~= nil end
-    return nil, pressed, double ~= nil
+    if held then return held, rest, double end
+    return nil, pressed, double
 end
 
 function B.Spec(held, pressed, double)
     return (held and (held .. "+") or "") .. pressed .. (double and ":double" or "")
 end
 
--- "L1 + R3", "L3 twice"; with size, each button's glyph before its name
+-- "L1 + R3", "L3 double-click"; with size, each button's glyph before its name
 function B.Text(spec, size)
     if not spec then return "Not bound" end
     local held, pressed, double = B.Parse(spec)
     local function one(key)
         return (size and (IC.GlyphText(key, size) .. " ") or "") .. IC.ButtonName(key)
     end
-    return (held and (one(held) .. " + ") or "") .. one(pressed) .. (double and " twice" or "")
+    return (held and (one(held) .. " + ") or "") .. one(pressed) .. (double and " double-click" or "")
 end
 
 -- Glyph keys for a GlyphRow (ConfigKit): { "LB", "+", "RS" }
@@ -100,12 +100,29 @@ end
 function B.KeyOf(spec)
     -- (a press of Forever's crossbar: its slot holds what it runs, Native.lua)
     if IC.Native and IC.Native.SlotOf(spec) then return nil end
-    local held, pressed = B.Parse(spec)
+    local held, pressed, double = B.Parse(spec)
+    -- (twice where once is the crossbar's: its slot can't be shared out)
+    if double and IC.Native and IC.Native.SlotOf(B.Spec(held, pressed)) then return nil end
+    -- (the crossbar's modifiers, L2 / R2: taking one would stop it paging;
+    -- held under another press they are fine)
+    if IC.Native and IC.Native.IsModifier(pressed) then return nil end
     if not pressed or pressed == "PADRSTICK" or ModifierOf(pressed) then return nil end
     if pressed == "PADBACK" and IC.PadStyle() == "Shapes" then return nil end
     if not held then return pressed end
     local modifier = ModifierOf(held)
     return modifier and (modifier .. pressed) or nil
+end
+
+-- The key a double press is watched on (Override.lua), or nil: any button
+-- (its single press stays the game's), but R3 (its wheel's twice) and a
+-- PlayStation touchpad (its corners); held: a modifier the game makes of
+-- it, or just held
+function B.DoubleKey(spec)
+    local held, pressed, double = B.Parse(spec)
+    if not double or not pressed or pressed == "PADRSTICK" then return nil end
+    if pressed == "PADBACK" and IC.PadStyle() == "Shapes" then return nil end
+    local modifier = held and ModifierOf(held)
+    return modifier and (modifier .. pressed) or pressed
 end
 
 -- The ways a button can be pressed: alone, twice (where something takes

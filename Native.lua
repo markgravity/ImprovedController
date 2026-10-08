@@ -62,6 +62,11 @@ local function BarOffset(held)
     return Keys().bar[held]
 end
 
+-- A button the crossbar holds for a modifier (its left / right bar)
+function N.IsModifier(key)
+    return N.Available() and BarOffset(key) ~= nil and key ~= nil
+end
+
 -- The crossbar slot a press runs (page unit slot id), or nil: not one of
 -- its presses, or one the game keeps (the top bar's face buttons)
 function N.SlotOf(spec)

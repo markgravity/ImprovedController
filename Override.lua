@@ -48,15 +48,18 @@ function O.BindingKey(spec)
 end
 
 function O.Supports(spec)
+    local _, _, double = IC.Binds.Parse(spec)
+    if double then return O.BindingKey(spec) ~= nil or IC.Binds.DoubleKey(spec) ~= nil end
     return O.BindingKey(spec) ~= nil
 end
 
--- A double press set, its single press not: it does nothing until that has
--- one (the game's own action can't be combined with it)
+-- A double press set, its single press not ours: watched (below), so out
+-- of combat only
 function O.NeedsSingle(spec)
     local held, pressed, double = IC.Binds.Parse(spec)
     return double and O.Get(spec) ~= nil and O.Get(IC.Binds.Spec(held, pressed)) == nil
 end
+O.OutOfCombatOnly = O.NeedsSingle
 
 local owner = CreateFrame("Frame", "ImprovedControllerOverrides")
 local buttons = {}
@@ -129,10 +132,19 @@ function O.Apply()
             macros[key][double and "double" or "single"] = macro
         end
     end
+    -- A double press without a single one of ours: watched (below)
+    wipe(O.watched)
+    for spec, action in pairs(O.Settings()) do
+        local key, macro = IC.Binds.DoubleKey(spec), O.Macro(action)
+        if key and macro and O.NeedsSingle(spec) then
+            local held, pressed = IC.Binds.Parse(spec)
+            O.watched[#O.watched + 1] = { key = key, held = held, pressed = pressed, macro = macro, onDown = onDown }
+        end
+    end
     for key, m in pairs(macros) do
         -- Only with its own click's action: a double click alone would leave
         -- the single click doing nothing (the game's own action, autorun on
-        -- L3, can't be run from here), so the button stays the game's
+        -- L3, can't be run from here), so it is watched instead
         if m.single then
             local b = SecureButton(key)
             b:RegisterForClicks(onDown and "AnyDown" or "AnyUp")
@@ -148,6 +160,66 @@ function O.Set(button, action)
     O.Settings()[button] = (action and action ~= "none") and action or nil
     O.Apply()
 end
+
+---------------------------------------------------------------------------
+-- Double presses whose single press stays the game's (L3's Auto Run, a
+-- crossbar slot...): the game's binding can't be shared, so the button is
+-- watched. When its first press is let go, the button is bound to a button
+-- of ours for DOUBLE seconds: a second press then runs the double's action,
+-- and the button goes back to the game. Bindings can't change in combat:
+-- there the button is just the game's. (Armed on the release, not the
+-- press: the game's binding gets its release, L2 / R2's crossbar paging
+-- needs it.)
+---------------------------------------------------------------------------
+O.watched = {}
+local watchOwner = CreateFrame("Frame", "ImprovedControllerDoubleWatch")
+local twice = CreateFrame("Button", "ImprovedControllerDoubleAction", UIParent, "SecureActionButtonTemplate")
+twice:SetAttribute("type", "macro")
+local armed -- { w (the watched press), ends, fired }
+
+local function Disarm()
+    armed = nil
+    if not IC.InCombat() then ClearOverrideBindings(watchOwner) end
+end
+
+local function Arm(w)
+    if IC.InCombat() then return end
+    twice:RegisterForClicks(w.onDown and "AnyDown" or "AnyUp")
+    twice:SetAttribute("macrotext", w.macro)
+    SetOverrideBindingClick(watchOwner, true, w.key, twice:GetName(), "LeftButton")
+    armed = { w = w, ends = GetTime() + DOUBLE }
+end
+
+twice:HookScript("OnClick", function()
+    if armed then armed.fired = true end
+end)
+
+watchOwner:SetScript("OnUpdate", function()
+    if not IsKeyDown then return end
+    if armed then
+        local w = armed.w
+        local down = IsKeyDown(w.pressed)
+        -- Over: done (once let go), timed out, or the held one let go
+        if (armed.fired and not down) or (not armed.fired and GetTime() >= armed.ends)
+            or (w.held and not IsKeyDown(w.held)) then
+            Disarm()
+        end
+        return
+    end
+    if #O.watched == 0 or IC.InCombat() or not IC.Binds.InGame() or (IC.Menu and IC.Menu.IsOpen()) then
+        return
+    end
+    for _, w in ipairs(O.watched) do
+        local down = IsKeyDown(w.pressed) and (not w.held or IsKeyDown(w.held))
+        -- The first press let go: the second one is ours for a moment
+        if w.wasDown and not IsKeyDown(w.pressed) and (not w.held or IsKeyDown(w.held)) then Arm(w) end
+        w.wasDown = down
+        if armed then break end
+    end
+end)
+
+watchOwner:RegisterEvent("PLAYER_REGEN_DISABLED")
+watchOwner:SetScript("OnEvent", function() Disarm() end)
 
 IC.OnLogin(O.Apply)
 owner:RegisterEvent("PLAYER_REGEN_ENABLED")

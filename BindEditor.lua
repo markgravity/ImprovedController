@@ -401,8 +401,8 @@ function P:ChooseAction(spec, e)
     end
     local held, pressed = B.Parse(spec)
     Done(text .. ": " .. (e.name or "") .. (#gone > 0 and (", " .. B.Names(gone) .. " unbound") or "")
-        .. (O.NeedsSingle(spec) and (" (needs an action on " .. B.Text(B.Spec(held, pressed)) .. " too)") or ""),
-        #gone > 0 or O.NeedsSingle(spec))
+        .. (O.OutOfCombatOnly(spec) and " (out of combat only: " .. B.Text(B.Spec(held, pressed)) .. " stays the game's)" or ""),
+        #gone > 0 or O.OutOfCombatOnly(spec))
 end
 
 -- Square: find a press by making it (Recorder.lua). The touchpad: the
@@ -670,6 +670,10 @@ function P:Render()
                     for _, def in ipairs(defs) do names[#names + 1] = DefText(def) end
                     what = table.concat(names, ", ")
                     if Clashes(defs, list.spec) then what = "|cffff7a5c" .. what .. " (clash)|r" end
+                    -- A double-click alone: watched, so out of combat only (Override.lua)
+                    if IC.Override.OutOfCombatOnly(list.spec) then
+                        what = what .. " |cfff0a090(out of combat only)|r"
+                    end
                 else
                     what = "|cff9d917a" .. NoneName(list.spec) .. "|r"
                 end
@@ -697,6 +701,12 @@ function P:Render()
         else
             note = IC.PadText("Takes off whatever of ours is on " .. B.Text(spec) .. ". {X} finds another press:"
                 .. " a gold dot, something is on that button; red, two things clash.")
+        end
+        local held, pressed, double = B.Parse(spec)
+        if double and not IC.Override.Get(B.Spec(held, pressed)) then
+            -- (watched: the first press stays the game's, Override.lua)
+            note = note .. " |cfff0a090A double-click on its own works out of combat only: " .. B.Text(B.Spec(held, pressed))
+                .. " pressed once still does the game's own, and WoW won't change bindings in combat.|r"
         end
         if IC.Native.SlotOf(spec) then
             -- (the game's crossbar: the same slot as its own editor's)
