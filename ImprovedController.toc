@@ -33,5 +33,5 @@ SettingsPage.lua
 BindEditor.lua
 Gather.lua
 GatherEditor.lua
-BagCleaner.lua
+Swap.lua
 Options.lua
