@@ -205,20 +205,19 @@ function P:SyncPicker(force)
     -- things (Misc), then what it can run (where an action can go on it),
     -- on the list of what it does now
     local spec = self:Spec()
-    local O = IC.Override
     local lists = {}
     if #Ours(spec, true) > 0 then
         lists[#lists + 1] = { key = "wheels", label = "Wheels", entries = function() return Entries(spec, true) end }
     end
     lists[#lists + 1] = { key = "misc", label = "Misc", entries = function() return Entries(spec, false) end }
     local misc = #lists
-    if O.Supports(spec) then
+    if B.ActionFits(spec) then
         for _, list in ipairs(ActionLists(true)) do lists[#lists + 1] = list end
     end
     local start = misc
     local bound = B.Bound(spec)[1]
-    if O.Get(spec) then
-        start = ListOf(lists, O.Get(spec), misc)
+    if B.ActionOn(spec) then
+        start = ListOf(lists, B.ActionOn(spec), misc)
     elseif bound and bound.group == "Wheels" then
         start = 1
     end
@@ -226,7 +225,7 @@ function P:SyncPicker(force)
         lists = lists, list = start,
         rows = PICKER_ROWS, chooseVerb = "Bind",
         current = function(list)
-            if list.key ~= "wheels" and list.key ~= "misc" then return O.Get(spec) end
+            if list.key ~= "wheels" and list.key ~= "misc" then return B.ActionOn(spec) end
             for _, def in ipairs(B.Bound(spec)) do
                 if def.kind ~= "action" and (def.group == "Wheels") == (list.key == "wheels") then return def.id end
             end
@@ -234,7 +233,7 @@ function P:SyncPicker(force)
         end,
         marked = function(e)
             if e.def or e.action == "none" then return e.here end
-            return e.action == O.Get(spec)
+            return e.action == B.ActionOn(spec)
         end,
         onChoose = function(e)
             if e.def or e.action == "none" then P:Choose(e) else P:ChooseAction(spec, e) end
@@ -379,13 +378,14 @@ function P:Choose(e)
         .. (#gone > 0 and (", " .. B.Names(gone) .. " unbound") or ""), #gone > 0)
 end
 
--- A spell, item, macro, emote or window onto the press (Override.lua);
--- taking it from something else asks first: Cross again
+-- A spell, item, macro, emote or window onto the press (a crossbar
+-- press: in its slot, Native.lua; else Override.lua); taking it from
+-- something else asks first: Cross again
 function P:ChooseAction(spec, e)
     if IC.InCombat() then return menu.Toast("Not in combat", true) end
     local O = IC.Override
     local text = B.Text(spec)
-    if O.Get(spec) == e.action then return menu.Toast((e.name or "") .. " is on " .. text .. " already") end
+    if B.ActionOn(spec) == e.action then return menu.Toast((e.name or "") .. " is on " .. text .. " already") end
     local id = "action:" .. spec
     local gone = B.Conflicts(id, spec)
     local armId = "act:" .. spec .. "@" .. e.action
@@ -395,7 +395,9 @@ function P:ChooseAction(spec, e)
     end
     menu.Disarm()
     B.Take(id, spec)
-    O.Set(spec, e.action)
+    if B.SetAction(spec, e.action, e.name, type(e.icon) == "number" and e.icon or nil) == false then
+        return Done(text .. ": couldn't put " .. (e.name or "it") .. " there", true)
+    end
     local held, pressed = B.Parse(spec)
     Done(text .. ": " .. (e.name or "") .. (#gone > 0 and (", " .. B.Names(gone) .. " unbound") or "")
         .. (O.NeedsSingle(spec) and (" (needs an action on " .. B.Text(B.Spec(held, pressed)) .. " too)") or ""),
@@ -680,15 +682,20 @@ function P:Render()
         elseif e and e.action and e.action ~= "none" then
             -- A spell, item... for the press
             note = "Runs it on " .. B.Text(spec) .. ", in combat too."
-            local gone = IC.Override.Get(spec) ~= e.action and B.Conflicts("action:" .. spec, spec) or {}
+            local gone = B.ActionOn(spec) ~= e.action and B.Conflicts("action:" .. spec, spec) or {}
             if #gone > 0 then note = "|cffff7a5cReplaces " .. B.Names(gone) .. ".|r " .. note end
         else
             note = IC.PadText("Takes off whatever of ours is on " .. B.Text(spec) .. ". {X} finds another press:"
                 .. " a gold dot, something is on that button; red, two things clash.")
         end
-        if not IC.Override.Supports(spec) then
+        if IC.Native.SlotOf(spec) then
+            -- (the game's crossbar: the same slot as its own editor's)
+            note = note .. " |cff9fd8e2This is the game's crossbar slot (the page shown): it changes there"
+                .. " too, and changes made there show here.|r"
+        elseif not B.ActionFits(spec) then
             note = note .. " |cff9d917aSpells and items can't go on this press (" .. IC.ButtonName("RS")
-                .. ": the wheels'; a held button: only one the game makes Shift / Ctrl / Alt).|r"
+                .. ": the wheels'; a held button: only the game's crossbar modifiers with the D-pad or face"
+                .. " buttons, or one the game makes Shift / Ctrl / Alt).|r"
         end
         f.note:SetText(note or "")
     end

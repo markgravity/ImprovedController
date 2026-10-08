@@ -92,6 +92,8 @@ end
 -- one: R3 (the wheels' combos, Ring.lua), a PlayStation touchpad (its
 -- corners), a button the game makes a modifier, or one held that it doesn't
 function B.KeyOf(spec)
+    -- (a press of Forever's crossbar: its slot holds what it runs, Native.lua)
+    if IC.Native and IC.Native.SlotOf(spec) then return nil end
     local held, pressed = B.Parse(spec)
     if not pressed or pressed == "PADRSTICK" or ModifierOf(pressed) then return nil end
     if pressed == "PADBACK" and IC.PadStyle() == "Shapes" then return nil end
@@ -161,10 +163,12 @@ local function Wheels()
             tip = "Opens the wheel (pressed again: closes it). On " .. IC.ButtonName("RS")
                 .. " or a shoulder / trigger + " .. IC.ButtonName("RS") .. ", " .. IC.ButtonName("RS")
                 .. " twice uses its last action again.",
-            -- R3 combos (Ring.lua), or any press an override binding can go on
+            -- R3 combos (Ring.lua), a crossbar slot (Native.lua: a macro of
+            -- ours that opens it), or any press an override binding can go on
             accepts = function(spec)
                 local _, _, double = B.Parse(spec)
-                return B.SpecCombo(spec) ~= nil or (not double and B.KeyOf(spec) ~= nil)
+                return B.SpecCombo(spec) ~= nil or IC.Native.SlotOf(spec) ~= nil
+                    or (not double and B.KeyOf(spec) ~= nil)
             end,
             specs = function()
                 local specs = {}
@@ -174,16 +178,30 @@ local function Wheels()
                 for spec, ring in pairs(MW.WheelKeys()) do
                     if ring == key then specs[#specs + 1] = spec end
                 end
+                for _, bound in ipairs(IC.Native.Bound()) do
+                    if bound.action == "wheel:" .. key then specs[#specs + 1] = bound.spec end
+                end
                 return specs
             end,
+            -- (one press per wheel: setting one takes it off the others)
             set = function(spec)
-                if not spec then return MW.ClearHotkey(key) end
+                MW.ClearHotkey(key)
+                for _, bound in ipairs(IC.Native.Bound()) do
+                    if bound.action == "wheel:" .. key and bound.spec ~= spec then IC.Native.Clear(bound.spec) end
+                end
+                if not spec then return end
+                if IC.Native.SlotOf(spec) then
+                    IC.Native.Set(spec, "wheel:" .. key, wheel.label)
+                    return
+                end
                 local combo = B.SpecCombo(spec)
                 MW.SetHotkey(key, combo and { combo = combo } or { button = spec })
             end,
             unbind = function(spec)
                 local combo = B.SpecCombo(spec)
-                if combo then
+                if IC.Native.SlotOf(spec) then
+                    if IC.Native.Get(spec) == "wheel:" .. key then IC.Native.Clear(spec) end
+                elseif combo then
                     if IC.GetComboRing(combo) == key then IC.SetComboRing(combo, "native") end
                 elseif MW.WheelKeys()[spec] == key then
                     MW.WheelKeys()[spec] = nil
@@ -256,19 +274,44 @@ Add({
     set = function(spec) IC.db.menuDouble = spec ~= nil end,
 })
 
--- An action on a press (Override.lua): a spell, an item, a macro, an emote
--- or a window. One per press, made for any press asked about.
+-- A spell, item, macro, emote or window can go on the press: in its
+-- crossbar slot (Native.lua), or as an override binding (Override.lua)
+function B.ActionFits(spec)
+    return IC.Native.SlotOf(spec) ~= nil or IC.Override.Supports(spec)
+end
+
+-- The action on a press (a crossbar slot's, not a wheel's; else the
+-- override's), or nil
+function B.ActionOn(spec)
+    if IC.Native.SlotOf(spec) then
+        local action = IC.Native.Get(spec)
+        return action and not action:find("^wheel:") and action or nil
+    end
+    return IC.Override.Get(spec)
+end
+
+-- Puts an action on a press (nil: takes it off). Out of combat.
+function B.SetAction(spec, action, label, icon)
+    if IC.Native.SlotOf(spec) then
+        if action then return IC.Native.Set(spec, action, label, icon) end
+        return IC.Native.Clear(spec)
+    end
+    IC.Override.Set(spec, action)
+end
+
+-- An action on a press: a spell, an item, a macro, an emote or a window.
+-- One per press, made for any press asked about.
 function B.ActionDef(spec)
     local O = IC.Override
-    local action = O.Get(spec)
+    local action = B.ActionOn(spec)
     return {
         id = "action:" .. spec, kind = "action", group = "Action", context = "world", takes = true,
         label = action and ("Action: " .. (O.ActionLabel(action) or action)) or "An action",
         icon = O.ActionIcon(action) or ICON .. "INV_Misc_QuestionMark",
         tip = "Runs a spell, an item, a macro, an emote or opens a window, in combat too.",
-        accepts = function(s) return s == spec and O.Supports(s) end,
-        specs = function() return O.Get(spec) and { spec } or {} end,
-        set = function(s) if not s then O.Set(spec, nil) end end,
+        accepts = function(s) return s == spec and B.ActionFits(s) end,
+        specs = function() return B.ActionOn(spec) and { spec } or {} end,
+        set = function(s) if not s then B.SetAction(spec, nil) end end,
     }
 end
 
@@ -276,8 +319,14 @@ local function Actions()
     local list = {}
     local O = IC.Override
     if not (O and IC.db) then return list end
-    local specs = {}
-    for spec in pairs(O.Settings()) do specs[#specs + 1] = spec end
+    local specs, seen = {}, {}
+    for spec in pairs(O.Settings()) do
+        if B.ActionOn(spec) then specs[#specs + 1], seen[spec] = spec, true end
+    end
+    -- (and what the crossbar's slots hold)
+    for _, bound in ipairs(IC.Native.Bound()) do
+        if not seen[bound.spec] and not bound.action:find("^wheel:") then specs[#specs + 1] = bound.spec end
+    end
     table.sort(specs)
     for _, spec in ipairs(specs) do list[#list + 1] = B.ActionDef(spec) end
     return list

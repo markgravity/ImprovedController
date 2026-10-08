@@ -257,9 +257,12 @@ end)
 IC.WHEEL_BINDING_KEYS = { "buffs", "consumables", "emotes", "my1", "my2", "my3", "my4", "my5", "my6", "my7", "my8" }
 for _, key in ipairs(IC.WHEEL_BINDING_KEYS) do
     local open = SecureButton("ImprovedControllerWheel_" .. key)
-    open:RegisterForClicks("AnyDown")
+    -- (a key: on its press; a macro's /click ... Macro, on a crossbar slot
+    -- (Native.lua): on whichever click it sends)
+    open:RegisterForClicks("AnyDown", "AnyUp")
     open:SetAttribute("ic-ring", key)
     SecureHandlerWrapScript(open, "OnClick", open, [[
+        if button ~= "Macro" and not down then return false end
         local ring = self:GetFrameRef("ring")
         if ring:IsShown() then
             ring:Hide()

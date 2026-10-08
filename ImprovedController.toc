@@ -22,6 +22,7 @@ NodeScan.lua
 Vibration.lua
 Probe.lua
 Binds.lua
+Native.lua
 ConfigKit.lua
 RecentSlot.lua
 Menu.lua
