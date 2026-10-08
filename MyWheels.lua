@@ -328,6 +328,8 @@ function MW.ApplyWheelKeys()
     end
     keysPending = false
     ClearOverrideBindings(keyOwner)
+    -- Only while the game has the gamepad's focus (Binds.lua)
+    if not IC.Binds.InGame() then return end
     for spec, ringKey in pairs(MW.WheelKeys()) do
         local key = IC.Binds.KeyOf(spec)
         if key and _G["ImprovedControllerWheel_" .. ringKey] then

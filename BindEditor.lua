@@ -102,7 +102,8 @@ end
 local function NoneName(spec)
     local held, _, double = B.Parse(spec)
     if not held and not double then
-        return spec == "PADRSTICK" and "The game's own (Look Here)" or "The game's own"
+        -- (no name for it: what it does depends on what has the focus)
+        return "The game's own"
     end
     return "Nothing"
 end

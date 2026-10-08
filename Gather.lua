@@ -215,7 +215,8 @@ local keyWatch = CreateFrame("Frame")
 local wasDown = false
 keyWatch:SetScript("OnUpdate", function()
     local key = Gather.Key()
-    if not key or not IsKeyDown or (IC.Menu and IC.Menu.IsOpen()) then
+    -- (only while the game has the gamepad's focus, Binds.lua)
+    if not key or not IsKeyDown or (IC.Menu and IC.Menu.IsOpen()) or not IC.Binds.InGame() then
         wasDown = false
         return
     end

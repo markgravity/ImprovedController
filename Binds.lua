@@ -8,9 +8,15 @@
 --
 -- A press is a spec: "PADRSTICK" (pressed), "PADLSHOULDER+PADRSTICK" (one
 -- held, one pressed), "PADLSTICK:double" (pressed twice quickly).
--- Two bindings on the same spec clash, unless one only works while the
--- bags are open and takes the button from the other meanwhile (bag
--- clean-up on L3 shares it with L3's override action that way).
+-- Two bindings on the same spec clash only where they work at the same
+-- time: one for the game and one for the bags share a press (a wheel and
+-- bag clean-up on L3), each answering where the focus is.
+--
+-- Where each works (the gamepad's focus): "world" bindings only while the
+-- game has it (B.InGame: no window of Forever's gamepad UI holds it, as
+-- bags or the map do); "bags" ones only while a bag is open. A window
+-- taking the focus takes our world bindings off its buttons until it lets
+-- go (B.FocusChanged re-applies them).
 local _, IC = ...
 
 local B = {}
@@ -121,9 +127,8 @@ end
 
 ---------------------------------------------------------------------------
 -- The bindings: { id, label, icon, group, tab (where else it is set),
--- context ("world", or "bags": only while a bag is open), takes (bool or
--- function(spec): it takes the button from the game and from others while
--- it works), accepts(spec), specs() (what it is bound to now), set(spec)
+-- context ("world": while the game has the gamepad's focus, or "bags":
+-- while a bag is open), accepts(spec), specs() (what it is bound to now), set(spec)
 -- (nil: unbound), unbind(spec) (optional: just that one) }
 ---------------------------------------------------------------------------
 local TEX = "Interface\\AddOns\\ImprovedController\\textures\\"
@@ -159,7 +164,7 @@ local function Wheels()
         local key = wheel.key
         list[#list + 1] = {
             id = "wheel:" .. key, label = wheel.label .. " wheel", group = "Wheels", tab = "wheels",
-            icon = TEX .. "ic_event_wheel", context = "world", takes = true,
+            icon = TEX .. "ic_event_wheel", context = "world",
             tip = "Opens the wheel (pressed again: closes it). On " .. IC.ButtonName("RS")
                 .. " or a shoulder / trigger + " .. IC.ButtonName("RS") .. ", " .. IC.ButtonName("RS")
                 .. " twice uses its last action again.",
@@ -215,7 +220,7 @@ end
 
 Add({
     id = "bagsort", label = "Bag clean-up", group = "Bags", tab = "general",
-    icon = 133633, context = "bags", takes = true,
+    icon = 133633, context = "bags",
     tip = "Sorts your bags. Only while a bag is open: the button does its own job again once they close.",
     accepts = Single,
     specs = function() return IC.db.bagSort ~= false and One(IC.BagSortKey()) or {} end,
@@ -230,7 +235,6 @@ Add({
     icon = TEX .. "ic_emote_no", context = "bags",
     -- Watched, not taken; on an R3 combo the wheels leave it to the panel
     -- while the bags are open (Swap.lua)
-    takes = function(spec) return B.SpecCombo(spec) ~= nil end,
     tip = "Opens the panel of what is safe to throw away. Only while a bag is open. With the bags full,"
         .. " the top face button (Triangle / Y) opens it from the loot window too: there each destroy"
         .. " loots the item that didn't fit in the junk's place.",
@@ -244,7 +248,7 @@ Add({
 
 Add({
     id = "gather", label = "Minimap labels", group = "Other", tab = "gather",
-    icon = ICON .. "INV_Misc_Flower_02", context = "world", takes = false,
+    icon = ICON .. "INV_Misc_Flower_02", context = "world",
     tip = "Shows / hides the names beside the minimap's dots. Watched only: the buttons keep their own"
         .. " actions too.",
     accepts = NotDouble,
@@ -254,7 +258,7 @@ Add({
 
 Add({
     id = "touch", label = "Touchpad corners", group = "Other", tab = "general",
-    icon = "gamepad-ps-touchpad-normal", context = "world", takes = true,
+    icon = "gamepad-ps-touchpad-normal", context = "world",
     tip = "Clicking the touchpad runs what its corner holds (set on its corners here). PlayStation controllers only.",
     accepts = function(spec) return spec == "PADBACK" and IC.PadStyle() == "Shapes" end,
     specs = function()
@@ -269,7 +273,7 @@ Add({
 
 Add({
     id = "menu", label = "Improved Controller menu", group = "Other",
-    icon = ICON .. "INV_Misc_Gear_02", context = "world", takes = false,
+    icon = ICON .. "INV_Misc_Gear_02", context = "world",
     tip = "Pressed twice quickly, opens this panel. Once still opens the game's own menu.",
     accepts = function(spec) return spec == "PADFORWARD:double" end,
     specs = function() return IC.db.menuDouble ~= false and { "PADFORWARD:double" } or {} end,
@@ -307,7 +311,7 @@ function B.ActionDef(spec)
     local O = IC.Override
     local action = B.ActionOn(spec)
     return {
-        id = "action:" .. spec, kind = "action", group = "Action", context = "world", takes = true,
+        id = "action:" .. spec, kind = "action", group = "Action", context = "world",
         label = action and ("Action: " .. (O.ActionLabel(action) or action)) or "An action",
         icon = O.ActionIcon(action) or ICON .. "INV_Misc_QuestionMark",
         tip = "Runs a spell, an item, a macro, an emote or opens a window, in combat too.",
@@ -333,6 +337,57 @@ local function Actions()
     for _, spec in ipairs(specs) do list[#list + 1] = B.ActionDef(spec) end
     return list
 end
+
+---------------------------------------------------------------------------
+-- The gamepad's focus: in the game, or on a window (Forever's binding stack,
+-- GamepadSharedUtility.InputBindingManager), read every 0.1 s: never a
+-- callback of ours in its lists, which would taint its secure work.
+-- Bindings can only change out of combat: as combat starts ours go on
+-- (PLAYER_REGEN_DISABLED comes just before the lockdown), so they work
+-- through it whatever has the focus.
+---------------------------------------------------------------------------
+local inCombat = false
+
+function B.InGame()
+    if inCombat then return true end
+    local manager = GamepadSharedUtility and GamepadSharedUtility.InputBindingManager
+    if not (manager and manager.IsOnlyCoreBindingSetActive) then return true end
+    return manager:IsOnlyCoreBindingSetActive() and true or false
+end
+
+-- The focus moved: every world binding re-applied (each one checks B.InGame)
+function B.FocusChanged()
+    if IC.InCombat() or not IC.db then return end
+    if IC.ApplyRingBindings then IC.ApplyRingBindings() end
+    if IC.MyWheels then IC.MyWheels.ApplyWheelKeys() end
+    if IC.Override then IC.Override.Apply() end
+    if IC.Touch then IC.Touch.Apply() end
+end
+
+local focus = CreateFrame("Frame")
+focus:RegisterEvent("PLAYER_REGEN_DISABLED")
+focus:RegisterEvent("PLAYER_REGEN_ENABLED")
+focus:SetScript("OnEvent", function(_, event)
+    inCombat = event == "PLAYER_REGEN_DISABLED"
+    if inCombat then
+        B.FocusChanged()
+    else
+        -- (after the features' own catch-up on PLAYER_REGEN_ENABLED)
+        C_Timer.After(0, B.FocusChanged)
+    end
+end)
+
+local lastInGame, wait = nil, 0
+focus:SetScript("OnUpdate", function(_, elapsed)
+    wait = wait - elapsed
+    if wait > 0 or not IC.db then return end
+    wait = 0.1
+    local now = B.InGame()
+    if now ~= lastInGame then
+        lastInGame = now
+        B.FocusChanged()
+    end
+end)
 
 -- Every binding, in the order the General tab lists them
 function B.All()
@@ -369,17 +424,10 @@ function B.Bound(spec)
     return list
 end
 
-local function Takes(def, spec)
-    if type(def.takes) == "function" then return def.takes(spec) end
-    return def.takes and true or false
-end
-
--- Two bindings on one press: do they get in each other's way?
-function B.Clash(a, b, spec)
-    if a.id == b.id then return false end
-    if a.context == b.context then return true end
-    local bags = a.context == "bags" and a or b
-    return not Takes(bags, spec)
+-- Two bindings on one press: do they get in each other's way? Only where
+-- they work at the same time (the same focus)
+function B.Clash(a, b)
+    return a.id ~= b.id and a.context == b.context
 end
 
 -- What would have to give way for id on spec

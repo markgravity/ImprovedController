@@ -882,7 +882,9 @@ function IC.ApplyRingBindings()
         trigger:SetAttribute("ic-btn-" .. combo, GamePadIndex(binding))
     end
     ClearOverrideBindings(trigger)
-    if anyRing then
+    -- Only while the game has the gamepad's focus (Binds.lua): a window
+    -- holding it keeps R3 for itself
+    if anyRing and IC.Binds.InGame() then
         for _, modifier in ipairs(MODIFIERS) do
             SetOverrideBindingClick(trigger, true, modifier .. KEY, trigger:GetName(), modifier .. KEY)
         end

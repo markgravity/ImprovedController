@@ -114,6 +114,8 @@ function O.Apply()
     end
     pending = false
     ClearOverrideBindings(owner)
+    -- Only while the game has the gamepad's focus (Binds.lua)
+    if not IC.Binds.InGame() then return end
     -- Fires on the press or the release, as the game's action buttons do
     local get = C_CVar and C_CVar.GetCVar or GetCVar
     local onDown = get and get("ActionButtonUseKeyDown") ~= "0"

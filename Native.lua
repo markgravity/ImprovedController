@@ -212,12 +212,5 @@ events:SetScript("OnEvent", function(_, event)
     bound = nil
     if IC.Menu and IC.Menu.IsOpen() then IC.Menu.Render() end
 end)
-IC.OnLogin(function()
-    local unit = PageUnit()
-    if unit and unit.AddPageChangeCallback then
-        unit:AddPageChangeCallback(function()
-            bound = nil
-            if IC.Menu and IC.Menu.IsOpen() then IC.Menu.Render() end
-        end)
-    end
-end)
+-- (the page shown is read as the panel draws: no callback of ours in the
+-- crossbar's lists, which would taint its secure work)

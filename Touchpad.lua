@@ -310,7 +310,8 @@ function touch.Apply()
     -- Only a PlayStation pad has a touchpad: on others the same button is
     -- View / Minus, left to the game.
     local panelOpen = IC.Menu and IC.Menu.IsOpen and IC.Menu.IsOpen()
-    if settings.enabled ~= false and not panelOpen and IC.PadStyle() == "Shapes" then
+    -- (and only while the game has the gamepad's focus, Binds.lua)
+    if settings.enabled ~= false and not panelOpen and IC.PadStyle() == "Shapes" and IC.Binds.InGame() then
         for _, modifier in ipairs(MODIFIERS) do
             SetOverrideBindingClick(click, true, modifier .. KEY, click:GetName(), "LeftButton")
         end
