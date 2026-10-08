@@ -23,17 +23,16 @@ local touch = IC.Touch
 local MW = IC.MyWheels
 
 local TEX = "Interface\\AddOns\\ImprovedController\\textures\\"
-local PANEL_W, PICKER_TOP, PICKER_ROWS = 340, 236, 7
-local ARC = 300
-local function ArcX(dy)
-    return math.sqrt(math.max(0, ARC * ARC - dy * dy))
-end
+local PANEL_W, PICKER_ROWS = 340, 7
 
 -- The drawing (tools/make_controller.py) at SCALE, its centre from the
 -- screen's; the list on its right as the Wheels tab's, round the same
 -- middle
 local ART_W, ART_H, SCALE = 512, 256, 1.2
 local ART_AT = { 0, 60 }
+-- The Stage layout (ConfigKit): the drawing in the middle, its body 230
+-- from its centre, the list on its right, centred on it up and down
+local STAGE = K.Stage(230, ART_AT[2])
 
 -- Its buttons: where they sit on the drawing (its pixels, y down), their
 -- glyph's size; the touchpad's corners (region) in its recess
@@ -322,11 +321,9 @@ function P:Build(parent)
 
     -- Right: what the press can do
     self.picker = K.Picker(f, PANEL_W, menu.Render, {
-        bare = true, rowHeight = 38,
-        arc = function(y) return ArcX(PICKER_TOP + y) end,
-        ring = { anchor = f, theta = 0.34 }, tabs = true,
+        bare = true, rowHeight = 38, tabs = true,
     })
-    self.picker:SetPoint("TOPLEFT", f, "CENTER", 30, PICKER_TOP)
+    self.picker:Center(f, STAGE.picker, STAGE.mid)
     self.picker:SetHeight(400)
 end
 
@@ -707,6 +704,7 @@ function P:Render()
     if self.key then
         self.picker:Show()
         self.picker:Render()
+        self.picker:Center(self.frame, STAGE.picker, STAGE.mid)
     end
 end
 

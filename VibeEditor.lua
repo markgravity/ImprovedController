@@ -1,7 +1,7 @@
 -- The Vibration tab, laid out like the Gather tab: the events down the
 -- left by group (Combat; Casting: spell, gathering, crafting; Wheel;
 -- Progress), the selected one big in the middle with its pattern, and its
--- choices down the right as slices of a ring around it: an event's
+-- choices in a list down the right: an event's
 -- patterns, or for a kind of cast the ready-made sets for its four moments
 -- (casting, interrupted, cancelled, pushed back). Choosing one sets it and
 -- plays it; Triangle plays it again. First, under Settings: vibration on /
@@ -13,12 +13,8 @@ local KC = K.C
 local menu = IC.Menu
 local V = IC.Vibe
 
-local PANEL_W, PICKER_TOP, PICKER_ROWS = 340, 236, 8
+local PANEL_W, PICKER_ROWS = 340, 8
 local RAIL_ROWS = 8                 -- lines on the left at once (as the picker); the rest scroll
-local ARC = 300
-local function ArcX(dy)
-    return math.sqrt(math.max(0, ARC * ARC - dy * dy))
-end
 
 local E = { zone = "rail", index = 1 }
 V.Editor = E
@@ -32,6 +28,7 @@ local TEX = "Interface\\AddOns\\ImprovedController\\textures\\"
 table.insert(V.GROUPS, 1, { key = "settings", label = "Settings" })
 table.insert(V.RAIL, 1, {
     key = "vibe_on", group = "settings", label = "Vibration", icon = TEX .. "ic_vibe_pulse", subs = {},
+    tip = "The controller vibrates on the events below. Off: none of them does.",
     setting = {
         value = function() return V.Settings().enabled and "on" or "off" end,
         text = function() return V.Settings().enabled and "On" or "|cffff7a5cOff|r" end,
@@ -48,6 +45,7 @@ table.insert(V.RAIL, 1, {
 })
 table.insert(V.RAIL, 2, {
     key = "vibe_strength", group = "settings", label = "Strength", icon = TEX .. "ic_vibe_rise", subs = {},
+    tip = "How strong every vibration is. Choosing one plays a pulse so you can feel it.",
     setting = {
         value = function() return tostring(math.floor(V.Settings().intensity * 10 + 0.5)) end,
         text = function() return math.floor(V.Settings().intensity * 100 + 0.5) .. "%" end,
@@ -168,17 +166,13 @@ function E:Build(parent)
     f:Hide()
     self.frame = f
 
-    -- The middle: the selected event, big, and its pattern under it
-    local big = K.Slot(f, 150, 108)
-    big:SetPoint("CENTER", f, "CENTER", 0, 10)
-    big:SetScript("OnClick", function() E:Aim() end)
-    f.big = big
-    f.pattern = K.Text(f, 16, KC.title)
-    f.pattern:SetPoint("TOP", big, "BOTTOM", 0, -40)
-    f.pattern:SetJustifyH("CENTER")
+    -- Right (the Columns layout, ConfigKit): the selected event's icon, its
+    -- pattern, what it is
+    local d = K.ColumnDetail(f, function() E:Aim() end)
+    f.big, f.pattern, f.note = d.big, d.value, d.note
 
-    -- Left: the groups' names and their events, slices down the ring's left
-    -- side (a name: just its text, in its slice's place)
+    -- Left: the groups' names and their events, rows down the left (a name:
+    -- just its text, in a row's place)
     f.rows = {}
     f.railUp, f.railDown = K.MoreArrows(f)
     for i in ipairs(Lines()) do
@@ -199,10 +193,8 @@ function E:Build(parent)
     -- Right: the patterns
     self.picker = K.Picker(f, PANEL_W, menu.Render, {
         bare = true, rowHeight = 38,
-        arc = function(y) return ArcX(PICKER_TOP + y) end,
-        ring = { anchor = f, theta = 0.34, x = -K.NEAR },
     })
-    self.picker:SetPoint("TOPLEFT", f, "CENTER", 30 - K.NEAR, PICKER_TOP)
+    self.picker:SetPoint("TOPLEFT", f, "CENTER", K.COLS.picker, K.COLS.top)
     self.picker:SetHeight(400)
     self:SyncPicker()
 end
@@ -360,24 +352,24 @@ function E:Render()
     if not f then return end
     if self.zone ~= "picker" then self.zone = "rail" end
     local settings = V.Settings()
-    -- The groups and their events down the ring's left side, centred on it,
-    -- each name along its slice; a group's name in gold without a slice
+    -- The groups and their events in rows down the left from the middle's
+    -- top edge; a group's name in gold without a slot
     -- Only RAIL_ROWS lines at once, scrolled to keep the selected one in
     -- view, arrows past the ends when there are more
     local lines = Lines()
-    local shown, thetaAt
-    self.railTop, shown, thetaAt = K.RailWindow(lines, self.index, self.railTop, RAIL_ROWS)
-    K.RingArrow(f.railUp, f, thetaAt(0.25), true, K.NEAR)
+    local shown, yAt
+    self.railTop, shown, yAt = K.RailWindow(lines, self.index, self.railTop, RAIL_ROWS, K.COLS.top)
+    K.RingArrow(f.railUp, f, yAt(0.25), true, K.COLS.rail)
     f.railUp:SetShown(self.railTop > 1)
-    K.RingArrow(f.railDown, f, thetaAt(shown + 0.75), false, K.NEAR)
+    K.RingArrow(f.railDown, f, yAt(shown + 0.75), false, K.COLS.rail)
     f.railDown:SetShown(self.railTop + shown - 1 < #lines)
     for i, r in ipairs(f.rows) do
         local line = lines[i]
         local slot = i - self.railTop + 1
         r:SetShown(line ~= nil and slot >= 1 and slot <= shown)
         if r:IsShown() then
-            local theta = thetaAt(slot)
-            r.seg:Place(f, theta, K.NEAR)
+            local y = yAt(slot)
+            r.seg:Place(f, y, K.COLS.rail)
             r.index = line.index
             if line.header then
                 r.seg:SetShown(false)
@@ -403,7 +395,6 @@ function E:Render()
                 r.label:SetText(item.label .. (on and "" or "  |cffff7a5cOff|r"))
                 r.label:SetTextColor(unpack(isSel and KC.focus or KC.rail))
             end
-            K.Rotate(r.label, K.ReadingAngle(theta))
         end
     end
     local item = self:Item()
@@ -413,6 +404,7 @@ function E:Render()
         f.big:SetLook({ icon = item.icon, discColor = KC.iconBg, hatch = off, dash = true })
         f.big:SetAlpha(off and 0.45 or 1)
         f.pattern:SetText(item.setting.text())
+        f.note:SetText(item.tip or "")
         self.picker:Show()
         self.picker:SetAlpha(self.zone == "picker" and 1 or 0.5)
         self.picker:Render()
@@ -438,6 +430,7 @@ function E:Render()
             text = text .. "|n|cffb9ab8c" .. table.concat(parts, "|n") .. "|r"
         end
         f.pattern:SetText(text)
+        f.note:SetText(item.tip or "")
         self.picker:Show()
         self.picker:SetAlpha(self.zone == "picker" and 1 or 0.5)
         self.picker:Render()
@@ -451,6 +444,7 @@ function E:Render()
     f.big:SetAlpha((settings.enabled and pattern) and 1 or 0.45)
     local name = #self:Item().subs > 1 and event.label .. ": " or ""
     f.pattern:SetText(name .. (pattern and pattern.label or "|cffff7a5cOff|r"))
+    f.note:SetText(event.tip or "")
     self.picker:Show()
     self.picker:SetAlpha(self.zone == "picker" and 1 or 0.5)
     self.picker:Render()

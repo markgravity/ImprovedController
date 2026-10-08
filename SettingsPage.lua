@@ -1,6 +1,6 @@
 -- A tab of settings (the Gather tab), laid out like the Vibration tab: the
 -- settings down the left by group, the selected one big in the middle with
--- its value, and its choices down the right as slices of a ring around it.
+-- its value, and its choices in a list down the right.
 -- A setting that runs on a button: Square records another one for it
 -- (Recorder.lua).
 local _, IC = ...
@@ -10,12 +10,8 @@ local KC = K.C
 local menu = IC.Menu
 local B = IC.Binds
 
-local PANEL_W, PICKER_TOP, PICKER_ROWS = 340, 236, 8
+local PANEL_W, PICKER_ROWS = 340, 8
 local RAIL_ROWS = 8                 -- lines on the left at once (as the picker); the rest scroll
-local ARC = 300
-local function ArcX(dy)
-    return math.sqrt(math.max(0, ARC * ARC - dy * dy))
-end
 
 local TEX = "Interface\\AddOns\\ImprovedController\\textures\\"
 local ON_ICON, OFF_ICON = TEX .. "ic_emote_yes", TEX .. "ic_emote_no"
@@ -82,19 +78,10 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
         f:Hide()
         self.frame = f
 
-        -- The middle: the selected setting, big, its value and a note under it
-        local big = K.Slot(f, 150, 108)
-        big:SetPoint("CENTER", f, "CENTER", 0, 10)
-        big:SetScript("OnClick", function() G:Aim() end)
-        f.big = big
-        f.value = K.Text(f, 16, KC.title)
-        f.value:SetPoint("TOP", big, "BOTTOM", 0, -40)
-        f.value:SetJustifyH("CENTER")
-        f.note = K.Text(f, 12, KC.help)
-        f.note:SetPoint("TOP", f.value, "BOTTOM", 0, -8)
-        f.note:SetWidth(300)
-        f.note:SetJustifyH("CENTER")
-        f.note:SetWordWrap(true)
+        -- Right (the Columns layout, ConfigKit): the selected setting's
+        -- icon, its value, what it does
+        local d = K.ColumnDetail(f, function() G:Aim() end)
+        f.big, f.value, f.note = d.big, d.value, d.note
 
         -- Left: the groups' names and their settings
         f.rows = {}
@@ -117,10 +104,8 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
         -- Right: the selected setting's choices
         self.picker = K.Picker(f, PANEL_W, menu.Render, {
             bare = true, rowHeight = 38,
-            arc = function(y) return ArcX(PICKER_TOP + y) end,
-            ring = { anchor = f, theta = 0.34, x = -K.NEAR },
         })
-        self.picker:SetPoint("TOPLEFT", f, "CENTER", 30 - K.NEAR, PICKER_TOP)
+        self.picker:SetPoint("TOPLEFT", f, "CENTER", K.COLS.picker, K.COLS.top)
         self.picker:SetHeight(400)
 
         self:SyncPicker(true)
@@ -282,19 +267,19 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
         -- Only RAIL_ROWS lines at once, scrolled to keep the selected one in
         -- view, arrows past the ends when there are more
         local lines = Lines()
-        local shown, thetaAt
-        self.railTop, shown, thetaAt = K.RailWindow(lines, self.index, self.railTop, RAIL_ROWS)
-        K.RingArrow(f.railUp, f, thetaAt(0.25), true, K.NEAR)
+        local shown, yAt
+        self.railTop, shown, yAt = K.RailWindow(lines, self.index, self.railTop, RAIL_ROWS, K.COLS.top)
+        K.RingArrow(f.railUp, f, yAt(0.25), true, K.COLS.rail)
         f.railUp:SetShown(self.railTop > 1)
-        K.RingArrow(f.railDown, f, thetaAt(shown + 0.75), false, K.NEAR)
+        K.RingArrow(f.railDown, f, yAt(shown + 0.75), false, K.COLS.rail)
         f.railDown:SetShown(self.railTop + shown - 1 < #lines)
         for i, r in ipairs(f.rows) do
             local line = lines[i]
             local slot = i - self.railTop + 1
             r:SetShown(line ~= nil and slot >= 1 and slot <= shown)
             if r:IsShown() then
-                local theta = thetaAt(slot)
-                r.seg:Place(f, theta, K.NEAR)
+                local y = yAt(slot)
+                r.seg:Place(f, y, K.COLS.rail)
                 r.index = line.index
                 if line.header then
                     r.seg:SetShown(false)
@@ -309,7 +294,6 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
                     r.label:SetText(item.label)
                     r.label:SetTextColor(unpack(isSel and KC.focus or KC.rail))
                 end
-                K.Rotate(r.label, K.ReadingAngle(theta))
             end
         end
         -- The selected setting: its icon, its value, what it is bound to

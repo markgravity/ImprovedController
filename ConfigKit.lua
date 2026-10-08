@@ -535,7 +535,65 @@ local RIM = {
 
 -- Tabs with one slot in the middle (Touchpad, Vibration, General): their
 -- lists' rings centred this far to the side, so the lists sit close to it
-K.NEAR = 120
+---------------------------------------------------------------------------
+-- The config tabs' two layouts. Every tab is one or the other:
+--
+--   Stage (Wheels, General): a big thing in the middle of the screen (the
+--     wheel, the controller), a list down its left and one down its right,
+--     each K.GAP clear of its edges, centred on its middle up and down.
+--     STAGE = K.Stage(half, mid): half its width, its middle's y, from the
+--     screen's centre. The left list's rows from K.CenterTop(STAGE.mid,
+--     shown); the picker: p:Center(f, STAGE.picker, STAGE.mid) after each
+--     render (its rows centred, its list's name and tabs above them).
+--
+--   Columns (Gather, Vibration): three columns K.GAP apart, their tops on
+--     one line: the list on the left, the choices in the middle (centred on
+--     the screen), and what is selected on the right: its icon, its value,
+--     what it does (K.ColumnDetail). K.COLS.
+--
+-- Either way: the left list's rows are K.Segment rows (200 wide) placed by
+-- K.RailWindow / K.RowY and seg:Place(f, y, layout.rail); the right list is
+-- a K.Picker (rows 316 wide, 12 into it) at TOPLEFT layout.picker,
+-- layout.top from the centre.
+---------------------------------------------------------------------------
+K.GAP = 24
+local RAIL_W, LIST_W = 200, 316
+
+function K.Stage(half, mid)
+    return {
+        mid = mid,
+        rail = -(half + K.GAP + RAIL_W / 2),  -- the left list's rows' centre x
+        picker = half + K.GAP - 12,           -- the picker's left
+        right = half + K.GAP,                 -- the right side's left edge
+    }
+end
+
+K.COLS = {
+    top = 200,
+    detailW = 300,
+    rail = -(LIST_W / 2 + K.GAP + RAIL_W / 2),  -- the list's rows' centre x
+    picker = -LIST_W / 2 - 12,                   -- the picker's left (rows centred)
+    detail = LIST_W / 2 + K.GAP + 150,           -- the detail's centre x
+}
+
+-- The Columns layout's right column: the selected thing's icon (a slot:
+-- onClick when clicked), its value, what it does under it
+function K.ColumnDetail(f, onClick)
+    local d = {}
+    d.big = K.Slot(f, 120, 86)
+    d.big:SetPoint("TOP", f, "CENTER", K.COLS.detail, K.COLS.top - 12)
+    if onClick then d.big:SetScript("OnClick", onClick) end
+    d.value = K.Text(f, 16, C.title)
+    d.value:SetPoint("TOP", d.big, "BOTTOM", 0, -30)
+    d.value:SetWidth(K.COLS.detailW)
+    d.value:SetJustifyH("CENTER")
+    d.note = K.Text(f, 12, C.help)
+    d.note:SetPoint("TOP", d.value, "BOTTOM", 0, -8)
+    d.note:SetWidth(K.COLS.detailW)
+    d.note:SetJustifyH("CENTER")
+    d.note:SetWordWrap(true)
+    return d
+end
 
 local function WheelFill(texture)
     local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(WHEEL_ATLAS)
@@ -584,100 +642,54 @@ function K.RowSlot(frame)
     return slot
 end
 
--- Turns a region (a texture, or a font string) by radians, counter-
--- clockwise, about its centre. Textures turn natively; text with
--- SetRotation where the client has it, else with a rotation animation held
--- at its end (its end delay keeps the turn)
-function K.Rotate(region, radians)
-    if region:GetObjectType() == "Texture" or (region.SetRotation and region:GetObjectType() ~= "FontString") then
-        region:SetRotation(radians)
-        return
-    end
-    if region.SetRotation and pcall(region.SetRotation, region, radians) then
-        return
-    end
-    local anim = region.icRotation
-    if not anim then
-        local group = region:CreateAnimationGroup()
-        anim = group:CreateAnimation("Rotation")
-        anim:SetOrigin("CENTER", 0, 0)
-        anim:SetDuration(0.001)
-        anim:SetEndDelay(1e7)
-        region.icRotation = anim
-    end
-    if anim.angle == radians and anim:GetParent():IsPlaying() then return end
-    anim.angle = radians
-    local group = anim:GetParent()
-    group:Stop()
-    anim:SetRadians(radians)
-    group:Play()
-end
+-- The side lists' rows: straight slots (as the pickers' rows), 200 x 34,
+-- ROW_STEP apart down the left from the middle's top line
+K.ROW_STEP = 42
 
--- The angle text along a slice at theta reads at (never upside down)
-function K.ReadingAngle(theta)
-    local t = theta % (2 * math.pi)
-    if t > math.pi / 2 and t < 3 * math.pi / 2 then t = t - math.pi end
-    return t
-end
-
--- A slice of a ring around the wheel (tools/make_segments.py draws them:
--- inner radius 285, outer 505, the slice pointing right in its 256 px
--- square). Lists beside the wheel are made of them, each turned to face
--- the wheel's centre, as if the wheel had an outer ring of slots.
-K.SEG = { R1 = 285, R2 = 505, MID = 395, STEP = 0.106 }
-local SEG_SIZE = 256
-
--- Puts the slice textures on a frame (a row): seg:Place(anchor, theta)
--- puts the row on the ring at angle theta (radians, counter-clockwise from
--- the right) around the anchor's centre; seg:SetFocus(on) lights it
+-- Puts a slot look on a frame (a row): seg:Place(anchor, y, x) puts the
+-- row's centre at x, y from the anchor's centre (a layout's rail, a K.RailWindow's
+-- yAt); seg:SetFocus(on) lights it
 function K.Segment(frame)
-    local seg = {}
-    local function texture(file, layer, sub)
-        local t = frame:CreateTexture(nil, layer, nil, sub)
-        t:SetTexture(TEX .. file)
-        t:SetSize(SEG_SIZE, SEG_SIZE)
-        t:SetPoint("CENTER", frame, "CENTER")
-        return t
-    end
-    seg.fill = texture("ic_seg_fill", "BACKGROUND", -2)
-    seg.fill:SetVertexColor(0.13, 0.08, 0.045, 0.72)
-    seg.rim = texture("ic_seg_rim", "BORDER", 0)
-    seg.glow = texture("ic_seg_glow", "ARTWORK", 0)
-    seg.glow:SetVertexColor(C.focus[1], C.focus[2], C.focus[3])
-    seg.glow:SetBlendMode("ADD")
-    seg.glow:Hide()
-    -- (ox: the ring's centre that far right of the anchor's, so a smaller
-    -- middle can have its lists close by)
-    function seg:Place(anchor, theta, ox)
+    local seg = { slot = K.RowSlot(frame) }
+    seg.sel = K.NineSlice(frame, "ic_select", 128, 32, 10, 10, "ARTWORK")
+    seg.sel:SetShown(false)
+    function seg:Place(anchor, y, x)
         frame:ClearAllPoints()
-        frame:SetPoint("CENTER", anchor, "CENTER", (ox or 0) + K.SEG.MID * math.cos(theta), K.SEG.MID * math.sin(theta))
-        for _, t in ipairs({ self.fill, self.rim, self.glow }) do t:SetRotation(theta) end
+        frame:SetPoint("CENTER", anchor, "CENTER", x, y)
     end
     function seg:SetFocus(on)
-        self.glow:SetShown(on and true or false)
-        self.fill:SetVertexColor(on and 0.22 or 0.13, on and 0.14 or 0.08, on and 0.06 or 0.045, on and 0.82 or 0.72)
+        self.sel:SetShown(on and true or false)
     end
     function seg:SetShown(shown)
-        self.fill:SetShown(shown)
-        self.rim:SetShown(shown)
-        if not shown then self.glow:Hide() end
+        self.slot:SetShown(shown)
+        if not shown then self.sel:SetShown(false) end
     end
     return seg
 end
 
--- An arrow on a ring at theta, turned with the slices there: up = toward
--- the slices above (the triangle art points down; a half turn flips it)
-function K.RingArrow(arrow, anchor, theta, up, ox)
+-- A more-above / more-below arrow at a row's place (as K.Segment's)
+function K.RingArrow(arrow, anchor, y, up, x)
     arrow:SetTexCoord(0, 1, 0, 1)
     arrow:ClearAllPoints()
-    arrow:SetPoint("CENTER", anchor, "CENTER", (ox or 0) + K.SEG.MID * math.cos(theta), K.SEG.MID * math.sin(theta))
-    arrow:SetRotation(K.ReadingAngle(theta) + (up and math.pi or 0))
+    arrow:SetPoint("CENTER", anchor, "CENTER", x, y)
+    arrow:SetRotation(up and math.pi or 0)
+end
+
+-- The top line that centres shown side-list rows on y = mid
+function K.CenterTop(mid, shown)
+    return mid + ((shown - 1) * K.ROW_STEP + 34) / 2
+end
+
+-- The y of a side list's row slot (1 the first, fractions between) whose
+-- first row's top edge is on the line topY
+function K.RowY(topY, slot)
+    return topY - 17 - (slot - 1) * K.ROW_STEP
 end
 
 -- A side list of group headings and items, at most max lines at once:
 -- where it starts (kept so the selected item, and its heading just above,
--- show), how many show, and each shown line's angle on the ring
-function K.RailWindow(lines, selected, top, max)
+-- show), how many show, and each shown line's y (from topY down)
+function K.RailWindow(lines, selected, top, max, topY)
     local n = #lines
     local shown = math.min(n, max)
     local sel = 1
@@ -688,10 +700,7 @@ function K.RailWindow(lines, selected, top, max)
     local first = (sel > 1 and lines[sel - 1].header) and sel - 1 or sel
     if first < top then top = first end
     if sel > top + shown - 1 then top = sel - shown + 1 end
-    local function thetaAt(slot)
-        return math.pi - ((shown + 1) / 2 - slot) * K.SEG.STEP
-    end
-    return top, shown, thetaAt
+    return top, shown, function(slot) return K.RowY(topY, slot) end
 end
 
 -- More above / below: the small gold triangles
@@ -708,18 +717,13 @@ function K.MoreArrows(parent)
     return up, down
 end
 
--- opts = { arc = function(y) return x end (each line pushed right by the
--- curve at its height: rows that follow a ring), bare = true (no box,
+-- opts = { bare = true (no box,
 -- the lists switched like the panel's tabs: the list's name over the
 -- native band with a dot per list between L2 / R2; each row a wheel slot),
 -- tabs = true (bare: the band and the list's name even for one list) }
 function K.Picker(parent, width, onRender, opts)
     opts = opts or {}
-    local arc = opts.arc or function() return 0 end
     local ROW = opts.rowHeight or PICK_ROW
-    -- opts.ring = { anchor, theta }: the rows are slices of the outer ring,
-    -- the first at angle theta, each next one K.SEG.STEP further down
-    local ring = opts.ring
     local p = K.NewFrame("Frame", nil, parent)
     p:SetWidth(width)
     p:EnableMouseWheel(true)
@@ -738,19 +742,20 @@ function K.Picker(parent, width, onRender, opts)
     -- L2 / R2 around the lists' tabs, like L1 / R1 around the panel's
     local GLYPH = 34
     p.ltGlyph = K.Glyph(p, GLYPH)
-    p.ltGlyph:SetPoint("TOPLEFT", 10 + arc(-55), -55)
+    p.ltGlyph:SetPoint("TOPLEFT", 10, -55)
     p.rtGlyph = K.Glyph(p, GLYPH)
-    p.rtGlyph:SetPoint("TOPLEFT", width - 10 - GLYPH + arc(-55), -55)
+    p.rtGlyph:SetPoint("TOPLEFT", width - 10 - GLYPH, -55)
     if opts.bare then
         -- No slot line or title here: the list's name and its band at the top
         p.kicker:Hide()
         p.title:Hide()
-        local mid = width / 2 + arc(-24) - 40
+        -- (centred over the rows, its top on the picker's: the list's top line)
+        local mid = 12 + (width - 24) / 2
         p.listName = p:CreateFontString(nil, "OVERLAY")
         p.listName:SetFont("Fonts\\FRIZQT__.TTF", 14, "")
         p.listName:SetShadowOffset(1, -1)
         p.listName:SetTextColor(1, 1, 1)
-        p.listName:SetPoint("TOP", p, "TOPLEFT", mid, 12)
+        p.listName:SetPoint("TOP", p, "TOPLEFT", mid, 0)
         p.band = p:CreateTexture(nil, "BACKGROUND", nil, -2)
         p.band:SetSize(width, 50)
         p.band:SetPoint("TOP", p.listName, "BOTTOM", 0, 4)
@@ -770,7 +775,7 @@ function K.Picker(parent, width, onRender, opts)
         end
     end
     p.kicker:ClearAllPoints()
-    p.kicker:SetPoint("TOPLEFT", 12 + arc(-12), -12)
+    p.kicker:SetPoint("TOPLEFT", 12, -12)
     p.moreUp, p.moreDown = K.MoreArrows(p)
     p:SetScript("OnMouseWheel", function(self, delta) self:Move(-delta * 3) end)
     p:Hide()
@@ -791,11 +796,7 @@ function K.Picker(parent, width, onRender, opts)
         r = K.NewFrame("Button", nil, p)
         r:SetSize(width - 24, ROW)
         r.sel = K.NineSlice(r, "ic_select", 128, 32, 10, 10, "ARTWORK")
-        if ring then
-            r:SetSize(200, ROW - 4)
-            r.seg = K.Segment(r)
-            r.sel:SetShown(false)
-        elseif opts.bare then
+        if opts.bare then
             r:SetHeight(ROW - 3)
             r.slot = K.RowSlot(r)
         end
@@ -834,6 +835,15 @@ function K.Picker(parent, width, onRender, opts)
         self.list = def.list or 1
         self:LoadList()
         self:Show()
+    end
+
+    -- Its rows centred up and down on y = mid from anchor's centre (its
+    -- list's name and tabs above them, not counted), its left at x (after a
+    -- render: how many rows show varies)
+    function p:Center(anchor, x, mid)
+        local top, bottom = self.rowsTop or 0, self.rowsBottom or 0
+        self:ClearAllPoints()
+        self:SetPoint("TOPLEFT", anchor, "CENTER", x, mid - (top + bottom) / 2)
     end
 
     function p:Close()
@@ -991,12 +1001,13 @@ function K.Picker(parent, width, onRender, opts)
             if i <= n then
                 t:SetWidth(tw)
                 t:ClearAllPoints()
-                t:SetPoint("TOPLEFT", self, "TOPLEFT", 10 + side + (i - 1) * (tw + 4) + arc(-54), -54)
+                t:SetPoint("TOPLEFT", self, "TOPLEFT", 10 + side + (i - 1) * (tw + 4), -54)
                 t.label:SetText(def.lists[i].label)
                 t:SetState({ active = i == self.list })
             end
         end
-        local top = (n > 1 or (opts.bare and opts.tabs)) and (opts.bare and -116 or -88) or -54
+        local named = n > 1 or (opts.bare and opts.tabs)
+        local top = named and (opts.bare and -70 or -88) or (opts.bare and 0 or -54)
         local max = def.rows or 10
         local y = top
         local shown = 0
@@ -1007,55 +1018,23 @@ function K.Picker(parent, width, onRender, opts)
             if e and shown < max then
                 shown = shown + 1
                 local h = e.header and PICK_HEAD or ROW
-                if ring then
-                    -- A slice of the outer ring (a group title: just its text
-                    -- there); the icon at its inner end and the name along it
-                    local theta = ring.theta - (shown - 1) * K.SEG.STEP
-                    r.seg:Place(ring.anchor, theta, ring.x)
-                    r.seg:SetShown(not e.header)
-                    r.seg:SetFocus(not e.header and self.offset + i == self.index)
-                    r.ringT = K.ReadingAngle(theta)
-                    local t = r.ringT
-                    r.icon:ClearAllPoints()
-                    r.icon:SetPoint("CENTER", r, "CENTER", -76 * math.cos(t), -76 * math.sin(t))
-                    K.Rotate(r.icon, t)
-                else
-                    -- (wheel slots: a small gap between them)
-                    r:SetHeight(h - ((opts.bare and not e.header) and 3 or 0))
-                    r:ClearAllPoints()
-                    r:SetPoint("TOPLEFT", self, "TOPLEFT", 12 + arc(y - h / 2), y)
-                end
+                -- (wheel slots: a small gap between them)
+                r:SetHeight(h - ((opts.bare and not e.header) and 3 or 0))
+                r:ClearAllPoints()
+                r:SetPoint("TOPLEFT", self, "TOPLEFT", 12, y)
                 y = y - h
                 r.head:SetShown(e.header ~= nil)
                 if r.slot then r.slot:SetShown(not e.header) end
                 r.label:SetShown(not e.header)
                 r.icon:SetShown(not e.header)
                 r.mark:SetShown(not e.header and def.marked and def.marked(e) or false)
-                r.sel:SetShown(not ring and not e.header and self.offset + i == self.index)
+                r.sel:SetShown(not e.header and self.offset + i == self.index)
                 if e.header then
                     r.head:SetText(e.header)
                 else
                     r.index = self.offset + i
                     K.SetIcon(r.icon, e.icon)
                     r.label:SetText(e.name .. (e.sub and ("  |cff9d9a8c" .. e.sub .. "|r") or ""))
-                end
-                if ring then
-                    -- Text turns about its own middle, so each box is just
-                    -- as wide as its text, its middle placed along the slice:
-                    -- a name from just past the icon, a group title from the
-                    -- slice's inner end
-                    local t = r.ringT
-                    local c, sn = math.cos(t), math.sin(t)
-                    local fs, from, room = r.label, -52, 150
-                    if e.header then fs, from, room = r.head, -96, 190 end
-                    fs:SetJustifyH("CENTER")
-                    fs:SetWidth(0)
-                    local w = math.min(fs:GetStringWidth(), room)
-                    fs:SetWidth(w + 2)
-                    local d = from + w / 2
-                    fs:ClearAllPoints()
-                    fs:SetPoint("CENTER", r, "CENTER", d * c, d * sn)
-                    K.Rotate(fs, t)
                 end
                 r:Show()
             else
@@ -1066,19 +1045,15 @@ function K.Picker(parent, width, onRender, opts)
         -- More above / below the rows shown
         self.moreUp:ClearAllPoints()
         self.moreDown:ClearAllPoints()
-        if ring and shown > 0 then
-            -- Just past the first and last slices, turned with them
-            K.RingArrow(self.moreUp, ring.anchor, ring.theta + 0.75 * K.SEG.STEP, true, ring.x)
-            K.RingArrow(self.moreDown, ring.anchor, ring.theta - (shown - 0.25) * K.SEG.STEP, false, ring.x)
-        else
-            self.moreUp:SetPoint("BOTTOM", self, "TOPLEFT", 12 + arc(top) + (width - 24) / 2, top + 1)
-            self.moreDown:SetPoint("TOP", self, "TOPLEFT", 12 + arc(y) + (width - 24) / 2, y - 1)
-        end
+        self.moreUp:SetPoint("BOTTOM", self, "TOPLEFT", 12 + (width - 24) / 2, top + 1)
+        self.moreDown:SetPoint("TOP", self, "TOPLEFT", 12 + (width - 24) / 2, y - 1)
         self.moreDown:SetShown(self.offset + max < #self.entries)
+        -- Where its rows start (under its list's name and tabs) and end
+        self.rowsTop, self.rowsBottom = top, y
         if #self.entries == 0 then
             local r = row(1)
             r:ClearAllPoints()
-            r:SetPoint("TOPLEFT", self, "TOPLEFT", 12 + arc(top), top)
+            r:SetPoint("TOPLEFT", self, "TOPLEFT", 12, top)
             r:Show()
             r.head:Show()
             r.head:SetText("Nothing here")

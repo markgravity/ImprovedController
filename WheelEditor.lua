@@ -14,15 +14,13 @@ local menu = IC.Menu
 
 local ZONE_W, PANEL_W = 540, 340
 local BOX_W = 380                   -- the rename / hotkey boxes over the wheel
--- The lists hug the ring: each line sits ARC from the wheel's centre
-local ARC = 300
+-- The Stage layout (ConfigKit): the wheel in the middle, its visible rim
+-- 226 from its centre (the art's frame has a clear margin round it), the
+-- side lists centred on it up and down
 local LIST_STEP = 42
 local LIST_SHOWN = 8                -- wheels shown at once on the left; the rest scroll
 local PICKER_ROWS = 7               -- entries shown at once on the right
-local PICKER_TOP = 236              -- the picker's top, above the centre
-local function ArcX(dy)
-    return math.sqrt(math.max(0, ARC * ARC - dy * dy))
-end
+local STAGE = K.Stage(226, 0)
 -- The wheel: Forever's radial menu (the R3 ring's art and layout, Ring.lua)
 -- at SCALE
 local SCALE = 1
@@ -100,7 +98,7 @@ function W:Build(parent)
     f:Hide()
     self.frame = f
 
-    -- The wheels, down the ring's left side (placed in Render)
+    -- The wheels, in rows down the left (placed in Render)
     local rail = K.NewFrame("Frame", nil, f)
     rail:SetAllPoints(f)
     rail:EnableMouseWheel(true)
@@ -113,7 +111,7 @@ function W:Build(parent)
     self.railEntries = {}
     for i = 1, #MW.BUILT_IN_WHEELS + MW.MAX + 1 do
         local e = K.NewFrame("Button", nil, rail)
-        -- A slice of an outer ring around the wheel
+        -- A row (K.Segment: a straight slot)
         e:SetSize(200, 34)
         e.seg = K.Segment(e)
         e.label = K.Text(e, 14, KC.rail, "OVERLAY")
@@ -314,17 +312,11 @@ function W:Build(parent)
     -- Right: the picker, or for a self-filling wheel what it does
     self.picker = K.Picker(f, PANEL_W, menu.Render, {
         bare = true, rowHeight = 38,
-        -- The rows: slices of the outer ring down its right side, from
-        -- under the picker's header
-        ring = { anchor = f, theta = 0.34 },
-        -- y in the picker (0 at its top, down negative): out by the ring's
-        -- curve at that height
-        arc = function(y) return ArcX(PICKER_TOP + y) end,
     })
-    self.picker:SetPoint("TOPLEFT", f, "CENTER", 30, PICKER_TOP)
+    self.picker:Center(f, STAGE.picker, STAGE.mid)
     self.picker:SetHeight(400)
     self.detail = K.Detail(f, PANEL_W)
-    self.detail:SetPoint("TOPLEFT", f, "CENTER", ARC + 30, 200)
+    self.detail:SetPoint("LEFT", f, "CENTER", STAGE.right, STAGE.mid)
     self.detail:SetHeight(300)
 end
 
@@ -880,37 +872,31 @@ function W:Render()
     if self.zone == "list" or self.zone == "slots" then self.zone = "rail" end
     local wheel, entries = self:Current()
 
-    -- The wheels down the ring's left side, centred on it, each out by the
-    -- curve at its height
+    -- The wheels in rows down the left, from the wheel's top edge
     -- Only LIST_SHOWN at once, scrolled to keep the selected one in view
     local n = #entries
     local shown = math.min(n, LIST_SHOWN)
     self.railTop = math.max(1, math.min(self.railTop or 1, n - shown + 1))
     if self.index < self.railTop then self.railTop = self.index end
     if self.index > self.railTop + shown - 1 then self.railTop = self.index - shown + 1 end
-    -- The arrows just past the first and last slices, turned with them
-    local function thetaAt(slot)
-        return math.pi - ((shown + 1) / 2 - slot) * K.SEG.STEP
-    end
-    K.RingArrow(self.railUp, f, thetaAt(0.25), true)
+    -- The arrows just past the first and last rows
+    local top = K.CenterTop(STAGE.mid, shown)
+    K.RingArrow(self.railUp, f, K.RowY(top, 0.25), true, STAGE.rail)
     self.railUp:SetShown(self.railTop > 1)
-    K.RingArrow(self.railDown, f, thetaAt(shown + 0.75), false)
+    K.RingArrow(self.railDown, f, K.RowY(top, shown + 0.75), false, STAGE.rail)
     self.railDown:SetShown(self.railTop + shown - 1 < n)
     for i, e in ipairs(self.railEntries) do
         local entry = entries[i]
         local slot = i - self.railTop + 1
         e:SetShown(entry ~= nil and slot >= 1 and slot <= shown)
         if entry and slot >= 1 and slot <= shown then
-            -- Round the ring's left side, centred on it, top first
-            local theta = math.pi - ((shown + 1) / 2 - slot) * K.SEG.STEP
-            e.seg:Place(f, theta)
-            -- The name along its slice
-            K.Rotate(e.label, K.ReadingAngle(theta))
+            -- Down the left from the wheel's top, top first
+            e.seg:Place(f, K.RowY(top, slot), STAGE.rail)
+            -- Its name
             local active = i == self.index
             e.label:SetText(entry.label)
             e.label:SetTextColor(unpack(active and KC.focus or (entry.new and KC.dimGold or KC.rail)))
             e.seg:SetFocus(active and self.zone == "rail")
-            e.seg.fill:SetAlpha(active and 1 or 0.85)
         end
     end
 
@@ -1015,6 +1001,7 @@ function W:Render()
         self.picker:Show()
         self.picker:SetAlpha(self.zone == "picker" and 1 or 0.5)
         self.picker:Render()
+        self.picker:Center(f, STAGE.picker, STAGE.mid)
     else
         self.picker:Close()
         self.detail:Show()
@@ -1023,8 +1010,8 @@ function W:Render()
                 .. " spell, an item, a macro or an emote for each slot. Up to " .. MW.MAX .. " wheels." })
         else
             self.detail:Set({ title = wheel.label, tag = "Fills itself", tagColor = KC.slot, body = wheel.info,
-                extra = "Bound to: " .. (MW.HotkeyText(wheel.key) or "nothing") .. IC.PadText(". {X} binds it: {RS}, or"
-                    .. " {LB} / {LT} / {RB} / {RT} + {RS}. {RS} twice uses its last action.") })
+                extra = "Bound to: " .. (MW.HotkeyText(wheel.key) or "nothing") .. IC.PadText(". {X} binds it to a press:"
+                    .. " {RS} (or {LB} / {LT} / {RB} / {RT} + {RS}; {RS} twice uses its last action) or any other button.") })
         end
     end
     -- The boxes over the wheel: naming, recording, confirming
