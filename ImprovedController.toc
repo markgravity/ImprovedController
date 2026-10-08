@@ -35,5 +35,5 @@ Gather.lua
 PeekMap.lua
 GatherEditor.lua
 PeekMapEditor.lua
-Swap.lua
+Destroy.lua
 Options.lua

@@ -1,23 +1,23 @@
--- Destroy / Swap: with the bags open, R2 + R3 (or the button(s) bound in
--- the General tab) opens a panel listing what is safe to throw away
--- ("Destroy"); so does Triangle in the loot window once the bags are full
--- ("Swap"), where each destroy is a swap: the junk goes, the loot that
--- didn't fit comes in its place. What it lists: junk (grey items, white
+-- Destroy: with the bags open, R2 + R3 (or the button(s) bound in the
+-- General tab) opens a panel listing what is safe to throw away; so does
+-- Triangle in the loot window once the bags are full, where Cross swaps:
+-- the junk goes, the loot that didn't fit comes in its place. What it lists: junk (grey items, white
 -- "junk") and cheap white gear; with no junk, every white item that can
 -- go (gear, food, trade goods), the least useful first. Laid out as
 -- Forever's loot window: a list of item cards, the picked one's tooltip
 -- beside it. Cross
 -- destroys the picked item (press twice: once to arm), holding Square and
 -- letting go destroys them all, Circle closes, R3 shows / hides the
--- tooltip. From the loot window Cross swaps and Triangle destroys only.
+-- tooltip. From the loot window Cross swaps and Triangle destroys only;
+-- at a vendor Triangle sells.
 -- Never in combat.
 local _, IC = ...
 
 local K = IC.ConfigKit
 local KC = K.C
 
-local SW = {}
-IC.Swap = SW
+local DS = {}
+IC.Destroy = DS
 
 local HOLD_ALL = 1.2          -- Square held this long, then let go: destroy all
 local DEFAULT_KEY = "PADRTRIGGER+PADRSTICK"   -- one button, or "held+pressed"
@@ -126,7 +126,7 @@ end
 -- Junk, and the white gear worth least; with no junk at all, every white
 -- item that can go, food and trade goods too: the unusable first, then
 -- the low level, the cheapest first in each
-function SW.Scan()
+function DS.Scan()
     local list, junk = {}, false
     local last = NUM_BAG_SLOTS or 4
     for bag = 0, last do
@@ -141,6 +141,7 @@ function SW.Scan()
                         bag = bag, slot = slot, itemID = info.itemID, link = info.hyperlink,
                         icon = info.iconFileID, count = info.stackCount or 1, quality = info.quality or 0,
                         value = sellPrice * (info.stackCount or 1), reason = reason, rank = rank, spare = spare,
+                        sellable = sellPrice > 0 and not info.hasNoValue,
                     }
                 end
             end
@@ -182,7 +183,9 @@ local watch = CreateFrame("Frame")
 watch:RegisterEvent("ADDON_ACTION_BLOCKED")
 watch:RegisterEvent("ADDON_ACTION_FORBIDDEN")
 watch:SetScript("OnEvent", function(_, _, addon, fn)
-    if addon == IC.name and tostring(fn):find("DeleteCursorItem") then blocked = true end
+    if addon == IC.name and (tostring(fn):find("DeleteCursorItem") or tostring(fn):find("UseContainerItem")) then
+        blocked = true
+    end
 end)
 
 ---------------------------------------------------------------------------
@@ -198,9 +201,9 @@ local function Atlas(tex, name)
     end
 end
 
-local ok, panel = pcall(K.NewFrame, "Frame", "ImprovedControllerSwap", UIParent, "DefaultPanelFlatTemplate")
+local ok, panel = pcall(K.NewFrame, "Frame", "ImprovedControllerDestroy", UIParent, "DefaultPanelFlatTemplate")
 if not ok then
-    panel = K.NewFrame("Frame", "ImprovedControllerSwap", UIParent, "BackdropTemplate")
+    panel = K.NewFrame("Frame", "ImprovedControllerDestroy", UIParent, "BackdropTemplate")
     panel:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -214,7 +217,7 @@ panel:SetPoint("CENTER")
 panel:EnableMouse(true)
 panel:SetClampedToScreen(true)
 panel:Hide()
-SW.panel = panel
+DS.panel = panel
 
 -- The game's focus look (FocusEffects.lua): the metal frame glow round a
 -- focused panel, in the focus colour and opacity set in the game's
@@ -333,9 +336,9 @@ for i = 1, ROWS do
     back:SetOrder(2)
     bob:Play()
     r:SetScript("OnClick", function()
-        SW.index = SW.top + i - 1
-        SW.armed = nil
-        SW.Render()
+        DS.index = DS.top + i - 1
+        DS.armed = nil
+        DS.Render()
     end)
     rows[i] = r
 end
@@ -359,7 +362,7 @@ holdBar:SetHeight(3)
 holdBar:SetPoint("BOTTOMLEFT", 5, 4)
 holdBar:Hide()
 
-SW.items, SW.index, SW.top = {}, 1, 1
+DS.items, DS.index, DS.top = {}, 1, 1
 
 -- 10350 -> "1 [gold] 3 [silver] 50 [copper]", with the game's coin icons
 local COINS = {
@@ -389,37 +392,37 @@ local function TipsOff()
     return get and get("GamepadDisableTooltips") or false
 end
 
-function SW.SetTipsOff(off)
+function DS.SetTipsOff(off)
     local set = C_CVar and C_CVar.SetCVar or SetCVar
     if set then set("GamepadDisableTooltips", off and "1" or "0") end
 end
 
-function SW.Render()
-    local items = SW.items
+function DS.Render()
+    local items = DS.items
     local n = #items
-    SW.index = math.max(1, math.min(SW.index, math.max(1, n)))
-    if SW.index < SW.top then SW.top = SW.index end
-    if SW.index > SW.top + ROWS - 1 then SW.top = SW.index - ROWS + 1 end
-    SW.top = math.max(1, math.min(SW.top, math.max(1, n - ROWS + 1)))
+    DS.index = math.max(1, math.min(DS.index, math.max(1, n)))
+    if DS.index < DS.top then DS.top = DS.index end
+    if DS.index > DS.top + ROWS - 1 then DS.top = DS.index - ROWS + 1 end
+    DS.top = math.max(1, math.min(DS.top, math.max(1, n - ROWS + 1)))
     local total = 0
     for _, e in ipairs(items) do total = total + e.value end
     -- From the loot window a destroy loots in the junk's place: a swap
-    local swap = SW.origin == "loot"
-    titleText:SetText(swap and "Swap" or "Destroy")
-    local focused = SW.focus ~= "bags"
+    local swap = DS.origin == "loot"
+    titleText:SetText("Destroy")
+    local focused = DS.focus ~= "bags"
     glow:SetVertexColor(FocusColor())
     glow:SetShown(focused and IC.HasAtlas("gamepad-uiframemetal-focus"))
     summary:SetText(n == 0 and "Nothing to throw away" or
         (n .. (n == 1 and " item" or " items") .. " · worth " .. Money(total)))
-    more.up:SetShown(SW.top > 1)
-    more.down:SetShown(SW.top + ROWS - 1 < n)
+    more.up:SetShown(DS.top > 1)
+    more.down:SetShown(DS.top + ROWS - 1 < n)
     for i, r in ipairs(rows) do
-        local index = SW.top + i - 1
+        local index = DS.top + i - 1
         local e = items[index]
         r:SetShown(e ~= nil)
         if e then
             local c = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[e.quality]
-            local selected = index == SW.index and focused
+            local selected = index == DS.index and focused
             r.icon:SetTexture(e.icon or 134400)
             r.iconBorder:SetVertexColor(c and c.r or 0.6, c and c.g or 0.6, c and c.b or 0.6, 0.9)
             r.count:SetText(e.count > 1 and e.count or "")
@@ -445,7 +448,7 @@ function SW.Render()
             r.stroke:SetAlpha(selected and 0 or 1)
         end
     end
-    local e = focused and not TipsOff() and items[SW.index]
+    local e = focused and not TipsOff() and items[DS.index]
     if e then
         -- Over the bag side (the panel sits left of the bags, with little room
         -- further left); no "equipped" comparison beside it
@@ -459,35 +462,41 @@ function SW.Render()
         GameTooltip:Hide()
     end
     local function Armed(by, word, again)
-        return (SW.armed and SW.armedBy == by) and ("|cffff5c3cAgain to " .. again .. "|r") or word
+        return (DS.armed and DS.armedBy == by) and ("|cffff5c3cAgain to " .. again .. "|r") or word
     end
     -- From the loot window: Cross swaps, Triangle destroys only
-    local press = swap
-        and (Glyph("A") .. " " .. Armed("A", "Swap", "swap") .. "   " .. Glyph("Y") .. " " .. Armed("Y", "Destroy", "destroy"))
-        or (Glyph("A") .. " " .. Armed("A", "Destroy", "destroy"))
+    local press = Glyph("A") .. " " .. (swap and Armed("A", "Swap", "swap") or Armed("A", "Destroy", "destroy"))
+    -- Triangle: at a vendor it sells what can be sold; from the loot window
+    -- it destroys only
+    local picked = items[DS.index]
+    if DS.AtVendor() then
+        if picked and picked.sellable then press = press .. "   " .. Glyph("Y") .. " Sell" end
+    elseif swap then
+        press = press .. "   " .. Glyph("Y") .. " " .. Armed("Y", "Destroy", "destroy")
+    end
     local all = swap and " Swap All (hold)   " or " Destroy All (hold)   "
     if not focused then
-        hints:SetText(Glyph("LT") .. " / " .. Glyph("RT") .. (swap and " Swap" or " Destroy"))
+        hints:SetText(Glyph("LT") .. " / " .. Glyph("RT") .. " Destroy")
     else
         -- (L2 / R2 hand the pad to the window it was opened from)
-        local back = SW.origin == "loot" and " Loot   " or " Bags   "
+        local back = DS.origin == "loot" and " Loot   " or " Bags   "
         hints:SetText((n > 0 and (press .. "   " .. Glyph("X") .. all) or "")
             .. Glyph("LT") .. " / " .. Glyph("RT") .. back .. Glyph("B") .. " Close")
     end
     legend:SetWidth(math.max(PANEL_W, hints:GetStringWidth() + 28))
 end
 
-function SW.Refresh()
+function DS.Refresh()
     if not panel:IsShown() then return end
-    local current = SW.items[SW.index]
-    SW.items = SW.Scan()
+    local current = DS.items[DS.index]
+    DS.items = DS.Scan()
     -- Stay near the same place in the list
     if current then
-        for i, e in ipairs(SW.items) do
-            if e.bag == current.bag and e.slot == current.slot then SW.index = i end
+        for i, e in ipairs(DS.items) do
+            if e.bag == current.bag and e.slot == current.slot then DS.index = i end
         end
     end
-    SW.Render()
+    DS.Render()
 end
 
 ---------------------------------------------------------------------------
@@ -503,51 +512,51 @@ local SWITCH_KEYS = { PADLTRIGGER = true, PADRTRIGGER = true }
 local PREFIXES = { "", "SHIFT-", "CTRL-", "ALT-", "CTRL-SHIFT-", "ALT-SHIFT-", "ALT-CTRL-", "ALT-CTRL-SHIFT-" }
 
 local function Move(step)
-    local n = #SW.items
+    local n = #DS.items
     if n == 0 then return end
-    local i = SW.index + step
-    if i >= 1 and i <= n then SW.index = i end
-    SW.armed = nil
-    SW.Render()
+    local i = DS.index + step
+    if i >= 1 and i <= n then DS.index = i end
+    DS.armed = nil
+    DS.Render()
 end
 
 local lastName, lastDown, lastAt
-function SW.Press(name, down)
+function DS.Press(name, down)
     -- (the same press can arrive twice: as a pad button and as a binding)
     local now = GetTime()
     if name == lastName and down == lastDown and lastAt and now - lastAt < 0.05 then return end
     lastName, lastDown, lastAt = name, down, now
     -- L2 / R2 (L2 is the game's Shift: a quick tap): the focus over to the bag window and back
     if name == "SWITCH" then
-        if down then SW.SetFocus(SW.focus == "bags" and "panel" or "bags") end
+        if down then DS.SetFocus(DS.focus == "bags" and "panel" or "bags") end
         return
     end
-    if SW.focus == "bags" then return end
+    if DS.focus == "bags" then return end
     -- R3: the tooltip shown or not, as in the bag window
     if name == "TIP" then
         if down then
-            SW.SetTipsOff(not TipsOff())
-            SW.Render()
+            DS.SetTipsOff(not TipsOff())
+            DS.Render()
         end
         return
     end
     if name == "X" then
         -- Hold, then let go: all of them
         if down then
-            SW.holdStart = GetTime()
+            DS.holdStart = GetTime()
             holdBar:Show()
-        elseif SW.holdStart then
-            local held = GetTime() - SW.holdStart
-            SW.holdStart = nil
+        elseif DS.holdStart then
+            local held = GetTime() - DS.holdStart
+            DS.holdStart = nil
             holdBar:Hide()
-            if held >= HOLD_ALL then SW.DestroyAll() end
+            if held >= HOLD_ALL then DS.DestroyAll() end
         end
         return
     end
     -- Circle on its release: closing on the press would hand the release to
     -- the bag window, which closes the bags
     if name == "B" then
-        if not down then SW.Close() end
+        if not down then DS.Close() end
         return
     end
     if not down then return end
@@ -555,24 +564,31 @@ function SW.Press(name, down)
     elseif name == "DOWN" then Move(1)
     elseif name == "LEFT" then Move(-ROWS)
     elseif name == "RIGHT" then Move(ROWS)
-    elseif name == "A" or (name == "Y" and SW.origin == "loot") then
-        -- From the loot window Cross swaps, Triangle only destroys
-        local e = SW.items[SW.index]
-        if not e then return end
-        if SW.armed ~= e or SW.armedBy ~= name then
-            SW.armed, SW.armedBy = e, name
-            return SW.Render()
+    elseif name == "Y" and DS.AtVendor() then
+        -- At a vendor Triangle sells (bought back from it if need be: no arming)
+        local e = DS.items[DS.index]
+        if e and e.sellable then
+            DS.armed = nil
+            DS.Sell(e)
         end
-        SW.armed = nil
-        SW.Destroy(e, name == "Y")
+    elseif name == "A" or (name == "Y" and DS.origin == "loot") then
+        -- From the loot window Cross swaps, Triangle only destroys
+        local e = DS.items[DS.index]
+        if not e then return end
+        if DS.armed ~= e or DS.armedBy ~= name then
+            DS.armed, DS.armedBy = e, name
+            return DS.Render()
+        end
+        DS.armed = nil
+        DS.Destroy(e, name == "Y")
     end
 end
 
 local buttons = {}
 for key, name in pairs(KEYS) do
-    local b = K.NewFrame("Button", "ImprovedControllerSwapPad" .. key)
+    local b = K.NewFrame("Button", "ImprovedControllerDestroyPad" .. key)
     b:RegisterForClicks("AnyDown", "AnyUp")
-    b:SetScript("OnClick", function(_, _, down) SW.Press(name, down ~= false) end)
+    b:SetScript("OnClick", function(_, _, down) DS.Press(name, down ~= false) end)
     buttons[key] = b
 end
 
@@ -581,7 +597,7 @@ local function Bind()
     ClearOverrideBindings(panel)
     for key in pairs(KEYS) do
         local name = buttons[key]:GetName()
-        if SW.focus == "bags" and not SWITCH_KEYS[key] then
+        if DS.focus == "bags" and not SWITCH_KEYS[key] then
             -- (the bag window's own navigation has it)
         elseif key == "ESCAPE" then
             SetOverrideBindingClick(panel, true, key, name)
@@ -593,41 +609,68 @@ end
 
 -- Which has the pad: the panel (ours, the game's focus hidden) or the bag
 -- window (the game's own navigation, ours dimmed; L2 / R2 come back)
-function SW.SetFocus(focus)
-    SW.focus = focus
-    SW.armed, SW.holdStart = nil, nil
+function DS.SetFocus(focus)
+    DS.focus = focus
+    DS.armed, DS.holdStart = nil, nil
     holdBar:Hide()
     Bind()
-    SW.TakePad(focus == "panel")
-    SW.HideNativeFocus(focus == "panel")
-    SW.Render()
+    DS.TakePad(focus == "panel")
+    DS.HideNativeFocus(focus == "panel")
+    DS.Render()
 end
 
 panel:SetScript("OnUpdate", function()
-    if SW.holdStart then
-        local p = math.min(1, (GetTime() - SW.holdStart) / HOLD_ALL)
+    if DS.holdStart then
+        local p = math.min(1, (GetTime() - DS.holdStart) / HOLD_ALL)
         holdBar:SetWidth(math.max(1, (legend:GetWidth() - 10) * p))
         holdBar:SetColorTexture(p >= 1 and 1 or 0.85, p >= 1 and 0.35 or 0.2, 0.1, 0.9)
     end
 end)
 
+-- A vendor's window is open: what can be sold is sold to it
+function DS.AtVendor()
+    local merchant = _G.MerchantFrame
+    return merchant and merchant:IsShown() or false
+end
+
+local function SellOne(e)
+    local info = SlotInfo(e.bag, e.slot)
+    if not info or info.itemID ~= e.itemID or info.isLocked then return false end
+    ClearCursor()
+    blocked = false
+    local use = (C_Container and C_Container.UseContainerItem) or UseContainerItem
+    if not use then return false end
+    use(e.bag, e.slot)
+    return not blocked
+end
+
+function DS.Sell(e)
+    if IC.InCombat() or not DS.AtVendor() then return end
+    if SellOne(e) then
+        IC.Print("sold " .. (e.link or "item") .. (e.count > 1 and (" x" .. e.count) or "") .. " for " .. Money(e.value))
+    elseif blocked then
+        IC.Print("the game doesn't let addons sell items here.")
+    end
+    C_Timer.After(0.2, DS.Refresh)
+end
+
 -- noLoot: from the loot window, destroy only (no swap)
-function SW.Destroy(e, noLoot)
+function DS.Destroy(e, noLoot)
     if IC.InCombat() then return end
     local name = e.link or "item"
     if DestroyOne(e) then
         IC.Print("destroyed " .. name .. (e.count > 1 and (" x" .. e.count) or ""))
-        if not noLoot then SW.LootAfter("one") end
+        if not noLoot then DS.LootAfter("one") end
     elseif blocked then
         IC.Print("the game doesn't let addons destroy items here.")
     end
-    C_Timer.After(0.2, SW.Refresh)
+    C_Timer.After(0.2, DS.Refresh)
 end
 
-function SW.DestroyAll()
+function DS.DestroyAll()
     if IC.InCombat() then return end
     local done = 0
-    for _, e in ipairs(SW.items) do
+    for _, e in ipairs(DS.items) do
         if DestroyOne(e) then
             done = done + 1
         elseif blocked then
@@ -638,23 +681,23 @@ function SW.DestroyAll()
         IC.Print("the game doesn't let addons destroy items here.")
     else
         IC.Print("destroyed " .. done .. (done == 1 and " item." or " items."))
-        if done > 0 then SW.LootAfter("all") end
+        if done > 0 then DS.LootAfter("all") end
     end
-    C_Timer.After(0.3, SW.Refresh)
+    C_Timer.After(0.3, DS.Refresh)
 end
 
 -- origin: "bags" (default) or "loot", the window it is opened from
-function SW.Open(origin)
+function DS.Open(origin)
     if IC.InCombat() or panel:IsShown() then return end
-    SW.items, SW.index, SW.top, SW.armed = SW.Scan(), 1, 1, nil
-    SW.focus = "panel"
-    SW.origin = origin or "bags"
-    SW.TakePad(true)
+    DS.items, DS.index, DS.top, DS.armed = DS.Scan(), 1, 1, nil
+    DS.focus = "panel"
+    DS.origin = origin or "bags"
+    DS.TakePad(true)
     -- Beside the loot window or the bags when they are on screen
     panel:ClearAllPoints()
     local bags = _G.ContainerFrameCombinedBags
     local loot = _G.LootFrame
-    if SW.origin == "loot" and loot and loot:IsShown() then
+    if DS.origin == "loot" and loot and loot:IsShown() then
         panel:SetPoint("TOPLEFT", loot, "TOPRIGHT", 12, 0)
     elseif bags and bags:IsShown() then
         panel:SetPoint("TOPRIGHT", bags, "TOPLEFT", -12, 0)
@@ -663,14 +706,14 @@ function SW.Open(origin)
     end
     panel:Show()
     Bind()
-    SW.HideNativeFocus(true)
-    SW.Render()
+    DS.HideNativeFocus(true)
+    DS.Render()
 end
 
 -- While the panel has the pad, the game's own focus (its cursor, the bag or
 -- loot window's glow) is hidden, so only ours shows
 local nativeFocus = {}
-function SW.HideNativeFocus(hide)
+function DS.HideNativeFocus(hide)
     if hide then
         wipe(nativeFocus)
         local nav = _G.SmartNavigation
@@ -687,15 +730,15 @@ function SW.HideNativeFocus(hide)
     end
 end
 
-function SW.Close()
+function DS.Close()
     if not panel:IsShown() then return end
     panel:Hide()
 end
 
 panel:SetScript("OnHide", function()
-    SW.TakePad(false)
-    SW.HideNativeFocus(false)
-    SW.holdStart, SW.armed = nil, nil
+    DS.TakePad(false)
+    DS.HideNativeFocus(false)
+    DS.holdStart, DS.armed = nil, nil
     holdBar:Hide()
     if GameTooltip:GetOwner() == panel then GameTooltip:Hide() end
     if not IC.InCombat() then ClearOverrideBindings(panel) end
@@ -705,12 +748,15 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("BAG_UPDATE_DELAYED")
 events:RegisterEvent("PLAYER_REGEN_DISABLED")
 events:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+-- (the Sell prompt comes and goes with the vendor's window)
+events:RegisterEvent("MERCHANT_SHOW")
+events:RegisterEvent("MERCHANT_CLOSED")
 events:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_REGEN_DISABLED" then
         -- (its bindings can't be cleared once combat starts)
         panel:Hide()
     else
-        SW.Refresh()
+        DS.Refresh()
     end
 end)
 
@@ -719,7 +765,7 @@ end)
 -- Watched, not taken over; an R3 combo it uses is left to it by the wheels
 -- while the bags are open.
 ---------------------------------------------------------------------------
-function SW.OpenKey()
+function DS.OpenKey()
     return IC.db and IC.db.bagCleanKey or DEFAULT_KEY
 end
 
@@ -730,15 +776,15 @@ local function Parts(spec)
 end
 
 -- Its name: "R2 + R3"; glyphs too with size
-function SW.OpenKeyText(size)
-    local held, pressed = Parts(SW.OpenKey())
+function DS.OpenKeyText(size)
+    local held, pressed = Parts(DS.OpenKey())
     local function one(key)
         return (size and (IC.GlyphText(key, size) .. " ") or "") .. IC.ButtonName(key)
     end
     return held and (one(held) .. " + " .. one(pressed)) or one(pressed)
 end
 
-function SW.Enabled()
+function DS.Enabled()
     return IC.db and IC.db.bagClean ~= false
 end
 
@@ -761,14 +807,14 @@ end
 
 local suppressed
 local function Suppress()
-    local want = SW.Enabled() and AnyBagOpen() and Combo(SW.OpenKey()) or nil
+    local want = DS.Enabled() and AnyBagOpen() and Combo(DS.OpenKey()) or nil
     if want == suppressed then return end
     if suppressed and not IC.SuppressCombo(suppressed, false) then return end
     if want and not IC.SuppressCombo(want, true) then return end
     suppressed = want
 end
 
-function SW.SetOpenKey(key)
+function DS.SetOpenKey(key)
     IC.db.bagCleanKey = key ~= DEFAULT_KEY and key or nil
     Suppress()
 end
@@ -779,20 +825,20 @@ local tipsBefore      -- the tooltip setting before the opening press
 watcher:SetScript("OnUpdate", function()
     if not IC.db then return end
     Suppress()
-    if not SW.Enabled() or panel:IsShown() or IC.InCombat() or not IsKeyDown then
+    if not DS.Enabled() or panel:IsShown() or IC.InCombat() or not IsKeyDown then
         wasDown = false
         return
     end
-    local held, pressed = Parts(SW.OpenKey())
+    local held, pressed = Parts(DS.OpenKey())
     local down = IsKeyDown(pressed) and (not held or IsKeyDown(held))
     -- The moment the combination is made
     if down and not wasDown and AnyBagOpen() then
         -- An R3 in it has also reached the bag window, which turned its
         -- tooltips over: back as they were
         if pressed == "PADRSTICK" and tipsBefore ~= nil and TipsOff() ~= tipsBefore then
-            SW.SetTipsOff(tipsBefore)
+            DS.SetTipsOff(tipsBefore)
         end
-        SW.Open()
+        DS.Open()
     end
     wasDown = down
     if not down then tipsBefore = TipsOff() end
@@ -809,23 +855,24 @@ for key, name in pairs(KEYS) do
 end
 if catcher.EnableGamePadButton then
     catcher:SetScript("OnGamePadButtonDown", function(_, button)
-        if PAD_NAME[button] then SW.Press(PAD_NAME[button], true) end
+        if PAD_NAME[button] then DS.Press(PAD_NAME[button], true) end
     end)
     catcher:SetScript("OnGamePadButtonUp", function(_, button)
-        if PAD_NAME[button] then SW.Press(PAD_NAME[button], false) end
+        if PAD_NAME[button] then DS.Press(PAD_NAME[button], false) end
     end)
 end
 
-function SW.TakePad(on)
+function DS.TakePad(on)
     if catcher.EnableGamePadButton and not IC.InCombat() then catcher:EnableGamePadButton(on and true or false) end
 end
 
 
 ---------------------------------------------------------------------------
--- From the loot window: once the bags are full, Triangle "Swap" joins
+-- From the loot window: once the bags are full, Triangle "Destroy" joins
 -- the window's own button legend (Loot, Loot All, Close) and opens the
--- panel; there, destroying loots in the junk's place. The game's legend and its bindings are never handed anything
--- of ours (that would carry our taint into its binding stack): the prompt
+-- panel; there, Cross loots in the junk's place. The game's legend and
+-- its bindings are never handed anything of ours (that would carry our
+-- taint into its binding stack): the prompt
 -- is a frame of our own in the game's prompt template, set after Close
 -- inside the legend, whose box is only widened to hold it (and given back
 -- its width after). Triangle is watched, not taken.
@@ -863,7 +910,7 @@ local function LootPrompt()
         local ok, prompt = pcall(function()
             local p = K.NewFrame("Frame", nil, holder, "InputPromptOneIconWithTextTemplate")
             p:SetPromptInputIconKey(1, _G.GAMEPAD_FACE_TOP or LOOT_KEY)
-            p:SetPromptText("Swap")
+            p:SetPromptText("Destroy")
             p:EnablePrompt()
             return p
         end)
@@ -939,9 +986,9 @@ end
 -- ("one": the item that didn't fit, "all": everything left), once the
 -- bags have the room (their next update)
 local lootAfter, lootAfterAt
-function SW.LootAfter(what)
+function DS.LootAfter(what)
     local loot = _G.LootFrame
-    if SW.origin ~= "loot" or not (loot and loot:IsShown()) then return end
+    if DS.origin ~= "loot" or not (loot and loot:IsShown()) then return end
     if lootAfter ~= "all" then lootAfter = what end
     lootAfterAt = GetTime()
 end
@@ -961,7 +1008,7 @@ end
 local lootWatch = CreateFrame("Frame")
 lootWatch:Hide()
 lootWatch:SetScript("OnUpdate", function()
-    local box = SW.Enabled() and not panel:IsShown() and not IC.InCombat()
+    local box = DS.Enabled() and not panel:IsShown() and not IC.InCombat()
         and (lootFull or FreeSlots() == 0) and LootLegendBox()
     local holder = box and LootPrompt()
     if holder then
@@ -972,7 +1019,7 @@ lootWatch:SetScript("OnUpdate", function()
     end
     -- The moment Triangle goes down, with the prompt up
     local down = IsKeyDown and IsKeyDown(LOOT_KEY) or false
-    if down and not triangleWasDown and holder then SW.Open("loot") end
+    if down and not triangleWasDown and holder then DS.Open("loot") end
     triangleWasDown = down
 end)
 
@@ -992,7 +1039,7 @@ lootEvents:SetScript("OnEvent", function(_, event, ...)
         lootWatch:Hide()
         HideLootPrompt()
         -- Nothing left to swap for
-        if SW.origin == "loot" then SW.Close() end
+        if DS.origin == "loot" then DS.Close() end
     elseif event == "UI_ERROR_MESSAGE" then
         -- What the loot window itself listens for (the bags may still have
         -- room, of the wrong kind: a quiver, a profession bag)

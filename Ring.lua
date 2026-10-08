@@ -222,7 +222,7 @@ SecureHandlerWrapScript(trigger, "OnClick", trigger, [[
         self:SetAttribute("ic-recent-pending", actionType)
         return false
     end
-    -- A combo another feature has for now (the Destroy / Swap panel's, while
+    -- A combo another feature has for now (the Destroy panel's, while
     -- the bags are open): left to it
     if self:GetAttribute("ic-skip-" .. combo) then
         self:SetAttribute("ic-mode", nil)

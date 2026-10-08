@@ -11,7 +11,7 @@ from the controller: no keyboard step needed.
 - **Touchpad** corner actions.
 - **Button overrides** for L3 click and double-click.
 - **Vibration** on game events and spell casts, with per-action patterns.
-- **Destroy / Swap** to destroy junk from the controller (with no junk, white items too: gear, food and trade goods, unusable, low level and cheapest first); from the loot window when the bags are full, it destroys junk and loots in its place.
+- **Destroy** to destroy junk from the controller (with no junk, white items too: gear, food and trade goods, unusable, low level and cheapest first); from the loot window when the bags are full, it destroys junk and loots in its place.
 
 Double-tap **Menu** to open the configuration.
 

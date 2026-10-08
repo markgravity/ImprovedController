@@ -1,5 +1,5 @@
 -- Every controller press the addon answers, in one place: the wheels' R3
--- combos, bag clean-up, the Destroy / Swap panel, the minimap labels' hotkey,
+-- combos, bag clean-up, the Destroy panel, the minimap labels' hotkey,
 -- the peek map, the touchpad click, the actions put on presses (Override.lua) and the
 -- menu's double press.
 -- Each feature keeps its own setting; this file reads and writes them
@@ -251,15 +251,15 @@ Add({
     id = "destroy", label = "Destroy", group = "Bags", tab = "general",
     icon = TEX .. "ic_emote_no", context = "bags",
     -- Watched, not taken; on an R3 combo the wheels leave it to the panel
-    -- while the bags are open (Swap.lua)
+    -- while the bags are open (Destroy.lua)
     tip = "Opens the panel of what is safe to throw away. Only while a bag is open. With the bags full,"
         .. " the top face button (Triangle / Y) opens it from the loot window too: there each destroy"
         .. " loots the item that didn't fit in the junk's place.",
     accepts = NotDouble,
-    specs = function() return IC.Swap.Enabled() and One(IC.Swap.OpenKey()) or {} end,
+    specs = function() return IC.Destroy.Enabled() and One(IC.Destroy.OpenKey()) or {} end,
     set = function(spec)
         IC.db.bagClean = spec ~= nil
-        if spec then IC.Swap.SetOpenKey(spec) end
+        if spec then IC.Destroy.SetOpenKey(spec) end
     end,
 })
 
