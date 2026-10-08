@@ -27,6 +27,17 @@ function IC.RefreshRings()
     end
 end
 
+-- A protected call of ours the game blocked: which one, said in chat (the
+-- game's own dialog doesn't)
+local blocked = CreateFrame("Frame")
+blocked:RegisterEvent("ADDON_ACTION_BLOCKED")
+blocked:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+blocked:SetScript("OnEvent", function(_, event, addon, func)
+    if addon == addonName then
+        IC.Print((event == "ADDON_ACTION_FORBIDDEN" and "forbidden: " or "blocked: ") .. tostring(func))
+    end
+end)
+
 local loginCallbacks = {}
 
 -- Runs after saved variables are ready.

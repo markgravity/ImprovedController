@@ -1,6 +1,6 @@
 -- Every controller press the addon answers, in one place: the wheels' R3
 -- combos, bag clean-up, the Destroy / Swap panel, the minimap labels' hotkey,
--- the touchpad click, the actions put on presses (Override.lua) and the
+-- the peek map, the touchpad click, the actions put on presses (Override.lua) and the
 -- menu's double press.
 -- Each feature keeps its own setting; this file reads and writes them
 -- through one shape, so the General tab (BindEditor.lua) can show them all
@@ -271,6 +271,22 @@ Add({
     accepts = NotDouble,
     specs = function() return One(IC.Gather.Key()) end,
     set = function(spec) IC.Gather.SetKey(spec) end,
+})
+
+Add({
+    id = "peekmap", label = "Peek map", group = "Other", tab = "general",
+    icon = TEX .. "ic_map_peek", context = "world",
+    tip = "Held: the game's Map & Quest Log shows with only its map, see-through (placed and sized in"
+        .. " the Map tab); let go and it closes. Works in combat. Takes the press over while bound, and"
+        .. " while held the map has the controller, as it always does. A touchpad corner can open it too"
+        .. " (its Interface list).",
+    -- (an override binding: a press one can go on)
+    accepts = function(spec)
+        local _, _, double = B.Parse(spec)
+        return not double and B.KeyOf(spec) ~= nil
+    end,
+    specs = function() return One(IC.PeekMap.Key()) end,
+    set = function(spec) IC.PeekMap.SetKey(spec) end,
 })
 
 Add({

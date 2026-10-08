@@ -46,8 +46,13 @@ end
 -- A bindable item names its binding in
 -- Binds.lua (bindId): a recorded press taking one from something else asks
 -- first; toggle = true: recording its own press again unbinds it.
+-- An item with a panel draws its own middle instead of a list of choices:
+-- panel = { build(f) -> frame (placed where the choices go), render(frame,
+-- focused), press(frame, name) -> handled, hints() -> { K.H... } }.
+-- hooks (optional): render(G) after each drawing, hide() as the tab goes.
 ---------------------------------------------------------------------------
-function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
+function IC.SettingsPage(tabKey, title, GROUPS, ITEMS, hooks)
+    hooks = hooks or {}
     local G = { zone = "rail", index = 1 }
 
     function G:Item()
@@ -108,11 +113,21 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
         self.picker:SetPoint("TOPLEFT", f, "CENTER", K.COLS.picker, K.COLS.top)
         self.picker:SetHeight(400)
 
+        -- Middles of their own (an item's panel), shown in the picker's place
+        for _, item in ipairs(ITEMS) do
+            if item.panel then
+                item.panelFrame = item.panel.build(f)
+                item.panelFrame:SetPoint("TOPLEFT", f, "CENTER", K.COLS.picker, K.COLS.top)
+                item.panelFrame:Hide()
+            end
+        end
+
         self:SyncPicker(true)
     end
 
     function G:SyncPicker(force)
         local item = self:Item()
+        if item.panel then return end
         if self.pickerFor == item.key and not force then return end
         self.pickerFor = item.key
         self.picker:Open({
@@ -141,9 +156,14 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
     function G:Hide()
         self:StopCapture()
         self.frame:Hide()
+        if hooks.hide then hooks.hide() end
     end
 
     function G:Aim()
+        if self:Item().panel then
+            self.zone = "picker"
+            return menu.Render()
+        end
         if not self:Item().options then return end
         self.zone = "picker"
         self:SyncPicker()
@@ -214,6 +234,17 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
             if self:Item().bindable then self:StartCapture() end
             return true
         end
+        if self.zone == "picker" and self:Item().panel then
+            -- (left / right are the panel's: Circle goes back)
+            local item = self:Item()
+            if name == "B" then
+                self.zone = "rail"
+            elseif not item.panel.press(item.panelFrame, name) then
+                return true
+            end
+            menu.Render()
+            return true
+        end
         if self.zone == "picker" then
             if name == "LEFT" or name == "B" then
                 self.zone = "rail"
@@ -239,12 +270,15 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
     function G:Help()
         local H = K.H
         local hints = {}
-        if self.zone == "picker" then
+        local item = self:Item()
+        if self.zone == "picker" and item.panel then
+            for _, hint in ipairs(item.panel.hints()) do hints[#hints + 1] = hint end
+        elseif self.zone == "picker" then
             hints[#hints + 1] = H({ "DPAD" }, "Move")
             hints[#hints + 1] = H({ "A" }, "Set", "A")
         else
             hints[#hints + 1] = H({ "DPAD" }, "Pick")
-            if self:Item().options then hints[#hints + 1] = H({ "A" }, "Edit", "A") end
+            if item.options or item.panel then hints[#hints + 1] = H({ "A" }, "Edit", "A") end
         end
         if self:Item().bindable then hints[#hints + 1] = H({ "X" }, "Record", "X") end
         hints[#hints + 1] = H({ "LB", "RB" }, "Tab", "RB")
@@ -313,9 +347,17 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
         end
         f.value:SetText(text)
         f.note:SetText(Resolve(item.note) or item.tip or "")
-        self.picker:SetShown(item.options ~= nil)
+        self.picker:SetShown(item.options ~= nil and not item.panel)
         self.picker:SetAlpha(self.zone == "picker" and 1 or 0.5)
-        if item.options then self.picker:Render() end
+        if item.options and not item.panel then self.picker:Render() end
+        for _, other in ipairs(ITEMS) do
+            if other.panelFrame then other.panelFrame:SetShown(other == item) end
+        end
+        if item.panel then
+            item.panelFrame:SetAlpha(self.zone == "picker" and 1 or 0.5)
+            item.panel.render(item.panelFrame, self.zone == "picker")
+        end
+        if hooks.render then hooks.render(self) end
     end
 
     for _, def in ipairs(menu.TABS) do

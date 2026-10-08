@@ -29,7 +29,7 @@ touch.REGION_LABELS = {
 -- What a region can open: the game's own button for it (the first that
 -- exists in this client). Only actions with a button here are offered.
 local ACTIONS = {
-    { key = "map", icon = "Interface\\Icons\\INV_Misc_Map_01", label = "World Map", buttons = { "WorldMapMicroButton", "MiniMapWorldMapButton" } },
+    { key = "map", icon = "Interface\\Icons\\INV_Misc_Map_01", label = "World Map", buttons = { "WorldMapMicroButton", "MiniMapWorldMapButton", "QuestLogMicroButton" } },
     { key = "questlog", icon = "Interface\\Icons\\INV_Misc_Book_08", label = "Quest Log", buttons = { "QuestLogMicroButton" } },
     { key = "character", icon = "Interface\\Icons\\INV_Chest_Cloth_17", label = "Character", buttons = { "CharacterMicroButton" } },
     { key = "bags", icon = "Interface\\Icons\\INV_Misc_Bag_08", label = "Bags", buttons = { "MainMenuBarBackpackButton", "BagsBarBackpackButton" } },
@@ -43,6 +43,9 @@ local ACTIONS = {
     { key = "achievements", icon = "Interface\\Icons\\INV_Misc_Note_01", label = "Achievements", buttons = { "AchievementMicroButton" } },
     { key = "gamemenu", icon = "Interface\\Icons\\INV_Misc_Gear_01", label = "Game Menu", buttons = { "MainMenuMicroButton" } },
     { key = "nodes", icon = "Interface\\Icons\\INV_Misc_Flower_02", label = "Minimap labels", buttons = { "ImprovedControllerNodeScan" } },
+    -- (the map's own button: opened with the pad's press, closed with its
+    -- release, shown as the peek map, PeekMap.lua)
+    { key = "peekmap", icon = "Interface\\Icons\\INV_Misc_Map02", label = "Peek map", buttons = { "WorldMapMicroButton", "MiniMapWorldMapButton", "QuestLogMicroButton" } },
     { key = "icmenu", icon = "Interface\\Icons\\INV_Misc_Gear_02", label = "Improved Controller menu", buttons = { "ImprovedControllerMenuToggle" } },
 }
 local ACTION_BY_KEY = {}
@@ -231,6 +234,8 @@ SecureHandlerWrapScript(click, "OnClick", click, [[
             return false
         end
         self:SetAttribute("ic-held", true)
+        self:SetAttribute("ic-region", nil)
+        self:SetAttribute("useOnKeyDown", nil)
         if not keydown then
             return false
         end
@@ -240,7 +245,13 @@ SecureHandlerWrapScript(click, "OnClick", click, [[
         end
         self:SetAttribute("ic-held", nil)
         if keydown then
-            return false
+            -- A corner that is held (the peek map): its release closes the
+            -- map it opened (PeekMap.SNIPPET)
+            local region = self:GetAttribute("ic-region")
+            if not (region and self:GetAttribute("ic-peek-" .. region)) then
+                return false
+            end
+            return self:RunAttribute("ic-peek", false, self:GetAttribute("ic-macro-" .. region))
         end
     end
     local state = GetGamePadState()
@@ -266,12 +277,28 @@ SecureHandlerWrapScript(click, "OnClick", click, [[
     if not macro then
         return false
     end
+    -- (the peek map's press opens it, PeekMap.SNIPPET)
+    if self:GetAttribute("ic-peek-" .. region) then
+        return self:RunAttribute("ic-peek", true, macro)
+    end
     self:SetAttribute("macrotext", macro)
     self:SetAttribute("type", "macro")
 ]])
 
-click:SetScript("PostClick", function(self)
+click:SetScript("PostClick", function(self, button, down)
     local settings = IC.db and touch.GetSettings()
+    -- (the peek map's corner opened the map: shown as the peek map)
+    local region = self:GetAttribute("ic-region")
+    if IC.PeekMap and IC.PeekMap.debug then
+        IC.Print("peek: pad " .. (down and "down" or "up") .. ", corner " .. tostring(region)
+            .. " (" .. tostring(region and settings.regions[region]) .. ", held: "
+            .. tostring(region and self:GetAttribute("ic-peek-" .. region)) .. "), ran: "
+            .. tostring(self:GetAttribute("type") and self:GetAttribute("macrotext")) .. ", map open: "
+            .. tostring(WorldMapFrame and WorldMapFrame:IsShown()))
+    end
+    if settings and region and settings.regions[region] == "peekmap" and IC.PeekMap then
+        IC.PeekMap.Opened()
+    end
     if settings and settings.debug and self:GetAttribute("type") then
         local region = self:GetAttribute("ic-region")
         IC.Print("touch: " .. tostring(touch.REGION_LABELS[region]) .. " -> "
@@ -299,19 +326,29 @@ function touch.Apply()
     pending = false
     local settings = touch.GetSettings()
     click:SetAttribute("ic-keydown", GetCVarSafe("ActionButtonUseKeyDown") == "0" and 0 or 1)
+    local keydown = click:GetAttribute("ic-keydown") == 1
     for _, region in ipairs(touch.REGIONS) do
         local off = touch.IsOff(region)
+        local action = settings.regions[region]
+        -- The peek map: open while the pad is held (where actions run on
+        -- the press; else each click opens / closes it)
+        local peek = action == "peekmap" and keydown and not off
         click:SetAttribute("ic-off-" .. region, off or nil)
-        click:SetAttribute("ic-macro-" .. region, not off and touch.Macro(settings.regions[region]) or nil)
+        click:SetAttribute("ic-macro-" .. region, not off and touch.Macro(action) or nil)
+        click:SetAttribute("ic-peek-" .. region, peek or nil)
     end
+    if WorldMapFrame then click:SetFrameRef("map", WorldMapFrame) end
+    if IC.PeekMap then click:SetAttribute("ic-peek", IC.PeekMap.SNIPPET) end
     ClearOverrideBindings(click)
     -- While the panel is open it owns the touchpad click (it picks the slot
     -- under the finger); it gives it back when it closes (BindEditor.lua).
     -- Only a PlayStation pad has a touchpad: on others the same button is
     -- View / Minus, left to the game.
     local panelOpen = IC.Menu and IC.Menu.IsOpen and IC.Menu.IsOpen()
-    -- (and only while the game has the gamepad's focus, Binds.lua)
-    if settings.enabled ~= false and not panelOpen and IC.PadStyle() == "Shapes" and IC.Binds.InGame() then
+    -- (and only while the game has the gamepad's focus, Binds.lua; or the
+    -- peek map has it: the pad's release closes it)
+    local inGame = IC.Binds.InGame() or (IC.PeekMap and IC.PeekMap.IsPeeking())
+    if settings.enabled ~= false and not panelOpen and IC.PadStyle() == "Shapes" and inGame then
         for _, modifier in ipairs(MODIFIERS) do
             SetOverrideBindingClick(click, true, modifier .. KEY, click:GetName(), "LeftButton")
         end

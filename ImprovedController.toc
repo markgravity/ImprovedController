@@ -32,6 +32,8 @@ VibeEditor.lua
 SettingsPage.lua
 BindEditor.lua
 Gather.lua
+PeekMap.lua
 GatherEditor.lua
+PeekMapEditor.lua
 Swap.lua
 Options.lua

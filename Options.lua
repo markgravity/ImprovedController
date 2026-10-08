@@ -47,6 +47,7 @@ end)
 -- /ic vibe                 test each vibration motor (which side)
 -- /ic glyphs               the controller style, and its glyphs this client has
 -- /ic nodes                list what the minimap shows (step/debug tune it)
+-- /ic peek                 the peek map's hotkey binding; prints each press
 SLASH_IMPROVEDCONTROLLER1 = "/ic"
 SLASH_IMPROVEDCONTROLLER2 = "/improvedcontroller"
 SlashCmdList.IMPROVEDCONTROLLER = function(msg)
@@ -90,6 +91,10 @@ SlashCmdList.IMPROVEDCONTROLLER = function(msg)
         IC.SetPadStyle(style)
         IC.Print("Buttons shown: " .. IC.PAD_STYLE_LABELS[style]
             .. (style == "auto" and (" (" .. IC.PAD_STYLE_LABELS[IC.DetectedPadStyle()] .. ")") or ""))
+        return
+    end
+    if command == "peek" then
+        IC.PeekMap.Probe()
         return
     end
     if command == "nodes" then
