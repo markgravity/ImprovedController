@@ -1,4 +1,4 @@
--- The Gather tab, laid out like the General tab (IC.SettingsPage): the
+-- The Gather tab, a tab of settings (IC.SettingsPage, SettingsPage.lua): the
 -- minimap labels and their hotkey, the skill colours, the alerts, and the
 -- player's gathering skills. Gather.lua does the work.
 local _, IC = ...
@@ -59,9 +59,10 @@ local ITEMS = {
             .. " (Minimap labels).",
         bindable = true,
         chord = true,
+        bindId = "gather",
+        toggle = true,
         binding = function() return Gather.Key() end,
         keyText = function(size) return Gather.KeyText(size) end,
-        bind = function(key) Gather.SetKey(key ~= Gather.Key() and key or nil) end,
         note = function()
             if not N.Supported() then return "This client can't read the minimap." end
         end,
@@ -99,7 +100,7 @@ local ITEMS = {
         key = "alertWith", group = "alert", label = "Alert with",
         icon = TEX .. "ic_vibe_pulse",
         tip = "How an alert tells you. The message at the top of the screen always shows; vibration needs"
-            .. " Vibration on (General tab).",
+            .. " Vibration on (Vibration tab).",
     }, Choice("alertWith", "Alert with", {
         { "both", "Vibration and sound", TEX .. "ic_vibe_pulse" },
         { "vibe", "Vibration", TEX .. "ic_vibe_pulse" },

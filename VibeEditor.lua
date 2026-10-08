@@ -1,11 +1,11 @@
--- The Vibration tab, laid out like the Touchpad tab: the events down the
+-- The Vibration tab, laid out like the Gather tab: the events down the
 -- left by group (Combat; Casting: spell, gathering, crafting; Wheel;
 -- Progress), the selected one big in the middle with its pattern, and its
 -- choices down the right as slices of a ring around it: an event's
 -- patterns, or for a kind of cast the ready-made sets for its four moments
 -- (casting, interrupted, cancelled, pushed back). Choosing one sets it and
--- plays it; Triangle plays it again. (Vibration on / off and its strength:
--- the General tab.)
+-- plays it; Triangle plays it again. First, under Settings: vibration on /
+-- off and its strength.
 local _, IC = ...
 
 local K = IC.ConfigKit
@@ -22,6 +22,47 @@ end
 
 local E = { zone = "rail", index = 1 }
 V.Editor = E
+
+---------------------------------------------------------------------------
+-- The settings, at the top of the rail: { setting = { value, text,
+-- options, choose } } in place of an event's subs
+---------------------------------------------------------------------------
+local TEX = "Interface\\AddOns\\ImprovedController\\textures\\"
+
+table.insert(V.GROUPS, 1, { key = "settings", label = "Settings" })
+table.insert(V.RAIL, 1, {
+    key = "vibe_on", group = "settings", label = "Vibration", icon = TEX .. "ic_vibe_pulse", subs = {},
+    setting = {
+        value = function() return V.Settings().enabled and "on" or "off" end,
+        text = function() return V.Settings().enabled and "On" or "|cffff7a5cOff|r" end,
+        options = function()
+            return { { action = "on", name = "On", icon = TEX .. "ic_emote_yes" },
+                { action = "off", name = "Off", icon = TEX .. "ic_emote_no" } }
+        end,
+        choose = function(action)
+            V.Settings().enabled = action == "on"
+            if action == "on" then V.Play("pulse") else V.Stop() end
+            menu.Toast("Vibration: " .. action)
+        end,
+    },
+})
+table.insert(V.RAIL, 2, {
+    key = "vibe_strength", group = "settings", label = "Strength", icon = TEX .. "ic_vibe_rise", subs = {},
+    setting = {
+        value = function() return tostring(math.floor(V.Settings().intensity * 10 + 0.5)) end,
+        text = function() return math.floor(V.Settings().intensity * 100 + 0.5) .. "%" end,
+        options = function()
+            local list = {}
+            for n = 1, 10 do list[#list + 1] = { action = tostring(n), name = (n * 10) .. "%", icon = TEX .. "ic_vibe_pulse" } end
+            return list
+        end,
+        choose = function(action)
+            V.Settings().intensity = tonumber(action) / 10
+            V.Play("pulse")
+            menu.Toast("Vibration strength: " .. (tonumber(action) * 10) .. "%")
+        end,
+    },
+})
 
 -- The selected line on the left (V.RAIL: an event, or a kind of cast)
 function E:Item()
@@ -43,6 +84,20 @@ function E:SyncPicker()
     local item = self:Item()
     if self.pickerFor == item.key then return end
     self.pickerFor = item.key
+    -- A setting: its choices
+    if item.setting then
+        self.picker:Open({
+            lists = { { key = item.key, label = item.label, entries = item.setting.options } },
+            rows = PICKER_ROWS, chooseVerb = "Set",
+            current = function() return item.setting.value() end,
+            onChoose = function(e) E:Set(e) end,
+            onBack = function()
+                E.zone = "rail"
+                menu.Render()
+            end,
+        })
+        return
+    end
     -- A kind of cast: one list, the ready-made sets
     if item.castKind then
         self.picker:Open({
@@ -174,6 +229,12 @@ end
 
 function E:Set(e)
     local item = self:Item()
+    if item.setting then
+        item.setting.choose(e.action)
+        self.picker:LoadList()
+        menu.Render()
+        return
+    end
     if item.castKind then
         V.SetCastPreset(item.castKind, e.action)
         menu.Toast(item.label .. ": " .. e.name)
@@ -194,10 +255,11 @@ end
 -- combo of them)
 function E:Try()
     if not V.Settings().enabled then
-        menu.Toast("Vibration is off (General tab)", true)
+        menu.Toast("Vibration is off (Settings, at the top)", true)
         return
     end
     local item = self:Item()
+    if item.setting then return V.Play("pulse") end
     if item.castKind then
         if V.CastPreset(item.castKind) == "off" then
             menu.Toast(item.label .. " is off", true)
@@ -287,7 +349,7 @@ function E:Help()
 end
 
 function E:Crumb()
-    return "Vibration › " .. self:Event().label
+    return "Vibration › " .. (self:Item().setting and self:Item().label or self:Event().label)
 end
 
 ---------------------------------------------------------------------------
@@ -326,7 +388,9 @@ function E:Render()
                 -- Off: none of its events vibrates
                 local item = V.RAIL[line.index]
                 local on = false
-                if item.castKind then
+                if item.setting then
+                    on = item.setting.value() ~= "off"
+                elseif item.castKind then
                     on = V.CastPreset(item.castKind) ~= "off"
                 else
                     for _, sub in ipairs(item.subs) do
@@ -342,8 +406,19 @@ function E:Render()
             K.Rotate(r.label, K.ReadingAngle(theta))
         end
     end
-    -- A kind of cast: its set, and what each moment plays
     local item = self:Item()
+    -- A setting: its value
+    if item.setting then
+        local off = item.setting.value() == "off"
+        f.big:SetLook({ icon = item.icon, discColor = KC.iconBg, hatch = off, dash = true })
+        f.big:SetAlpha(off and 0.45 or 1)
+        f.pattern:SetText(item.setting.text())
+        self.picker:Show()
+        self.picker:SetAlpha(self.zone == "picker" and 1 or 0.5)
+        self.picker:Render()
+        return
+    end
+    -- A kind of cast: its set, and what each moment plays
     if item.castKind then
         local preset = V.Preset(V.CastPreset(item.castKind))
         local on = preset and preset.key ~= "off"

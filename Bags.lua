@@ -1,5 +1,6 @@
 -- A button (L3, the left stick click, unless bound to another in the
 -- General tab: IC.db.bagSortKey) cleans up bags while any bag frame is open.
+-- Unbound there: IC.db.bagSort = false.
 local _, IC = ...
 
 local DEFAULT_KEY = "PADLSTICK"

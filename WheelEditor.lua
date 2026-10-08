@@ -284,43 +284,6 @@ function W:Build(parent)
     hk.body:SetSpacing(5)
     self.hotkeyBox = hk
 
-    -- Takes the controller's presses while recording (not passed on)
-    local capture = K.NewFrame("Frame", nil, UIParent)
-    capture:SetFrameStrata("FULLSCREEN_DIALOG")
-    capture:SetSize(1, 1)
-    capture:SetPoint("CENTER")
-    capture:Hide()
-    capture:SetScript("OnKeyDown", function(_, key)
-        if key == "ESCAPE" then W:StopCapture() end
-    end)
-    if capture.EnableGamePadButton then
-        capture:SetScript("OnGamePadButtonDown", function(self, button)
-            if button == "PAD2" then self.circleAt = GetTime() end
-            local held = self.held
-            if held and held ~= button and IsKeyDown(held) then
-                W:Recorded(held, button)
-            else
-                self.held = button
-            end
-        end)
-        -- A button pressed and let go alone; Circle alone cancels
-        capture:SetScript("OnGamePadButtonUp", function(self, button)
-            if button ~= self.held then return end
-            if button == "PAD2" then
-                local long = self.circleAt and GetTime() - self.circleAt >= 1
-                W:StopCapture()
-                local wheel = W:Current()
-                if long and wheel then
-                    MW.ClearHotkey(wheel.key)
-                    menu.Toast(wheel.label .. ": unbound")
-                end
-            else
-                W:Recorded(nil, button)
-            end
-        end)
-    end
-    self.capture = capture
-
     -- The confirmation / recording box: the game's own dialog look
     local d = K.NewFrame("Frame", nil, f, "BackdropTemplate")
     d:SetSize(440, 160)
@@ -578,39 +541,28 @@ function W:Square(wheel)
     end)
 end
 
+-- Square: a press recorded for the wheel (Recorder.lua: the first button
+-- let go ends it), then confirmed
 function W:StartCapture(wheel)
     if IC.InCombat() or not wheel or wheel.new then return end
     menu.Disarm()
     self.returnZone = self.zone
     self.zone, self.pendingSpec = "capture", nil
-    local c = self.capture
-    c.held = nil
-    c:Show()
-    c:EnableKeyboard(true)
-    c:SetPropagateKeyboardInput(false)
-    if c.EnableGamePadButton then c:EnableGamePadButton(true) end
-    self:ShowDialog("Bind " .. wheel.label .. IC.PadText("\n\n|cffd8ccb0Press {RS}, or hold {LB} / {LT} / {RB} / {RT} and press {RS}."
-        .. "\n{B} alone cancels; holding {B} unbinds it.|r"))
-    self.captureToken = (self.captureToken or 0) + 1
-    local token = self.captureToken
-    C_Timer.After(10, function()
-        if W.captureToken == token and W.zone == "capture" then W:StopCapture() end
-    end)
+    IC.Recorder.Start({
+        title = "Bind " .. wheel.label,
+        hint = IC.PadText("Press {RS} (or hold {LB} / {LT} / {RB} / {RT} and press it), or any other button."),
+        onDone = function(spec)
+            local held, pressed = IC.Binds.Parse(spec)
+            W:Recorded(held, pressed)
+        end,
+        onCancel = function() W:StopCapture() end,
+    })
     menu.Render()
 end
 
 -- Recording over: back where it started, or on to the confirmation
 function W:StopCapture(nextZone)
-    if self.zone == "capture" then self.dialog:Hide() end
-    local c = self.capture
-    if c and c:IsShown() then
-        c:Hide()
-        c.held = nil
-        if not IC.InCombat() then
-            c:EnableKeyboard(false)
-            if c.EnableGamePadButton then c:EnableGamePadButton(false) end
-        end
-    end
+    IC.Recorder.Stop()
     if self.zone == "capture" or self.zone == "confirm" then self.zone = nextZone or self.returnZone or "rail" end
     menu.Render()
 end
@@ -619,7 +571,8 @@ function W:Recorded(held, pressed)
     local spec = MW.HotkeySpec(held, pressed)
     if not spec then
         self:StopCapture()
-        menu.Toast(IC.PadText("Wheels bind to {RS}, or {LB} / {LT} / {RB} / {RT} held + {RS}."), true)
+        menu.Toast("That press can't open a wheel (a button held only works if the game makes it Shift / Ctrl / Alt).",
+            true)
         return
     end
     self.pendingSpec = spec
@@ -639,7 +592,8 @@ function W:SaveHotkey()
     local wheel, spec = self:Current(), self.pendingSpec
     self.pendingSpec = nil
     if wheel and spec then
-        MW.SetHotkey(wheel.key, spec)
+        -- (through Binds.lua: whatever else is on that press gives way)
+        IC.Binds.Assign("wheel:" .. wheel.key, MW.SpecOf(spec))
         menu.Toast(wheel.label .. ": " .. MW.SpecText(spec))
     end
     menu.Render()
@@ -880,7 +834,6 @@ function W:Help()
         return { H({ "DPAD_LR" }, "Name", "RIGHT"), H({ "A" }, "Confirm", "A"), H({ "B" }, "Cancel", "B") }
     end
     if self.zone == "popup" then return { H({ "A" }, "Confirm", "A"), H({ "B" }, "Cancel", "B") } end
-    if self.zone == "capture" then return { H({ "B" }, "Cancel (hold: unbind)", "B") } end
     if self.zone == "confirm" then return { H({ "A" }, "Save", "A"), H({ "B" }, "Cancel", "B") } end
     -- Only what does something here: a wheel that fills itself has no slot
     -- to edit, "New wheel" nothing to page, bind or clear

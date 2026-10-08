@@ -40,6 +40,8 @@ end)
 
 -- /ic                      open the controller menu
 -- /ic ring <combo> <ring>  e.g. /ic ring L1 buffs
+-- /ic buttons <style>      which controller's buttons to show: auto,
+--                          playstation, xbox or switch
 -- /ic probe                record the native radial menu's look
 -- /ic touchprobe           record what the touchpad reports
 -- /ic vibe                 test each vibration motor (which side)
@@ -74,6 +76,20 @@ SlashCmdList.IMPROVEDCONTROLLER = function(msg)
                     .. (#missing > 0 and ", missing " .. table.concat(missing, " ") or ""))
             end
         end
+        return
+    end
+    if command == "buttons" then
+        local styles = { auto = "auto", playstation = "Shapes", ps = "Shapes", xbox = "Letters", switch = "Reverse",
+            nintendo = "Reverse" }
+        local style = styles[combo or ""]
+        if not style then
+            IC.Print("usage: /ic buttons <auto|playstation|xbox|switch> (now: "
+                .. (IC.db.padStyle and IC.PAD_STYLE_LABELS[IC.db.padStyle] or "automatic") .. ")")
+            return
+        end
+        IC.SetPadStyle(style)
+        IC.Print("Buttons shown: " .. IC.PAD_STYLE_LABELS[style]
+            .. (style == "auto" and (" (" .. IC.PAD_STYLE_LABELS[IC.DetectedPadStyle()] .. ")") or ""))
         return
     end
     if command == "nodes" then

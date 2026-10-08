@@ -306,7 +306,7 @@ function touch.Apply()
     end
     ClearOverrideBindings(click)
     -- While the panel is open it owns the touchpad click (it picks the slot
-    -- under the finger); it gives it back when it closes (TouchEditor.lua).
+    -- under the finger); it gives it back when it closes (BindEditor.lua).
     -- Only a PlayStation pad has a touchpad: on others the same button is
     -- View / Minus, left to the game.
     local panelOpen = IC.Menu and IC.Menu.IsOpen and IC.Menu.IsOpen()

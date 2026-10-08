@@ -6,7 +6,7 @@
 -- what they are (fire, Hearthstone, mining, tailoring...). Each has a pattern of
 -- its own, or none, grouped as Easy Controller does (Combat, Progress). Set
 -- in the Vibration tab (VibeEditor.lua); on / off
--- and strength in the General tab.
+-- and strength in the Vibration tab (Settings).
 local _, IC = ...
 
 local V = {}

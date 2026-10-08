@@ -1,13 +1,14 @@
--- The General tab, laid out like the Vibration tab: the settings down the
--- left by group (Controller, Features, Misc, About), the selected one big in
--- the middle with its value, and its choices down the right as slices of a
--- ring around it. A Misc item runs on a button: Square records another one
--- for it (Circle cancels).
+-- A tab of settings (the Gather tab), laid out like the Vibration tab: the
+-- settings down the left by group, the selected one big in the middle with
+-- its value, and its choices down the right as slices of a ring around it.
+-- A setting that runs on a button: Square records another one for it
+-- (Recorder.lua).
 local _, IC = ...
 
 local K = IC.ConfigKit
 local KC = K.C
 local menu = IC.Menu
+local B = IC.Binds
 
 local PANEL_W, PICKER_TOP, PICKER_ROWS = 340, 236, 8
 local RAIL_ROWS = 8                 -- lines on the left at once (as the picker); the rest scroll
@@ -42,128 +43,13 @@ local function Item(def, behaviour)
 end
 
 ---------------------------------------------------------------------------
--- The settings
----------------------------------------------------------------------------
-local GROUPS = {
-    { key = "controller", label = "Controller" },
-    { key = "features", label = "Features" },
-    { key = "misc", label = "Misc" },
-    { key = "about", label = "About" },
-}
-
-local ITEMS = {
-    Item({
-        key = "padStyle", group = "controller", label = "Buttons shown",
-        icon = function() return IC.GlyphAtlas("A") or 134400 end,
-        tip = "Which controller's buttons the menus and wheels show. Automatic follows the controller in"
-            .. " use, as the game's own prompts do.",
-        value = function() return IC.db.padStyle or "auto" end,
-        text = function()
-            local set = IC.db.padStyle
-            if not set then return "Auto: " .. IC.PAD_STYLE_LABELS[IC.DetectedPadStyle()] end
-            return IC.PAD_STYLE_LABELS[set]
-        end,
-        options = function()
-            local list = {}
-            for _, style in ipairs(IC.PAD_STYLES) do
-                local glyph = IC.PAD_ATLAS[style == "auto" and IC.DetectedPadStyle() or style].A[1]
-                list[#list + 1] = {
-                    action = style,
-                    name = style == "auto" and ("Automatic (" .. IC.PAD_STYLE_LABELS[IC.DetectedPadStyle()] .. ")")
-                        or IC.PAD_STYLE_LABELS[style],
-                    icon = IC.HasAtlas(glyph) and glyph or 134400,
-                }
-            end
-            return list
-        end,
-        choose = function(action)
-            IC.SetPadStyle(action)
-            menu.Toast("Buttons shown: " .. IC.PAD_STYLE_LABELS[action])
-        end,
-    }),
-    Item({
-        key = "touch", group = "features", label = "Touchpad click",
-        icon = "gamepad-ps-touchpad-normal",
-        tip = "Clicking the touchpad runs what its corner holds (Touchpad tab). Works in combat.",
-        note = function()
-            if IC.PadStyle() ~= "Shapes" then
-                return "Needs a PlayStation controller (a touchpad)."
-            end
-        end,
-    }, OnOff(function() return IC.Touch.GetSettings().enabled ~= false end, function(on)
-        IC.Touch.GetSettings().enabled = on
-        IC.Touch.Apply()
-    end, "Touchpad click")),
-    Item({
-        key = "vibe", group = "features", label = "Vibration",
-        icon = TEX .. "ic_vibe_pulse",
-        tip = "The controller vibrates on the events set in the Vibration tab.",
-    }, OnOff(function() return IC.Vibe.Settings().enabled end, function(on)
-        IC.Vibe.Settings().enabled = on
-        if on then IC.Vibe.Play("pulse") else IC.Vibe.Stop() end
-    end, "Vibration")),
-    Item({
-        key = "vibeStrength", group = "features", label = "Vibration strength",
-        icon = TEX .. "ic_vibe_rise",
-        tip = "How strong every vibration is. Choosing one plays a pulse so you can feel it.",
-        value = function() return tostring(math.floor(IC.Vibe.Settings().intensity * 10 + 0.5)) end,
-        text = function() return math.floor(IC.Vibe.Settings().intensity * 100 + 0.5) .. "%" end,
-        options = function()
-            local list = {}
-            for n = 1, 10 do
-                list[#list + 1] = { action = tostring(n), name = (n * 10) .. "%", icon = TEX .. "ic_vibe_pulse" }
-            end
-            return list
-        end,
-        choose = function(action)
-            IC.Vibe.Settings().intensity = tonumber(action) / 10
-            IC.Vibe.Play("pulse")
-            menu.Toast("Vibration strength: " .. (tonumber(action) * 10) .. "%")
-        end,
-    }),
-    Item({
-        key = "bags", group = "misc", label = "Bag clean-up",
-        icon = 133633,
-        tip = "While any bag is open, its button sorts your bags. The button does its usual job again once"
-            .. " the bags close.",
-        bindable = true,
-        binding = function() return IC.BagSortKey() end,
-        bind = function(key) IC.SetBagSortKey(key) end,
-    }, OnOff(function() return IC.db.bagSort ~= false end, function(on)
-        IC.db.bagSort = on
-        IC.UpdateBagBinding()
-    end, "Bag clean-up")),
-    Item({
-        key = "bagClean", group = "misc", label = "Bag clean-up panel",
-        icon = TEX .. "ic_emote_no",
-        tip = "With your bags open, press its buttons to open a panel of what is safe to throw away: junk"
-            .. " and cheap white items no profession, quest or class uses. Cross destroys one (press twice),"
-            .. " hold Square and let go to destroy them all.",
-        bindable = true,
-        binding = function() return IC.BagCleaner.OpenKey() end,
-        keyText = function(size) return IC.BagCleaner.OpenKeyText(size) end,
-        chord = true,
-        bind = function(key) IC.BagCleaner.SetOpenKey(key) end,
-    }, OnOff(function() return IC.BagCleaner.Enabled() end, function(on)
-        IC.db.bagClean = on
-    end, "Bag clean-up panel")),
-    Item({
-        key = "about", group = "about", label = "Improved Controller",
-        icon = TEX .. "ic_event_wheel",
-        tip = "Quality of life for WoW Forever with a controller.",
-        text = function() return "" end,
-        note = function()
-            return IC.PadText("Wheels (buffs, consumables, emotes and your own), touchpad clicks, vibration and bag"
-                .. " clean-up. {LB} / {RB} switch tabs; open this panel with /ic or a key binding (Key Bindings >"
-                .. " AddOns). Panel design adapted from Easy Controller - Forever by moust4ki (MIT License).")
-        end,
-    }),
-}
-
----------------------------------------------------------------------------
--- The page: any tab of settings laid out this way (the Gather tab too).
+-- The page: any tab of settings laid out this way.
 -- tabKey: its tab in Menu.lua; title: the crumb's first part; groups /
--- items: as GROUPS / ITEMS above
+-- items: { { key, label } }, { { key, group, label, icon, tip, note, value /
+-- text / options / choose (IC.SettingsOnOff makes them for on / off) } }.
+-- A bindable item names its binding in
+-- Binds.lua (bindId): a recorded press taking one from something else asks
+-- first; toggle = true: recording its own press again unbinds it.
 ---------------------------------------------------------------------------
 function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
     local G = { zone = "rail", index = 1 }
@@ -237,37 +123,6 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
         self.picker:SetPoint("TOPLEFT", f, "CENTER", 30 - K.NEAR, PICKER_TOP)
         self.picker:SetHeight(400)
 
-        -- Takes the next controller button while one is being recorded
-        local capture = K.NewFrame("Frame", nil, UIParent)
-        capture:SetFrameStrata("FULLSCREEN_DIALOG")
-        capture:SetSize(1, 1)
-        capture:SetPoint("CENTER")
-        capture:Hide()
-        capture:SetScript("OnKeyDown", function(_, key)
-            if key == "ESCAPE" then G:StopCapture() end
-        end)
-        if capture.EnableGamePadButton then
-            -- A button pressed and let go while recording (Square's own release,
-            -- from starting it, doesn't count)
-            -- (an item that takes two: a button held while another is pressed)
-            capture:SetScript("OnGamePadButtonDown", function(self, button)
-                if self.held and self.held ~= button and IsKeyDown(self.held) and G:Item().chord then
-                    self.chord = self.held .. "+" .. button
-                else
-                    self.held, self.chord = button, nil
-                end
-            end)
-            capture:SetScript("OnGamePadButtonUp", function(self, button)
-                if self.chord then
-                    local chord = self.chord
-                    self.chord, self.held = nil, nil
-                    G:Recorded(chord)
-                elseif button == self.held then
-                    G:Recorded(button)
-                end
-            end)
-        end
-        self.capture = capture
         self:SyncPicker(true)
     end
 
@@ -314,59 +169,61 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
     ---------------------------------------------------------------------------
     -- Binding a Misc item to another button
     ---------------------------------------------------------------------------
+    -- Square: a press recorded for the item (Recorder.lua: the first button
+    -- let go ends it)
     function G:StartCapture()
         local item = self:Item()
         if not item.bindable or IC.InCombat() then return end
-        self.zone = "capture"
-        local c = self.capture
-        c.held, c.chord = nil, nil
-        c:Show()
-        c:EnableKeyboard(true)
-        c:SetPropagateKeyboardInput(false)
-        if c.EnableGamePadButton then c:EnableGamePadButton(true) end
-        menu.Toast(IC.PadText(item.label .. ": press a button for it" .. (item.chord and " (or hold one, press another)" or "")
-            .. " ({B} cancels)"))
-        self.captureToken = (self.captureToken or 0) + 1
-        local token = self.captureToken
-        C_Timer.After(10, function()
-            if G.captureToken == token and G.zone == "capture" then G:StopCapture() end
-        end)
-        menu.Render()
+        local def = B.Get(item.bindId)
+        IC.Recorder.Start({
+            title = "Bind " .. item.label, chord = item.chord and true or false,
+            accept = def and def.accepts, reject = item.label .. " can't go on that press",
+            onDone = function(spec) G:Offer(item, spec) end,
+            onCancel = function() menu.Toast(item.label .. ": unchanged") end,
+        })
     end
 
     function G:StopCapture()
-        local c = self.capture
-        if c and c:IsShown() then
-            c:Hide()
-            if not IC.InCombat() then
-                c:EnableKeyboard(false)
-                if c.EnableGamePadButton then c:EnableGamePadButton(false) end
-            end
-        end
-        if self.zone == "capture" then self.zone = "rail" end
+        IC.Recorder.Stop()
     end
 
-    function G:Recorded(button)
-        if self.zone ~= "capture" then return end
-        local item = self:Item()
-        -- (on the next frame: the press that ended it is still being handled)
-        C_Timer.After(0, function()
-            G:StopCapture()
-            if button == "PAD2" then
-                menu.Toast(item.label .. ": unchanged")
-            elseif not IC.InCombat() then
-                item.bind(button)
-                menu.Toast(item.label .. ": " .. (item.keyText and item.keyText() or IC.ButtonName(button)))
-            end
-            menu.Render()
-        end)
+    -- A recorded press for an item: bound, or (taking it from something
+    -- else) once Cross confirms
+    function G:Offer(item, spec)
+        local def = B.Get(item.bindId)
+        if item.toggle and B.Has(def, spec) then
+            B.Assign(item.bindId, nil)
+            return menu.Toast(item.label .. ": unbound")
+        end
+        local gone = B.Conflicts(item.bindId, spec)
+        if #gone > 0 then
+            self.pending = { item = item, spec = spec }
+            menu.Arm("record:" .. item.bindId)
+            return menu.Toast(IC.PadText(B.Text(spec) .. " runs " .. B.Names(gone)
+                .. ": {A} replaces it, {B} keeps it"), true, 4)
+        end
+        self:Commit(item, spec)
+    end
+
+    function G:Commit(item, spec)
+        local gone = B.Assign(item.bindId, spec)
+        menu.Toast(item.label .. ": " .. (item.keyText and item.keyText() or B.Text(spec))
+            .. (#gone > 0 and (" (" .. B.Names(gone) .. " unbound)") or ""), #gone > 0)
     end
 
     ---------------------------------------------------------------------------
     -- The pad
     ---------------------------------------------------------------------------
     function G:Press(name)
-        if self.zone == "capture" then return true end
+        -- A recorded press waiting for Cross (any other press let it go)
+        local pending = self.pending
+        self.pending = nil
+        if pending and name == "A" and menu.IsArmed("record:" .. pending.item.bindId) then
+            menu.Disarm()
+            self:Commit(pending.item, pending.spec)
+            menu.Render()
+            return true
+        end
         if name == "LB" or name == "RB" then return false end
         if name == "X" then
             if self:Item().bindable then self:StartCapture() end
@@ -396,9 +253,6 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
 
     function G:Help()
         local H = K.H
-        if self.zone == "capture" then
-            return { H({ "B" }, "Cancel", "B") }
-        end
         local hints = {}
         if self.zone == "picker" then
             hints[#hints + 1] = H({ "DPAD" }, "Move")
@@ -407,7 +261,7 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
             hints[#hints + 1] = H({ "DPAD" }, "Pick")
             if self:Item().options then hints[#hints + 1] = H({ "A" }, "Edit", "A") end
         end
-        if self:Item().bindable then hints[#hints + 1] = H({ "X" }, "Bind", "X") end
+        if self:Item().bindable then hints[#hints + 1] = H({ "X" }, "Record", "X") end
         hints[#hints + 1] = H({ "LB", "RB" }, "Tab", "RB")
         hints[#hints + 1] = H({ "B" }, self.zone == "picker" and "Back" or "Close", "B")
         return hints
@@ -423,7 +277,7 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
     function G:Render()
         local f = self.frame
         if not f then return end
-        if self.zone ~= "picker" and self.zone ~= "capture" then self.zone = "rail" end
+        if self.zone ~= "picker" then self.zone = "rail" end
         self:SyncPicker()
         -- Only RAIL_ROWS lines at once, scrolled to keep the selected one in
         -- view, arrows past the ends when there are more
@@ -466,9 +320,12 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
         local text = item.text and item.text() or ""
         if item.bindable then
             local key = item.binding()
-            text = text .. "|n|cffd8ccb0" .. (self.zone == "capture" and "Press a button..."
-                or ("Button: " .. (item.keyText and item.keyText(20)
-                    or (IC.GlyphText(key, 20) .. " " .. IC.ButtonName(key))))) .. "|r"
+            text = text .. "|n|cffd8ccb0" .. (IC.Recorder.IsActive() and "Press a button..."
+                or ("Button: " .. (item.keyText and item.keyText(20) or B.Text(key, 20)))) .. "|r"
+            local clashes = B.ClashesOf(item.bindId)
+            if #clashes > 0 then
+                text = text .. "|n|cffff7a5cClashes with " .. B.Names(clashes) .. " (General tab)|r"
+            end
         end
         f.value:SetText(text)
         f.note:SetText(Resolve(item.note) or item.tip or "")
@@ -490,8 +347,4 @@ function IC.SettingsPage(tabKey, title, GROUPS, ITEMS)
     return G
 end
 
----------------------------------------------------------------------------
--- The General tab (Menu.lua) uses it
----------------------------------------------------------------------------
 IC.SettingsItem, IC.SettingsOnOff = Item, OnOff
-IC.GeneralEditor = IC.SettingsPage("general", "General", GROUPS, ITEMS)

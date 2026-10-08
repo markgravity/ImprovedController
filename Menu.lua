@@ -33,23 +33,8 @@ end
 
 menu.TABS = {
     {
-        key = "general", label = "General",
-        -- GeneralEditor.lua's page: the settings, the big slot, the choices
-        sections = {},
-    },
-    {
         key = "wheels", label = "Wheels",
         -- WheelEditor.lua's page: the rail of wheels and the selected one's editor
-        sections = {},
-    },
-    {
-        key = "touchpad", label = "Touchpad",
-        -- TouchEditor.lua's page: the corners, the big slot, the picker
-        sections = {},
-    },
-    {
-        key = "override", label = "Override",
-        -- OverrideEditor.lua's page: the buttons, the big slot, the picker
         sections = {},
     },
     {
@@ -741,11 +726,11 @@ function menu.Disarm()
     menu.armed = nil
 end
 
-function menu.Toast(text, warn)
+function menu.Toast(text, warn, seconds)
     menu.toast = { text = text, color = warn and KC.warn or KC.info }
     menu.toastToken = (menu.toastToken or 0) + 1
     local token = menu.toastToken
-    C_Timer.After(1.8, function()
+    C_Timer.After(seconds or 1.8, function()
         if menu.toastToken == token then
             menu.toast = nil
             menu.Render()
@@ -915,6 +900,7 @@ function menu.Render()
     -- The help bar
     local hints = page:Help() or {}
     if menu.armed then hints = { K.H({ "A" }, "Confirm", "A"), K.H({ "B" }, "Cancel", "B") } end
+    if IC.Recorder and IC.Recorder.IsActive() then hints = IC.Recorder.Hints() end
     -- The line over the hints: only a short message (where you are is the
     -- header's and the lists' to show)
     local crumb, color = "", KC.grey
@@ -1115,13 +1101,13 @@ events:SetScript("OnEvent", function(_, event)
     menu.Render()
 end)
 
--- Another controller in hand (or the General tab's choice): its buttons
+-- Another controller in hand (or /ic buttons): its buttons
 IC.OnPadStyleChanged(function() menu.Render() end)
 
 -- The controller's Menu / Options button pressed twice quickly opens this
 -- panel (once still opens the game's own menu wheel: the button is only
 -- watched, never taken). The game's wheel, opened by the first press, is
--- closed. Out of combat.
+-- closed. Out of combat; off with IC.db.menuDouble = false (General tab).
 local DOUBLE = 0.35
 local menuKey = CreateFrame("Frame")
 local wasDown, lastPress = false, 0
@@ -1132,7 +1118,7 @@ menuKey:SetScript("OnUpdate", function()
         local now = GetTime()
         if now - lastPress <= DOUBLE then
             lastPress = 0
-            if IC.db and not InCombatLockdown() and not menu.IsOpen() then
+            if IC.db and IC.db.menuDouble ~= false and not InCombatLockdown() and not menu.IsOpen() then
                 -- (on the next frame: the game handles the press first)
                 C_Timer.After(0, function()
                     local radial = _G.GamepadRadial

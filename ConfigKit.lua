@@ -711,7 +711,8 @@ end
 -- opts = { arc = function(y) return x end (each line pushed right by the
 -- curve at its height: rows that follow a ring), bare = true (no box,
 -- the lists switched like the panel's tabs: the list's name over the
--- native band with a dot per list between L2 / R2; each row a wheel slot) }
+-- native band with a dot per list between L2 / R2; each row a wheel slot),
+-- tabs = true (bare: the band and the list's name even for one list) }
 function K.Picker(parent, width, onRender, opts)
     opts = opts or {}
     local arc = opts.arc or function() return 0 end
@@ -948,9 +949,10 @@ function K.Picker(parent, width, onRender, opts)
         if opts.bare then
             -- As the panel's tabs: the list's name, a dot per list (they
             -- click to their list), L2 / R2 either side
-            self.listName:SetShown(n > 1)
-            self.band:SetShown(n > 1)
-            self.listName:SetText(n > 1 and def.lists[self.list].label or "")
+            local named = n > 1 or opts.tabs
+            self.listName:SetShown(named and true or false)
+            self.band:SetShown(named and true or false)
+            self.listName:SetText(named and def.lists[self.list].label or "")
             for i = 1, math.max(n, #self.dots) do
                 local d = self.dots[i]
                 if not d then
@@ -962,7 +964,7 @@ function K.Picker(parent, width, onRender, opts)
                     d:SetScript("OnClick", function() p:SetList(index) end)
                     self.dots[i] = d
                 end
-                d:SetShown(n > 1 and i <= n)
+                d:SetShown((n > 1 or opts.tabs) and i <= n and true or false)
                 if i <= n then
                     d:ClearAllPoints()
                     d:SetPoint("CENTER", self.dotRow, "CENTER", (i - (n + 1) / 2) * 18, 0)
@@ -994,7 +996,7 @@ function K.Picker(parent, width, onRender, opts)
                 t:SetState({ active = i == self.list })
             end
         end
-        local top = n > 1 and (opts.bare and -116 or -88) or -54
+        local top = (n > 1 or (opts.bare and opts.tabs)) and (opts.bare and -116 or -88) or -54
         local max = def.rows or 10
         local y = top
         local shown = 0
