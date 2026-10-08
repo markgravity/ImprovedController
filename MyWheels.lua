@@ -313,9 +313,6 @@ end
 -- to the wheel's own button (Ring.lua, as the game's Key Bindings), which
 -- opens it, or closes it when it is up
 ---------------------------------------------------------------------------
--- Held with R3: the R3 combos (Ring.lua reads which is held on the press)
-MW.COMBO_HOLD = { PADLSHOULDER = "L1", PADLTRIGGER = "L2", PADRSHOULDER = "R1", PADRTRIGGER = "R2" }
-
 function MW.WheelKeys()
     IC.db.wheelKeys = IC.db.wheelKeys or {}
     return IC.db.wheelKeys
@@ -382,52 +379,6 @@ function MW.HotkeyText(ringKey)
         if text then parts[#parts + 1] = text end
     end
     return #parts > 0 and table.concat(parts, ", ") or nil
-end
-
--- A recorded press as a hotkey: { combo = "L1" } (R3 alone, or L1 / L2 /
--- R1 / R2 held + R3: the ring's own, where its recent action lives,
--- RecentSlot.lua) or { button = spec } (any other press it can go on);
--- nil if it can't be one
-function MW.HotkeySpec(held, pressed)
-    if pressed == "PADRSTICK" then
-        local combo = held and MW.COMBO_HOLD[held]
-        if held and not combo then return nil end
-        return { combo = combo or "R3" }
-    end
-    local spec = IC.Binds.Spec(held, pressed)
-    return IC.Binds.KeyOf(spec) and { button = spec } or nil
-end
-
--- A hotkey as a press (Binds.lua)
-function MW.SpecOf(spec)
-    return spec.combo and IC.Binds.ComboSpec(spec.combo) or spec.button
-end
-
-function MW.SpecText(spec)
-    if spec.combo then return IC.COMBO_LABELS[spec.combo] end
-    return IC.Binds.Text(spec.button)
-end
-
--- What the hotkey takes over, for the confirmation: another wheel, or
--- anything else of ours on that press (Binds.lua)
-function MW.SpecReplaces(spec, ringKey)
-    if spec.combo then
-        if IC.GetComboRing(spec.combo) == ringKey then return "nothing (already this wheel)" end
-        local others = IC.Binds.Conflicts("wheel:" .. ringKey, IC.Binds.ComboSpec(spec.combo))
-        if #others > 0 then return IC.Binds.Names(others) end
-        return spec.combo == "R3" and "the game's " .. IC.ButtonName("RS") .. " (Look Here)" or "nothing"
-    end
-    if MW.WheelKeys()[spec.button] == ringKey then return "nothing (already this wheel)" end
-    local others = IC.Binds.Conflicts("wheel:" .. ringKey, spec.button)
-    if #others > 0 then return IC.Binds.Names(others) end
-    local key = IC.Binds.KeyOf(spec.button)
-    local action = key and GetBindingAction(key, true)
-    if not action or action == "" then return "nothing" end
-    local name = GetBindingName and GetBindingName(action)
-    if action:find("^CLICK InputFunctionBindingButton") then
-        return "Forever's own action for " .. IC.Binds.Text(spec.button)
-    end
-    return (name and name ~= action) and name or action
 end
 
 -- No more hotkeys for this wheel

@@ -2,7 +2,8 @@
 -- (moust4ki, MIT License, see LICENSE-EasyController.md). On the
 -- left a rail of every wheel (the built-in ones, the player's own, "New
 -- wheel"); beside it the selected wheel's editor: its slots around it (8 a
--- page), what opens it, Hotkey / Rename / Delete (or Reset) under it, and
+-- page), what opens it (bound in the General tab), Rename / Delete (or
+-- Reset), and
 -- the spells / items / macros / emotes picker on the right: a choice fills
 -- the slot aimed at and moves on to the next one.
 local _, IC = ...
@@ -13,7 +14,7 @@ local MW = IC.MyWheels
 local menu = IC.Menu
 
 local ZONE_W, PANEL_W = 540, 340
-local BOX_W = 380                   -- the rename / hotkey boxes over the wheel
+local BOX_W = 380                   -- the rename box over the wheel
 -- The Stage layout (ConfigKit): the wheel in the middle, its visible rim
 -- 226 from its centre (the art's frame has a clear margin round it), the
 -- side lists centred on it up and down
@@ -262,26 +263,6 @@ function W:Build(parent)
     box.help:SetSpacing(5)
     self.box = box
 
-    -- Recording a hotkey, then confirming it: a box over the wheel
-    local hk = K.NewFrame("Frame", nil, veil)
-    hk:SetSize(BOX_W, 150)
-    hk:SetPoint("CENTER", zone, "CENTER", 0, 0)
-    hk.bg = K.Box(hk, 4, 2, "BACKGROUND")
-    hk.bg:SetPoints(hk)
-    hk.bg:SetColors(KC.panel, 1, KC.focus, 1)
-    hk.kicker = K.ChatText(hk, 12, KC.grey)
-    hk.kicker:SetPoint("TOPLEFT", 14, -14)
-    hk.title = K.Text(hk, 17, KC.title)
-    hk.title:SetPoint("TOPLEFT", hk.kicker, "BOTTOMLEFT", 0, -8)
-    hk.title:SetWidth(BOX_W - 28)
-    hk.title:SetWordWrap(true)
-    hk.body = K.ChatText(hk, 13, KC.help)
-    hk.body:SetPoint("TOPLEFT", hk.title, "BOTTOMLEFT", 0, -8)
-    hk.body:SetWidth(BOX_W - 28)
-    hk.body:SetWordWrap(true)
-    hk.body:SetSpacing(5)
-    self.hotkeyBox = hk
-
     -- The confirmation / recording box: the game's own dialog look
     local d = K.NewFrame("Frame", nil, f, "BackdropTemplate")
     d:SetSize(440, 160)
@@ -331,8 +312,6 @@ function W:Hide()
     -- An open confirmation is a no
     if self.popup then self:AnswerPopup(false) end
     if self.dialog then self.dialog:Hide() end
-    self.pendingSpec = nil
-    self:StopCapture()
     self.picker:Close()
     self.frame:Hide()
 end
@@ -419,11 +398,6 @@ function W:Empty()
     menu.Render()
 end
 
----------------------------------------------------------------------------
--- Hotkeys: Square (or the Hotkey button) records the next press: a button,
--- or L1 / L2 / R1 / R2 held + R3. A box shows what it takes over; Cross
--- saves it (the wheel's old hotkey goes), Circle cancels.
----------------------------------------------------------------------------
 ---------------------------------------------------------------------------
 -- Confirmations: the game's own pop-up (Forever drives it with the pad:
 -- Cross accepts, Circle cancels). The panel lets the pad go while it is up.
@@ -515,13 +489,11 @@ function W:Triangle(wheel)
     end)
 end
 
--- Square: binds the wheel to a button; held, deletes it (once confirmed)
+-- Square held: deletes a wheel of yours (once confirmed). Binding a wheel
+-- to a press is the General tab's.
 function W:Square(wheel)
-    self:PressOrHold("PAD3", function() W:StartCapture(wheel) end, function()
-        if not wheel.id then
-            menu.Toast("Built-in wheels can't be deleted.", true)
-            return
-        end
+    if not wheel.id then return end
+    self:PressOrHold("PAD3", function() menu.Toast(IC.PadText("Hold {X} to delete " .. wheel.label)) end, function()
         W:Confirm('Delete the wheel "' .. wheel.label .. '"?', "Delete", function()
             MW.Delete(wheel.id)
             W.key = nil
@@ -531,64 +503,6 @@ function W:Square(wheel)
             menu.Toast("Wheel deleted")
         end)
     end)
-end
-
--- Square: a press recorded for the wheel (Recorder.lua: the first button
--- let go ends it), then confirmed
-function W:StartCapture(wheel)
-    if IC.InCombat() or not wheel or wheel.new then return end
-    menu.Disarm()
-    self.returnZone = self.zone
-    self.zone, self.pendingSpec = "capture", nil
-    IC.Recorder.Start({
-        title = "Bind " .. wheel.label,
-        hint = IC.PadText("Press {RS} (or hold {LB} / {LT} / {RB} / {RT} and press it), or any other button."),
-        onDone = function(spec)
-            local held, pressed = IC.Binds.Parse(spec)
-            W:Recorded(held, pressed)
-        end,
-        onCancel = function() W:StopCapture() end,
-    })
-    menu.Render()
-end
-
--- Recording over: back where it started, or on to the confirmation
-function W:StopCapture(nextZone)
-    IC.Recorder.Stop()
-    if self.zone == "capture" or self.zone == "confirm" then self.zone = nextZone or self.returnZone or "rail" end
-    menu.Render()
-end
-
-function W:Recorded(held, pressed)
-    local spec = MW.HotkeySpec(held, pressed)
-    if not spec then
-        self:StopCapture()
-        menu.Toast("That press can't open a wheel (a button held only works if the game makes it Shift / Ctrl / Alt).",
-            true)
-        return
-    end
-    self.pendingSpec = spec
-    -- (on the next frame: the press that ended it is still being handled)
-    C_Timer.After(0, function()
-        W:StopCapture()
-        local wheel = W:Current()
-        if not wheel then return end
-        local old = MW.HotkeyText(wheel.key)
-        W:Confirm("Bind " .. wheel.label .. " to " .. MW.SpecText(spec) .. "?\n\n|cffd8ccb0Replaces "
-            .. MW.SpecReplaces(spec, wheel.key) .. "." .. (old and ("\nIts old binding (" .. old .. ") goes.") or "") .. "|r",
-            "Bind", function() W:SaveHotkey() end, function() W.pendingSpec = nil end)
-    end)
-end
-
-function W:SaveHotkey()
-    local wheel, spec = self:Current(), self.pendingSpec
-    self.pendingSpec = nil
-    if wheel and spec then
-        -- (through Binds.lua: whatever else is on that press gives way)
-        IC.Binds.Assign("wheel:" .. wheel.key, MW.SpecOf(spec))
-        menu.Toast(wheel.label .. ": " .. MW.SpecText(spec))
-    end
-    menu.Render()
 end
 
 function W:CreateWheel()
@@ -714,7 +628,7 @@ local AIM_LENGTH = 0.5
 function W:OnStick(stick, x, y, len)
     if stick ~= "Right" and stick ~= "Camera" then return end
     if MW.renaming or (len or 0) < AIM_LENGTH then return end
-    if self.zone == "capture" or self.zone == "confirm" or self.zone == "popup" then return end
+    if self.zone == "popup" then return end
     local wheel = self:Current()
     if not wheel or wheel.new then return end
     local angle = math.atan2(x, y) % (2 * math.pi)
@@ -745,23 +659,11 @@ end
 function W:Press(name)
     local wheel = self:Current()
     if self.zone == "list" or self.zone == "slots" then self.zone = "rail" end
-    if self.zone == "capture" then
-        return true
-    end
     if self.zone == "popup" then
         if name == "A" then
             self:AnswerPopup(true)
         elseif name == "B" then
             self:AnswerPopup(false)
-        end
-        return true
-    end
-    if self.zone == "confirm" then
-        if name == "A" then
-            self:SaveHotkey()
-        elseif name == "B" then
-            self.pendingSpec, self.zone = nil, self.returnZone or "rail"
-            menu.Render()
         end
         return true
     end
@@ -826,7 +728,6 @@ function W:Help()
         return { H({ "DPAD_LR" }, "Name", "RIGHT"), H({ "A" }, "Confirm", "A"), H({ "B" }, "Cancel", "B") }
     end
     if self.zone == "popup" then return { H({ "A" }, "Confirm", "A"), H({ "B" }, "Cancel", "B") } end
-    if self.zone == "confirm" then return { H({ "A" }, "Save", "A"), H({ "B" }, "Cancel", "B") } end
     -- Only what does something here: a wheel that fills itself has no slot
     -- to edit, "New wheel" nothing to page, bind or clear
     local hints = {}
@@ -839,7 +740,6 @@ function W:Help()
             hints[#hints + 1] = H({ "RS" }, "Edit slot")
             hints[#hints + 1] = H({ "A" }, "Edit", "A")
         end
-        if not isNew and Pages(wheel) > 1 then hints[#hints + 1] = H({ "LT", "RT" }, "Page", "RT") end
     else
         hints[#hints + 1] = H({ "RS" }, "Slot")
         hints[#hints + 1] = H({ "DPAD" }, "Move")
@@ -851,9 +751,8 @@ function W:Help()
             hints[#hints + 1] = H({ "Y" }, wheel.id and "Clear (hold: rename)"
                 or (wheel.reset and "Clear (hold: reset)" or "Clear"), "Y")
         end
-        hints[#hints + 1] = H({ "X" }, wheel.id and "Bind (hold: delete)" or "Bind", "X")
+        if wheel.id then hints[#hints + 1] = H({ "X" }, "Hold: delete", "X") end
     end
-    hints[#hints + 1] = H({ "LB", "RB" }, "Tab", "RB")
     hints[#hints + 1] = H({ "B" }, self.zone == "rail" and "Close" or "Wheels", "B")
     return hints
 end
@@ -1010,14 +909,13 @@ function W:Render()
                 .. " spell, an item, a macro or an emote for each slot. Up to " .. MW.MAX .. " wheels." })
         else
             self.detail:Set({ title = wheel.label, tag = "Fills itself", tagColor = KC.slot, body = wheel.info,
-                extra = "Bound to: " .. (MW.HotkeyText(wheel.key) or "nothing") .. IC.PadText(". {X} binds it to a press:"
-                    .. " {RS} (or {LB} / {LT} / {RB} / {RT} + {RS}; {RS} twice uses its last action) or any other button.") })
+                extra = "Bound to: " .. (MW.HotkeyText(wheel.key) or "nothing")
+                    .. ". Bind it to a press in the General tab." })
         end
     end
-    -- The boxes over the wheel: naming, recording, confirming
+    -- The box over the wheel: naming
     f.veil:SetShown(self.zone == "rename")
     self.box:SetShown(self.zone == "rename")
-    self.hotkeyBox:Hide()
 end
 
 ---------------------------------------------------------------------------
@@ -1032,6 +930,4 @@ end
 -- The panel closed (Circle, combat) while naming: cancelled
 hooksecurefunc(menu, "Close", function()
     W:FinishRename(nil)
-    W.pendingSpec = nil
-    W:StopCapture()
 end)
