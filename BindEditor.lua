@@ -470,7 +470,16 @@ function P:Press(name)
         self:Find()
         return true
     end
-    if name == "LB" or name == "RB" or name == "B" then return false end
+    if name == "LB" or name == "RB" then return false end
+    -- Circle: a press picked lets it go (back to finding one); else the
+    -- panel closes
+    if name == "B" then
+        if not self.key then return false end
+        self.key, self.spec, self.pickerFor = nil, nil, nil
+        menu.Disarm()
+        menu.Render()
+        return true
+    end
     if not self.key then return true end
     if name == "Y" then
         if Region() then
@@ -502,7 +511,7 @@ function P:Help()
         hints[#hints + 1] = H({ "Y" }, "Unbind", "Y")
     end
     hints[#hints + 1] = H({ "LB", "RB" }, "Tab", "RB")
-    hints[#hints + 1] = H({ "B" }, "Close", "B")
+    hints[#hints + 1] = H({ "B" }, "Back", "B")
     return hints
 end
 
