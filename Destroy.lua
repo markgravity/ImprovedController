@@ -3,7 +3,10 @@
 -- Triangle in the loot window once the bags are full, where Cross swaps:
 -- the junk goes, the loot that didn't fit comes in its place. What it lists: junk (grey items, white
 -- "junk") and cheap white gear; with no junk, every white item that can
--- go (gear, food, trade goods), the least useful first. Laid out as
+-- go (gear, food, trade goods), the least useful first. With auction
+-- prices scanned (Auction.lua), what sells better there than to a vendor
+-- is left out, and each card shows its auction worth; an upgrade for the
+-- character (Upgrades.lua) is never offered. Laid out as
 -- Forever's loot window: a list of item cards, the picked one's tooltip
 -- beside it. Cross
 -- destroys the picked item (press twice: once to arm), holding Square and
@@ -123,6 +126,15 @@ local function Reason(info, bag, slot)
     return "Common", 4, spare
 end
 
+-- What a stack brings at the auction house after its cut, at its usual
+-- price there (Auction.lua's scans; nil: unknown, or not wanted)
+local function AuctionWorth(itemID, count)
+    local A = IC.Auction
+    if not (A and A.Settings().destroy) then return nil end
+    local unit = A.UnitNet(itemID)
+    return unit and math.floor(unit * count) or nil
+end
+
 -- Junk, and the white gear worth least; with no junk at all, every white
 -- item that can go, food and trade goods too: the unusable first, then
 -- the low level, the cheapest first in each
@@ -134,13 +146,20 @@ function DS.Scan()
             local info = SlotInfo(bag, slot)
             if info and info.itemID and not info.isLocked then
                 local reason, rank, spare = Reason(info, bag, slot)
+                -- (better than what is worn: kept, Upgrades.lua)
+                if reason and IC.Upgrades and IC.Upgrades.IsBagUpgrade(bag, slot) then reason = nil end
+                local sellPrice = reason and select(11, ItemInfo(info.itemID)) or 0
+                local count = info.stackCount or 1
+                local ah = reason and AuctionWorth(info.itemID, count)
+                -- Worth more at the auction house than to a vendor (and not
+                -- next to nothing there either): kept, for selling there
+                if ah and ah > sellPrice * count and ah >= Cheap() then reason = nil end
                 if reason then
-                    local sellPrice = select(11, ItemInfo(info.itemID)) or 0
                     junk = junk or rank == 0
                     list[#list + 1] = {
                         bag = bag, slot = slot, itemID = info.itemID, link = info.hyperlink,
-                        icon = info.iconFileID, count = info.stackCount or 1, quality = info.quality or 0,
-                        value = sellPrice * (info.stackCount or 1), reason = reason, rank = rank, spare = spare,
+                        icon = info.iconFileID, count = count, quality = info.quality or 0,
+                        value = sellPrice * count, ah = ah, reason = reason, rank = rank, spare = spare,
                         sellable = sellPrice > 0 and not info.hasNoValue,
                     }
                 end
@@ -429,7 +448,8 @@ function DS.Render()
             local name = e.link and e.link:match("%[(.-)%]") or ("item " .. e.itemID)
             r.name:SetText(name)
             r.name:SetTextColor(c and c.r or 1, c and c.g or 1, c and c.b or 1)
-            r.value:SetText(e.value > 0 and Money(e.value) or "no value")
+            r.value:SetText((e.value > 0 and Money(e.value) or "no value")
+                .. (e.ah and ("  |cff9d917a·  AH " .. Money(e.ah) .. "|r") or ""))
             r.tagText:SetText(e.reason)
             r.focus:SetShown(selected)
             r.focusGlow:SetShown(selected)

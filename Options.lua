@@ -48,6 +48,8 @@ end)
 -- /ic glyphs               the controller style, and its glyphs this client has
 -- /ic nodes                list what the minimap shows (step/debug tune it)
 -- /ic peek                 the peek map's hotkey binding; prints each press
+-- /ic scan                 scan the auction house's prices (it must be open)
+-- /ic upgrade              why the Buy tab's picked item is an upgrade or not
 SLASH_IMPROVEDCONTROLLER1 = "/ic"
 SLASH_IMPROVEDCONTROLLER2 = "/improvedcontroller"
 SlashCmdList.IMPROVEDCONTROLLER = function(msg)
@@ -91,6 +93,14 @@ SlashCmdList.IMPROVEDCONTROLLER = function(msg)
         IC.SetPadStyle(style)
         IC.Print("Buttons shown: " .. IC.PAD_STYLE_LABELS[style]
             .. (style == "auto" and (" (" .. IC.PAD_STYLE_LABELS[IC.DetectedPadStyle()] .. ")") or ""))
+        return
+    end
+    if command == "upgrade" then
+        IC.AuctionBuy.Explain()
+        return
+    end
+    if command == "scan" then
+        IC.Auction.Scan()
         return
     end
     if command == "peek" then
