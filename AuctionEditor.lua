@@ -1,8 +1,8 @@
 -- The Auction tab, a tab of settings (IC.SettingsPage, SettingsPage.lua):
--- the price scans and what is kept of them, the Buy window, and the Sell
--- panel (Square on a bag item at the auction house): the price it starts
--- at, the quantity, the duration. Auction.lua, AuctionBuy.lua and
--- AuctionSell.lua do the work.
+-- the auction window on top (off: every auction feature off), the price
+-- scans and what is kept of them, selling (the price it starts at, the
+-- duration), what uses the prices. Auction.lua and AuctionBuy.lua (and its
+-- tabs) do the work.
 local _, IC = ...
 
 local menu = IC.Menu
@@ -55,6 +55,14 @@ end
 
 local ITEMS = {
     Item({
+        key = "buy", group = "auction", label = "Auction window",
+        icon = ICON .. "INV_Misc_Bag_10",
+        tip = "Opens over the auction house, used with the pad, its tabs down the right (the right stick up / down): Buy (the left"
+            .. " stick picks the category, L1 / R1 and L2 / R2 the next two levels, L3 the filters), Sell (your"
+            .. " bags sorted for profit), Auctions (yours, to cancel) and Tasks. Off: the game's own window, and every"
+            .. " auction feature off (no scan, no prices in tooltips or in the Destroy panel).",
+    }, OnOff(function() return S().buy end, function(on) S().buy = on end, "Auction window")),
+    Item({
         key = "scan", group = "scan", label = "Scan on open",
         icon = ICON .. "INV_Misc_Spyglass_02",
         tip = "Reads every auction as the auction house opens, and keeps each item's lowest and market price"
@@ -102,15 +110,9 @@ local ITEMS = {
         { 14, "14 days" }, { 30, "30 days" }, { 60, "60 days" }, { 90, "90 days" },
     }, WATCH)),
     Item({
-        key = "sell", group = "sell", label = "Sell panel",
-        icon = COIN,
-        tip = "At the auction house, Square on a bag item opens the Sell panel: its price history,"
-            .. " the lowest now and a suggested price; left / right change it, Cross sells.",
-    }, OnOff(function() return S().sell end, function(on) S().sell = on end, "Sell panel")),
-    Item({
         key = "pricing", group = "sell", label = "Start at",
         icon = ICON .. "INV_Misc_Coin_02",
-        tip = "The price the panel suggests first; Triangle goes through the others. With none listed,"
+        tip = "The price the Sell tab suggests first; Triangle goes through the others. With none listed,"
             .. " the market price; with nothing known, three times what a vendor pays. A price you set by"
             .. " hand for an item comes first next time (Your last price).",
     }, Choice("pricing", "Start at", {
@@ -130,13 +132,6 @@ local ITEMS = {
         tip = "Never suggests less than a vendor pays for it, after the auction house's cut.",
     }, OnOff(function() return S().vendorFloor end, function(on) S().vendorFloor = on end, "Vendor floor")),
     Item({
-        key = "quantity", group = "sell", label = "Quantity",
-        icon = ICON .. "INV_Misc_Bag_08",
-        tip = "How many the Sell panel sells.",
-    }, Choice("quantity", "Quantity", {
-        { "all", "All in the bags" }, { "stack", "The stack picked" }, { "one", "One" },
-    }, ICON .. "INV_Misc_Bag_08")),
-    Item({
         key = "duration", group = "sell", label = "Duration",
         icon = WATCH,
         tip = "How long auctions run: longer costs a bigger deposit. Changing it while selling sets it here too.",
@@ -152,13 +147,6 @@ local ITEMS = {
     }, ICON .. "INV_Misc_Note_01")),
 }
 
-ITEMS[#ITEMS + 1] = Item({
-    key = "buy", group = "buy", label = "Auction window",
-    icon = ICON .. "INV_Misc_Bag_10",
-    tip = "Opens over the auction house, used with the pad, its tabs down the right (the right stick up / down): Buy (the left"
-        .. " stick picks the category, L1 / R1 and L2 / R2 the next two levels, L3 the filters), Sell (your"
-        .. " bags sorted for profit) and Auctions (yours, to cancel). Off: the game's own window.",
-}, OnOff(function() return S().buy end, function(on) S().buy = on end, "Auction window"))
 ITEMS[#ITEMS + 1] = Item({
     key = "tooltip", group = "use", label = "Tooltips",
     icon = ICON .. "INV_Misc_Note_01",
@@ -195,8 +183,8 @@ ITEMS[#ITEMS + 1] = Item({
 end, "Tasks panel"))
 
 local GROUPS = {
+    { key = "auction", label = "Auction house" },
     { key = "scan", label = "Prices" },
-    { key = "buy", label = "Buying" },
     { key = "sell", label = "Selling" },
     { key = "use", label = "Using prices" },
     { key = "upgrades", label = "Upgrades" },

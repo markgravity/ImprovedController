@@ -1,4 +1,4 @@
--- A price chart (the Sell panel's, the Buy window's): an item's market
+-- A price chart (the Sell tab's, the Buy window's): an item's market
 -- price a day over the chart's days (a line), each day's lowest (dots),
 -- the lowest now (a bright dot on today) and a price of the panel's own
 -- (a dashed line: the price asked, the price to pay). Auction.lua's data.

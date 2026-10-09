@@ -1,8 +1,8 @@
 -- The auction house's prices, kept over time, per realm, in
 -- ImprovedControllerAuctionDB: a full scan of every auction
 -- (C_AuctionHouse.ReplicateItems, as the auction house opens, at most once
--- in 15 minutes: the server's limit) and a search of one item (the Sell
--- panel's, AuctionSell.lua). Each is kept as the day's numbers per item:
+-- in 15 minutes: the server's limit) and a search of one item (the
+-- auction window's tabs). Each is kept as the day's numbers per item:
 -- its lowest price a unit, its market price (what the cheapest quarter of
 -- those listed ask on average) and how many are up. A.Suggest prices an
 -- item from them; the Auction tab (AuctionEditor.lua) sets how.
@@ -21,14 +21,12 @@ local SEARCH_TIMEOUT = 8
 
 local DEFAULTS = {
     scan = true,           -- a full scan as the auction house opens
-    sell = true,           -- Square on a bag item opens the Sell panel
     undercut = "1",        -- under the lowest: copper ("1", "100") or a share ("1%", "5%")
     pricing = "undercut",  -- the price it starts at: undercut, match, market
     duration = 2,          -- 1 / 2 / 3: the game's three (A.Durations)
-    quantity = "all",      -- all, stack, one
     vendorFloor = true,    -- never under what a vendor pays (after the cut)
     tooltip = true,        -- item tooltips show the usual and lowest price
-    buy = true,            -- the Buy window opens with the auction house
+    buy = true,            -- the auction features: the window (AuctionBuy.lua), the scan, the prices in tooltips and the Destroy panel
     buyUsable = false,     -- its filters: usable only, qualities (none ticked: any), up to my level, sort
     buyMyLevel = false,
     buySort = "price",
@@ -36,7 +34,7 @@ local DEFAULTS = {
     buyUpgrades = "mark",  -- upgrades (Upgrades.lua) in it: off, mark (an arrow), only
     destroy = true,        -- the Destroy panel leaves out what sells better here than to a vendor
     keepDays = 30,         -- days of prices kept
-    chartDays = 14,        -- days the Sell panel's chart shows (and its market price covers)
+    chartDays = 14,        -- days the charts show (and the market price covers)
 }
 
 function A.Settings()
@@ -502,7 +500,7 @@ IC.OnLogin(A.Prune)
 -- stack's worth at the usual price, when it is one)
 ---------------------------------------------------------------------------
 local function TooltipPrices(tooltip, data)
-    if not (IC.db and A.Settings().tooltip) then return end
+    if not (IC.db and A.Settings().buy and A.Settings().tooltip) then return end
     if tooltip ~= GameTooltip and tooltip ~= _G.ItemRefTooltip then return end
     local itemID = data and data.id
     if not itemID or (issecretvalue and issecretvalue(itemID)) or type(itemID) ~= "number" then return end
@@ -538,7 +536,7 @@ end
 events:SetScript("OnEvent", function(_, event, arg)
     if event == "AUCTION_HOUSE_SHOW" then
         A.open = true
-        if A.Available() and A.Settings().scan and A.ScanWait() == 0 then
+        if A.Available() and A.Settings().buy and A.Settings().scan and A.ScanWait() == 0 then
             -- (once the frame has settled)
             C_Timer.After(1, function() A.Scan(true) end)
         end

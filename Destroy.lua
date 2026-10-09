@@ -130,7 +130,7 @@ end
 -- price there (Auction.lua's scans; nil: unknown, or not wanted)
 local function AuctionWorth(itemID, count)
     local A = IC.Auction
-    if not (A and A.Settings().destroy) then return nil end
+    if not (A and A.Settings().buy and A.Settings().destroy) then return nil end
     local unit = A.UnitNet(itemID)
     return unit and math.floor(unit * count) or nil
 end

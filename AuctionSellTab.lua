@@ -7,9 +7,9 @@
 --     little to bother), or can't be auctioned at all (bound);
 --   Keep: needed for a quest in the log (an objective's item, an item
 --     that starts or belongs to one), or an upgrade (Upgrades.lua).
--- Stacks of the same item are one line. On the right the picked one, as the
--- Sell panel (AuctionSell.lua): its price chart, one price (suggested,
--- Auction.lua), the receipt (duration, deposit, profit).
+-- Stacks of the same item are one line. On the right the picked one: its
+-- price chart (AuctionChart.lua), one price (suggested, Auction.lua), the
+-- receipt (duration, deposit, profit).
 -- The D-pad: up / down picks (L2 / R2 by section), left / right the price
 -- (held: faster); L1 / R1 the duration; Triangle the suggestions; Cross
 -- held posts: a "Hold to Sell" bar under the receipt fills while it is
