@@ -6,16 +6,18 @@
 -- Buy: three levels of category (the game's own, AuctionCategories): the
 -- main ones down the left (the left stick up / down), the second along
 -- the top (L1 / R1), the third under it (L2 / R2), "All" first in each.
--- Under them what is listed, as a list or a grid (the D-pad moves), each
+-- Under them what is listed, as a list (the D-pad moves), each
 -- with its lowest price and how it compares to its usual one
 -- (Auction.lua); the picked one's tooltip beside the window, with the
 -- versions listed under it (gear with random stats: each one's stats and
 -- lowest price). L3 opens the filters (usable only, up to my level,
 -- lowest quality, upgrades: marked with the game's green arrow or only
--- them, Upgrades.lua; list or grid; sort). Cross opens an item: its price
--- chart (AuctionChart.lua), and for goods sold by the unit (commodities) a
--- quantity and its cost, for the rest its auctions one by one; Cross held
--- buys (a "Hold to Buy" bar: full, letting go buys). Circle goes back, and from a page's top closes the
+-- them, Upgrades.lua; sort). Beside the list the picked item's screen (a
+-- moment after it is picked): its price chart (AuctionChart.lua), and for
+-- goods sold by the unit (commodities) a quantity and its cost, for the
+-- rest its auctions one by one. Cross goes into it (Cross held buys: a
+-- "Hold to Buy" bar, full, letting go buys; the categories' buttons still
+-- change them); Circle comes back to the list, and from it closes the
 -- auction house. R3 (a click) shows / hides the tooltips (with what is
 -- worn in the item's place beside them).
 local _, IC = ...
@@ -39,12 +41,9 @@ local LIST_ROWS = math.floor(CONTENT_H / LIST_H)
 local NAME_ROOM = MAIN_W - 50 - 200     -- a list row's name (the price on the right)
 -- The list view: the item's screen beside the list (a preview of the
 -- picked one; Cross goes into it), the list the rest
-local PREVIEW_W = 400
+local PREVIEW_W = 360
 local SIDE_LIST_W = MAIN_W - PREVIEW_W - 10
 local PREVIEW_AFTER = 0.3          -- resting on an item this long: its screen beside the list
-local CELL_W, CELL_H = 114, 148     -- room for two badges side by side, a name on three lines
-local GRID_COLS = math.floor(MAIN_W / CELL_W)
-local GRID_ROWS = math.floor(CONTENT_H / CELL_H)
 local SIDE_ROWS = 16
 local STICK_ON, STICK_OFF = 0.6, 0.3
 local REPEAT_DELAY, REPEAT_EVERY, FAST_AFTER = 0.35, 0.1, 1.5
@@ -318,7 +317,7 @@ local function LayoutBar(bar, names, selected)
 end
 
 ---------------------------------------------------------------------------
--- The status line, the content (list or grid), the legend
+-- The status line, the content (the list), the legend
 ---------------------------------------------------------------------------
 local status = K.ChatText(buyPage, 11, KC.help)
 status:SetPoint("TOPLEFT", MAIN_X + 4, -106 + 6)
@@ -402,7 +401,7 @@ end
 -- The browse list's rows
 local listRows = {}
 for i = 1, LIST_ROWS do
-    local r = ItemRow(content, MAIN_W, LIST_H - 4, NAME_ROOM)
+    local r = ItemRow(content, SIDE_LIST_W, LIST_H - 4, NAME_ROOM)
     r:SetPoint("TOPLEFT", 0, -(i - 1) * LIST_H)
     r:SetScript("OnClick", function(self)
         if self.index then
@@ -411,45 +410,6 @@ for i = 1, LIST_ROWS do
         end
     end)
     listRows[i] = r
-end
-
--- Grid cells: the badges along the top (upgrade left, price right), the
--- icon (how many on it), the price under it, the name (three lines)
-local gridCells = {}
-for i = 1, GRID_COLS * GRID_ROWS do
-    local c = K.NewFrame("Button", nil, content)
-    local col, row = (i - 1) % GRID_COLS, math.floor((i - 1) / GRID_COLS)
-    c:SetSize(CELL_W - 6, CELL_H - 6)
-    c:SetPoint("TOPLEFT", col * CELL_W, -row * CELL_H)
-    c.bg = c:CreateTexture(nil, "BACKGROUND")
-    c.bg:SetAllPoints()
-    c.bg:SetColorTexture(0, 0, 0, 0.35)
-    c.focus = FocusStroke(c)
-    c.icon = ItemIcon(c, 46)
-    c.upgrade = IC.Upgrades.Arrow(c, "BOTTOMLEFT", c.icon, "BOTTOMLEFT", -2, -2)
-    c.icon:SetPoint("TOP", 0, -26)
-    c.count = c:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-    c.count:SetPoint("BOTTOMRIGHT", c.icon, "BOTTOMRIGHT", -1, 1)
-    -- (placed as they show, RenderResults)
-    c.gain = Badge(c, 10)
-    c.deal = Badge(c, 10)
-    c.price = K.ChatText(c, 11, KC.cream)
-    c.price:SetPoint("TOP", c.icon, "BOTTOM", 0, -6)
-    -- (as the list's names: the game's font, the quality's colour)
-    c.name = c:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    c.name:SetPoint("TOP", c.price, "BOTTOM", 0, -4)
-    c.name:SetWidth(CELL_W - 14)
-    c.name:SetJustifyH("CENTER")
-    c.name:SetJustifyV("TOP")
-    c.name:SetWordWrap(true)
-    if c.name.SetMaxLines then c.name:SetMaxLines(3) end
-    c:SetScript("OnClick", function(self)
-        if self.index then
-            BY.index = self.index
-            BY.Render()
-        end
-    end)
-    gridCells[i] = c
 end
 
 local legend = K.NewFrame("Frame", nil, win, "BackdropTemplate")
@@ -502,10 +462,6 @@ for _, e in ipairs({
     Radio("Don't show", "buyUpgrades", "off"),
     Radio("Mark with an arrow", "buyUpgrades", "mark"),
     Radio("Upgrades only", "buyUpgrades", "only"),
-    { kind = "divider" },
-    { kind = "title", text = "Show" },
-    Radio("As a list", "buyView", "list"),
-    Radio("As a grid", "buyView", "grid"),
     { kind = "divider" },
     { kind = "title", text = "Sort" },
     Radio("Price, lowest first", "buySort", "price"),
@@ -692,6 +648,9 @@ detail:SetFrameLevel(win:GetFrameLevel() + 20)
 detail:SetAllPoints(content)
 detail:Hide()
 
+-- Gone into (beside the list): the rows' focus ring round it, faint
+local dGlow = FocusStroke(detail)
+
 local dIcon = ItemIcon(detail, 40)
 dIcon:SetPoint("TOPLEFT", 16, -14)
 local dUpgrade = IC.Upgrades.Arrow(detail, "BOTTOMRIGHT", dIcon, "BOTTOMRIGHT", 2, -2)
@@ -705,7 +664,7 @@ dSub:SetPoint("BOTTOMLEFT", dIcon, "BOTTOMRIGHT", 10, 2)
 
 -- One column, as the Sell tab's: the chart across, the lowest and usual
 -- prices under it; then the quantity (commodities) or the auctions one by
--- one (items); the receipt; "Hold to Buy". Every part spans the screen, so
+-- one (items); "Hold to Buy" with what it costs. Every part spans the screen, so
 -- it fits any width (the Buy tab's main area, the Tasks tab's column).
 local dChart = IC.AuctionChart.New(detail, "Pay")
 dChart:SetPoint("TOPLEFT", 10, -66)
@@ -755,7 +714,7 @@ dMoreUp.arrow:SetRotation(math.pi / 2)
 dMoreDown.arrow:SetRotation(-math.pi / 2)
 
 -- A commodity's quantity: big, centred up and down between the prices
--- and the receipt; its steps in the legend
+-- and the hold box; its steps in the legend
 local dQtyMid = K.NewFrame("Frame", nil, detail)
 dQtyMid:SetPoint("TOPLEFT", dInfo, "BOTTOMLEFT", 0, 0)
 dQtyMid:SetPoint("RIGHT", detail, "RIGHT", -10, 0)
@@ -774,30 +733,6 @@ dQtyRight:SetText("›")
 local dQtyLabel = K.ChatText(dQtyGroup, 16, KC.dimGold)
 dQtyLabel:SetPoint("TOP", dQty, "BOTTOM", 0, -8)
 
--- The receipt, above the hold box
-local RECEIPT = 3
-local RECEIPT_BOTTOM = 70
-local receipt = K.NewFrame("Frame", nil, detail)
-receipt:SetPoint("BOTTOMLEFT", detail, "BOTTOMLEFT", 22, RECEIPT_BOTTOM)
-receipt:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -22, RECEIPT_BOTTOM)
-receipt:SetHeight(18 * RECEIPT + 7)
-dQtyMid:SetPoint("BOTTOM", receipt, "TOP", 0, 8)
-dQtyGroup:SetPoint("CENTER")
-local receiptLines = {}
-for i = 1, RECEIPT do
-    local y = -(i - 1) * 18 - (i == RECEIPT and 7 or 0)
-    local big = i == RECEIPT
-    local label = K.ChatText(receipt, big and 13 or 12, big and KC.cream or KC.help)
-    label:SetPoint("TOPLEFT", 0, y)
-    local value = K.ChatText(receipt, big and 13 or 12, big and KC.title or KC.cream)
-    value:SetPoint("TOPRIGHT", 0, y)
-    receiptLines[i] = { label = label, value = value }
-end
-local rule = receipt:CreateTexture(nil, "ARTWORK")
-rule:SetHeight(1)
-rule:SetPoint("TOPLEFT", 0, -18 * (RECEIPT - 1) - 1)
-rule:SetPoint("TOPRIGHT", 0, -18 * (RECEIPT - 1) - 1)
-rule:SetColorTexture(0.45, 0.38, 0.25, 0.9)
 local dHold = BY.HoldBox(detail)
 dHold:SetPoint("BOTTOMLEFT", detail, "BOTTOMLEFT", 14, 12)
 dHold:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -14, 12)
@@ -805,6 +740,8 @@ local dStatus = K.ChatText(detail, 12, KC.warn)
 dStatus:SetPoint("BOTTOMLEFT", detail, "BOTTOMLEFT", 14, 52)
 dStatus:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -14, 52)
 dStatus:SetJustifyH("CENTER")
+dQtyMid:SetPoint("BOTTOM", dHold, "TOP", 0, 24)
+dQtyGroup:SetPoint("CENTER")
 
 ---------------------------------------------------------------------------
 -- Categories
@@ -892,6 +829,7 @@ function BY.SetMain(i)
     if n == 0 then return end
     BY.main = (i - 1) % n + 1
     BY.sub, BY.subsub = 1, 1
+    BY.detailFocus = false
     BY.Query()
 end
 
@@ -1305,27 +1243,18 @@ function BY.OpenItem()
     Open(BY.results[BY.index])
 end
 
--- The list view: the item's screen beside the list (else over it, the grid)
-local function SideMode()
-    return S().buyView ~= "grid"
-end
-
--- Where the item's screen goes on the Buy tab: beside the list, or over it
+-- Where the item's screen goes on the Buy tab: beside the list
 local function PlaceDetail()
     if detail:GetParent() ~= buyPage then return end
     detail:ClearAllPoints()
-    if SideMode() then
-        detail:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_LIST_W + 10, 0)
-        detail:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT")
-    else
-        detail:SetAllPoints(content)
-    end
+    detail:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_LIST_W + 10, 0)
+    detail:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT")
 end
 
 -- The list view: a moment's rest on an item, its screen beside the list
 -- (searched); the one shown before closed
 local function Preview(now)
-    if not SideMode() or BY.detailFocus or filterBox:IsShown() then
+    if BY.detailFocus or filterBox:IsShown() then
         BY.previewOn = nil
         return
     end
@@ -1479,67 +1408,40 @@ end
 local function RenderResults()
     local results = BY.results
     local n = #results
-    local grid = S().buyView == "grid"
-    local per = grid and GRID_COLS * GRID_ROWS or LIST_ROWS
-    local step = grid and GRID_COLS or 1
+    local per = LIST_ROWS
     BY.index = math.max(1, math.min(BY.index, math.max(1, n)))
-    -- Scrolled by whole rows, keeping the picked one in view
-    if BY.index < BY.top then BY.top = BY.index - (BY.index - 1) % step end
-    if BY.index > BY.top + per - 1 then BY.top = BY.index - per + step - (BY.index - 1) % step end
+    -- Scrolled keeping the picked one in view
+    if BY.index < BY.top then BY.top = BY.index end
+    if BY.index > BY.top + per - 1 then BY.top = BY.index - per + 1 end
     BY.top = math.max(1, BY.top)
     emptyText:SetShown(n == 0)
     emptyText:SetText(BY.searching and "Searching..." or "Nothing listed here")
     local fr, fg, fb = FocusColor()
-    local focusOn = not (D and BY.detailFocus) and not filterBox:IsShown()
-    -- (the list view: narrower, its item's screen beside it)
-    local listW = SideMode() and SIDE_LIST_W or MAIN_W
-    for _, r in ipairs(listRows) do
-        r:Hide()
-        r:SetWidth(listW)
-    end
-    for _, c in ipairs(gridCells) do c:Hide() end
-    local frames = grid and gridCells or listRows
-    for i, f in ipairs(frames) do
+    for _, r in ipairs(listRows) do r:Hide() end
+    for i, f in ipairs(listRows) do
         local index = BY.top + i - 1
         local result = results[index]
         if result then
             f.index = index
             local info = KeyInfo(result)
-            local c = info and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[info.quality]
             local price = result.minPrice
             local upgrade, gain, needLevel = BY.GroupUpgrade(result.itemKey)
             local gainText, gainColor = GainBadge(upgrade, gain, needLevel)
             local dealText, dealColor = DealBadge(result.itemKey.itemID, price)
             local priceText = price and price > 0 and A.Money(price) or "bid only"
-            if grid then
-                f.icon:SetTexture(info and info.iconFileID or 134400)
-                f.icon.border:SetVertexColor(c and c.r or 0.6, c and c.g or 0.6, c and c.b or 0.6, 0.9)
-                f.name:SetText(info and info.itemName or "...")
-                f.name:SetTextColor(c and c.r or 1, c and c.g or 1, c and c.b or 1)
-                f.price:SetText(priceText)
-                f.upgrade:SetShown(upgrade)
-                f.gain:Set(gainText, gainColor)
-                f.deal:Set(dealText, dealColor)
-                -- Along the top: the upgrade badge on the left, the price's on the right
-                f.gain:ClearAllPoints()
-                f.gain:SetPoint("TOPLEFT", 5, -5)
-                f.deal:ClearAllPoints()
-                f.deal:SetPoint("TOPRIGHT", -5, -5)
-                f.count:SetText(result.totalQuantity > 1 and result.totalQuantity or "")
-            else
-                f:Fill({
-                    icon = info and info.iconFileID, quality = info and info.quality,
-                    name = info and info.itemName or "...", price = priceText, upgrade = upgrade,
-                    line = result.totalQuantity .. " available"
-                        .. (result.itemKey.itemLevel and result.itemKey.itemLevel > 0 and info and info.isEquipment
-                            and ("  ·  item level " .. result.itemKey.itemLevel) or ""),
-                    gain = gainText and { gainText, gainColor }, deal = dealText and { dealText, dealColor },
-                })
-            end
-            local on = focusOn and index == BY.index
+            f:Fill({
+                icon = info and info.iconFileID, quality = info and info.quality,
+                name = info and info.itemName or "...", price = priceText, upgrade = upgrade,
+                line = result.totalQuantity .. " available"
+                    .. (result.itemKey.itemLevel and result.itemKey.itemLevel > 0 and info and info.isEquipment
+                        and ("  ·  item level " .. result.itemKey.itemLevel) or ""),
+                gain = gainText and { gainText, gainColor }, deal = dealText and { dealText, dealColor },
+            })
+            -- (dimmed only under the filters: the item's screen gone into
+            -- keeps its row bright)
             f.focus:SetShown(index == BY.index)
             f.focus:SetVertexColor(fr, fg, fb)
-            f.focus:SetAlpha(on and 1 or 0.4)
+            f.focus:SetAlpha(filterBox:IsShown() and 0.4 or 1)
             f:Show()
         end
     end
@@ -1559,23 +1461,31 @@ local function RenderResults()
         .. (#active > 0 and ("   ·   |cffc9a25a" .. table.concat(active, ", ") .. "|r") or ""))
 end
 
--- What the picked auction costs, for the hold box (a commodity's: on its
--- receipt)
+-- What it costs, for the hold box: the picked auction; a commodity's
+-- quantity (the server's price once asked, else from the listings)
 function HoldPrice()
-    if not D or D.commodity then return nil end
+    if not D then return nil end
+    if D.commodity then
+        local total = D.quote and D.quote.total or Cost(D.qty)
+        return total and A.Money(total) or "not that many"
+    end
     local a = Auctions()[D.row]
     return a and A.Money(a.total or a.unit * a.count) or nil
 end
 
--- The item's screen has the pad: gone into (beside the list), or shown
--- over it (the grid) or in another page (the Tasks tab)
+-- The item's screen has the pad: gone into (beside the list), or in
+-- another page (the Tasks tab)
 local function DetailActive()
-    return BY.detailFocus or detail:GetParent() ~= buyPage or not SideMode()
+    return BY.detailFocus or detail:GetParent() ~= buyPage
 end
 
 local function RenderDetail()
     if not D then return end
     dChart:SetHeight(ChartHeight())
+    -- (gone into on the Buy tab: the faint focus frame)
+    dGlow:SetShown(BY.detailFocus and detail:GetParent() == buyPage)
+    dGlow:SetVertexColor(FocusColor())
+    dGlow:SetAlpha(0.5)
     local info = D.info
     local c = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[info.quality]
     dIcon:SetTexture(info.iconFileID or 134400)
@@ -1602,7 +1512,6 @@ local function RenderDetail()
     dInfo:SetText(table.concat(parts, "   ·   "))
 
     local fr, fg, fb = FocusColor()
-    local lines
     if D.commodity then
         for _, r in ipairs(dRows) do r:Hide() end
         dQtyMid:Show()
@@ -1613,24 +1522,24 @@ local function RenderDetail()
         dQtyLeft:SetTextColor(fr, fg, fb)
         dQtyRight:SetTextColor(fr, fg, fb)
         dQtyLabel:SetText("")
-
-        local total = Cost(D.qty)
-        local unit = D.quote and D.quote.unit or (total and total / D.qty)
-        total = D.quote and D.quote.total or total
-        lines = {
-            { "Price each" .. (D.quote and " |cff9d917a(confirmed)|r" or " |cff9d917a(average)|r"), unit and A.Money(unit) or "—" },
-            { "Against usual", unit and Deal(D.itemID, unit) ~= "" and Deal(D.itemID, unit) or "—" },
-            { "Total", total and A.Money(total) or "not that many" },
-        }
     else
         dQtyMid:Hide()
         local auctions = Auctions()
         D.row = math.max(1, math.min(D.row, math.max(1, #auctions)))
-        -- (as many rows as fit between the prices and the receipt)
-        -- (no receipt for an auction: its price is on the hold box)
-        -- (a line's room above and below them for the "more" marks)
-        local room = detail:GetHeight() - (66 + ChartHeight() + 30) - RECEIPT_BOTTOM - 8 - 14 - 18
-        local fit = math.max(1, math.min(AUCTION_ROWS, math.floor(room / AUCTION_H)))
+        -- (as many rows as fit between the prices and the hold box)
+        -- (from under the prices' line, its "more above" line kept, down to
+        -- the hold box, a message's line kept only when there is one, and
+        -- the "more below" line)
+        local bottom = 12 + 34 + 6 + ((D.message and D.message ~= "") and 16 or 0) + 16
+        local infoBottom, detailBottom = dInfo:GetBottom(), detail:GetBottom()
+        local room
+        if infoBottom and detailBottom then
+            room = infoBottom - 22 - detailBottom - bottom
+        else
+            room = detail:GetHeight() - (66 + ChartHeight() + 30) - bottom - 22
+        end
+        -- (the last row needs no gap under it)
+        local fit = math.max(1, math.min(AUCTION_ROWS, math.floor((room + 4) / AUCTION_H)))
         local top = math.max(1, D.row - fit + 1)
         -- (more above / below: marked above the first row / under the last)
         local shownN = math.min(fit, #auctions - top + 1)
@@ -1676,18 +1585,6 @@ local function RenderDetail()
                 r.focus:SetVertexColor(fr, fg, fb)
             end
         end
-        local a = auctions[D.row]
-        local price = a and (a.total or a.unit * a.count)
-        lines = {
-            { "Auctions", #auctions .. " listed" },
-            { "Against usual", a and Deal(D.itemID, a.unit) ~= "" and Deal(D.itemID, a.unit) or "—" },
-            { "You pay", price and A.Money(price) or "—" },
-        }
-    end
-    receipt:SetShown(D.commodity)
-    for i, line in ipairs(receiptLines) do
-        line.label:SetText(lines[i][1])
-        line.value:SetText(lines[i][2])
     end
     dStatus:SetText(D.message or "")
     dHold:SetHold(BY.HoldProgress(D.holdStart), "A", "Buy", HoldPrice())
@@ -1816,12 +1713,13 @@ function BY.StepTab(dir)
 end
 
 -- The item's screen's buttons (no Circle: its page says what that does)
-local function DetailHints()
+local function DetailHints(onBuy)
     if not D then return "" end
-    -- (a commodity's quantity steps: 1, 5, 20)
+    -- (a commodity's quantity steps: 1, 5, 20; on the Buy tab the
+    -- shoulders change the categories)
     local move = D.commodity
-        and (Glyph("DPAD_LR") .. " 1   " .. Glyph("LB") .. " " .. Glyph("RB") .. " 5   "
-            .. Glyph("LT") .. " " .. Glyph("RT") .. " 20   ")
+        and (Glyph("DPAD_LR") .. " 1   " .. Glyph("DPAD_UD") .. " 5   "
+            .. (onBuy and "" or (Glyph("LT") .. " " .. Glyph("RT") .. " 20   ")))
         or (Glyph("DPAD_UD") .. " Auction   ")
     return Glyph("A") .. " Hold: Buy   " .. move .. Glyph("X") .. " Refresh   "
 end
@@ -1885,8 +1783,6 @@ function BY.Render()
     if not sub then names3 = { "—" } end
     LayoutBar(bar3, names3, sub and BY.subsub or 1)
     RenderResults()
-    -- (the grid: no preview; one left from the list view: closed)
-    if D and not SideMode() and not BY.detailFocus then BY.CloseItem() end
     PlaceDetail()
     if D then RenderDetail() end
     if filterBox:IsShown() then RenderFilters() end
@@ -1894,7 +1790,7 @@ function BY.Render()
     if filterBox:IsShown() then
         text = Glyph("DPAD") .. " Move   " .. Glyph("A") .. " Select   " .. Glyph("LS") .. " / " .. Glyph("B") .. " Close"
     elseif D and BY.detailFocus then
-        text = DetailHints() .. Glyph("B") .. " Back"
+        text = DetailHints(true) .. Glyph("LB") .. " " .. Glyph("RB") .. " Category   " .. Glyph("B") .. " Back"
     else
         text = Glyph("A") .. " Open   " .. Glyph("DPAD") .. " Move   " .. Glyph("LS") .. " Filters   "
             .. Glyph("B") .. " Close"
@@ -1915,16 +1811,11 @@ local KEYS = {
 local REPEATS = { UP = true, DOWN = true, LEFT = true, RIGHT = true, LB = true, RB = true, LT = true, RT = true }
 
 local function MoveResults(name, fast)
-    local grid = S().buyView == "grid"
     local n = #BY.results
     if n == 0 then return end
-    local d
-    if grid then
-        d = ({ UP = -GRID_COLS, DOWN = GRID_COLS, LEFT = -1, RIGHT = 1 })[name]
-    else
-        d = ({ UP = -1, DOWN = 1, LEFT = -LIST_ROWS, RIGHT = LIST_ROWS })[name]
-    end
-    if fast and not grid and (name == "UP" or name == "DOWN") then d = d * 5 end
+    local d = ({ UP = -1, DOWN = 1 })[name]
+    if not d then return end
+    if fast and (name == "UP" or name == "DOWN") then d = d * 5 end
     BY.index = math.max(1, math.min(n, BY.index + d))
     MoreIfNeeded()
 end
@@ -1972,12 +1863,14 @@ local function DetailPress(name, fast, stay)
     if D.commodity and (name == "LEFT" or name == "RIGHT") then
         D.qty = math.max(1, math.min(math.max(1, Available()), D.qty + (name == "RIGHT" and 1 or -1) * (fast and 10 or 1)))
         D.state, D.quote, D.message = nil, nil, nil
-    elseif D.commodity and (name == "LB" or name == "RB" or name == "LT" or name == "RT") then
-        -- L1 / R1: by 5, L2 / R2: by 20 (held: again), on their round
-        -- numbers: 1 -> 5 -> 10..., 7 -> 10 up, 5 down; never under 1
-        local step = (name == "LB" or name == "RB") and 5 or 20
+    elseif D.commodity and (name == "UP" or name == "DOWN" or name == "LB" or name == "RB"
+        or name == "LT" or name == "RT") then
+        -- Up / down and L1 / R1: by 5, L2 / R2: by 20 (held: again), on
+        -- their round numbers: 1 -> 5 -> 10..., 7 -> 10 up, 5 down; never
+        -- under 1 (on the Buy tab the shoulders change the categories)
+        local step = (name == "LT" or name == "RT") and 20 or 5
         local qty
-        if name == "RB" or name == "RT" then
+        if name == "UP" or name == "RB" or name == "RT" then
             qty = (math.floor(D.qty / step) + 1) * step
         else
             qty = (math.ceil(D.qty / step) - 1) * step
@@ -2020,16 +1913,20 @@ function BY.Press(name, fast)
         return BY.Render()
     end
     if D and BY.detailFocus then
-        -- (beside the list: Circle back to it, the screen kept)
-        if SideMode() and name == "B" then
+        -- (Circle back to the list, the screen kept; the categories' buttons
+        -- and the filters: the list's, the screen left)
+        local toList = name == "LB" or name == "RB" or name == "LT" or name == "RT" or name == "LS"
+        if name == "B" or toList then
             if D.holdStart then D.holdStart = nil end
             BY.detailFocus = false
-            return BY.Render()
+            if name == "B" then return BY.Render() end
+        else
+            DetailPress(name, fast)
+            return
         end
-        DetailPress(name, fast)
-        return
     end
-    if name == "UP" or name == "DOWN" or name == "LEFT" or name == "RIGHT" then
+    -- (left / right: nothing in the list)
+    if name == "UP" or name == "DOWN" then
         MoveResults(name, fast)
     elseif name == "LB" or name == "RB" then
         BY.SetSub(BY.sub + (name == "RB" and 1 or -1))
@@ -2070,7 +1967,7 @@ local stickX, sideHeld = 0, false
 -- The right stick, up / down: the tab above / below (once a push)
 local rightY, rightHeld = 0, false
 local function Stick(now)
-    if filterBox:IsShown() or (D and BY.detailFocus) then
+    if filterBox:IsShown() then
         stickNext = nil
         return
     end

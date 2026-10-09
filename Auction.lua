@@ -29,7 +29,6 @@ local DEFAULTS = {
     vendorFloor = true,    -- never under what a vendor pays (after the cut)
     tooltip = true,        -- item tooltips show the usual and lowest price
     buy = true,            -- the Buy window opens with the auction house
-    buyView = "list",      -- its results: list or grid
     buyUsable = false,     -- its filters: usable only, qualities (none ticked: any), up to my level, sort
     buyMyLevel = false,
     buySort = "price",

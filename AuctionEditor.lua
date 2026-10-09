@@ -160,11 +160,6 @@ ITEMS[#ITEMS + 1] = Item({
         .. " bags sorted for profit) and Auctions (yours, to cancel). Off: the game's own window.",
 }, OnOff(function() return S().buy end, function(on) S().buy = on end, "Auction window"))
 ITEMS[#ITEMS + 1] = Item({
-    key = "buyView", group = "buy", label = "Show results",
-    icon = ICON .. "INV_Misc_Bag_10",
-    tip = "As a list (names, how many, prices) or a grid of icons. Also in the window's filters (L3).",
-}, Choice("buyView", "Show results", { { "list", "As a list" }, { "grid", "As a grid" } }, ICON .. "INV_Misc_Bag_10"))
-ITEMS[#ITEMS + 1] = Item({
     key = "tooltip", group = "use", label = "Tooltips",
     icon = ICON .. "INV_Misc_Note_01",
     tip = "Item tooltips show its usual auction price and the latest lowest (and a bag stack's worth).",
