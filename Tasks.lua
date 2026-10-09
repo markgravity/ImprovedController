@@ -243,6 +243,35 @@ local function Amount(task)
     return can
 end
 
+-- The amount kept: the window sets its own again (to 1) as the bags or
+-- the recipe change (its ValidateControls); after that (a post-hook), ours
+-- again, while it shows the task's recipe and no craft is under way (one
+-- started: let go, the window counts the casts down itself)
+local holding                   -- the task whose amount is kept
+local HoldAmount
+local hookedPage = false
+function HoldAmount(task)
+    holding = task
+    local page = _G.ProfessionsFrame and _G.ProfessionsFrame.CraftingPage
+    if page and page.ValidateControls and not hookedPage then
+        hookedPage = true
+        hooksecurefunc(page, "ValidateControls", function(_, skipConstrainCount)
+            local t = holding
+            if not t or skipConstrainCount then return end
+            local recasts = C_TradeSkillUI.GetRemainingRecasts and C_TradeSkillUI.GetRemainingRecasts() or 0
+            if not WindowUp() or ShownRecipe() ~= t.recipeID or recasts > 0
+                or not tContains(TK.Tasks(), t) then
+                holding = nil
+                return
+            end
+            local can = math.min(math.max(0, t.count - (t.made or 0)), Craftable(t.recipeID))
+            if can > 0 then ShowAmount(can) end
+        end)
+    end
+    local can = math.min(math.max(0, task.count - (task.made or 0)), Craftable(task.recipeID))
+    if can > 0 then ShowAmount(can) end
+end
+
 -- Crafting a task (a press): its recipe shown in the profession window
 -- (opened: the game shows its window), its amount set to what the task
 -- still needs (as many as the bags allow) once it shows (a moment later;
@@ -265,7 +294,7 @@ opener:SetScript("OnUpdate", function(self)
             pending = nil
             self:Hide()
             local can = Amount(p.task)
-            if can > 0 then ShowAmount(can) end
+            if can > 0 then HoldAmount(p.task) end
             return
         end
     end
