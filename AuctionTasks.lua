@@ -59,7 +59,9 @@ local function TaskLines()
     taskLines = { { all = true } }
     local ready = {}
     for _, t in ipairs(TK.Tasks()) do
-        if Ready(t) then ready[#ready + 1] = t else taskLines[#taskLines + 1] = { task = t } end
+        -- (a task done needs nothing: not here)
+        if TK.Done(t) then
+        elseif Ready(t) then ready[#ready + 1] = t else taskLines[#taskLines + 1] = { task = t } end
     end
     if #ready > 0 then
         taskLines[#taskLines + 1] = { header = "Ready to craft", count = #ready }

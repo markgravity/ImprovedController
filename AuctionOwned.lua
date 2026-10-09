@@ -228,7 +228,7 @@ function OW.Hints()
     local a = auctions[sel]
     local parts = {}
     if a and a.status ~= SOLD then
-        parts[#parts + 1] = Glyph("X") .. " Hold: Cancel"
+        parts[#parts + 1] = Glyph("X") .. " Hold to Cancel"
     end
     parts[#parts + 1] = Glyph("DPAD_UD") .. " Move"
     parts[#parts + 1] = Glyph("Y") .. " Refresh"
@@ -256,6 +256,7 @@ function OW.Release(name)
     if BY.HoldProgress(h.start) >= 1 and not IC.InCombat() then
         OW.message = "Cancelling..."
         AH.CancelAuction(h.id)
+        BY.HoldDone()
     end
     BY.Render()
 end

@@ -393,6 +393,18 @@ function V.Hold(progress)
     end
 end
 
+-- A hold done (let go full: sold, bought, cancelled; a task removed): a
+-- short hard thump on both grips, whatever the intensity
+function V.Confirm()
+    if not (C_GamePad and C_GamePad.SetVibration and IC.db) then return end
+    if not V.Settings().enabled then return end
+    V.Stop()
+    holdSent = 0
+    motors(1, 1)
+    later(0.1, function() motors(1, 1) end)
+    later(0.22, function() C_GamePad.StopVibration() end)
+end
+
 -- A pattern at the set strength; the newest replaces the one playing.
 -- loop: played again and again (with a short gap) until V.Stop. shape
 -- (optional) varies it: { strength, duration (times each step's length),

@@ -636,7 +636,7 @@ function ST.Hints()
     local e = P and P.entry
     local parts = {}
     if e and e.auction then
-        parts[#parts + 1] = Glyph("A") .. " Hold: Sell"
+        parts[#parts + 1] = Glyph("A") .. " Hold to Sell"
         parts[#parts + 1] = Glyph("DPAD_LR") .. " Price"
         parts[#parts + 1] = Glyph("LB") .. " " .. Glyph("RB") .. " Duration"
         parts[#parts + 1] = Glyph("Y") .. " Suggested"
@@ -728,7 +728,10 @@ function ST.Release(name)
     if name ~= "A" or not (P and P.holdStart) then return end
     local full = HoldProgress() >= 1
     P.holdStart = nil
-    if full and CanPost() then DoPost(P.entry) end
+    if full and CanPost() then
+        DoPost(P.entry)
+        BY.HoldDone()
+    end
     BY.Render()
 end
 

@@ -613,23 +613,39 @@ function BY.HoldBox(parent)
     hold.border = hold:CreateTexture(nil, "BORDER")
     hold.border:SetAllPoints()
     Atlas(hold.border, "gamepad-footer-slot-frameneutral")
+    -- (the game's hold button: the glyph in its ring, "Hold to ...")
+    hold.icon = IC.HoldIcon(hold, 22)
     hold.text = hold:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    hold.text:SetPoint("CENTER")
+    hold.text:SetPoint("LEFT", hold.icon, "RIGHT", 4, 0)
     -- p: 0 to 1; key: the button's glyph key; verb: "Buy"...; extra
     -- (optional): after it ("· 1 silver": what it costs)
     function hold:SetHold(p, key, verb, extra)
         local full = p >= 1
         self.fill:SetProgress(p)
-        self.text:SetText(Glyph(key, 22) .. "  " .. (full and "Release to " or "Hold to ") .. verb
+        self.icon:SetKey(key)
+        self.icon:SetProgress(p)
+        self.text:SetText((full and "Release to " or "Hold to ") .. verb
             .. (extra and ("  |cffd8ccb0·|r  " .. extra) or ""))
+        -- (the icon and the words centred together)
+        local w = self.icon:GetWidth() + 4 + self.text:GetStringWidth()
+        self.icon:ClearAllPoints()
+        self.icon:SetPoint("LEFT", self, "CENTER", -w / 2, 0)
         self.text:SetTextColor(1, full and 1 or 0.82, full and 0.6 or 0)
     end
     return hold
 end
 
+local holdVibing, holdWasFull = false, false
+
+-- A hold done (let go full: the action made): the confirm thump, the
+-- hold's rumble let go without stopping it
+function BY.HoldDone()
+    holdVibing, holdWasFull = false, false
+    if IC.Vibe and IC.Vibe.Confirm then IC.Vibe.Confirm() end
+end
+
 -- The feel of a hold, every update: the rumble rising with it (Vibration.lua),
 -- a click once full; nil: none under way (still)
-local holdVibing, holdWasFull = false, false
 function BY.HoldFeel(p)
     if p then
         local full = p >= 1
@@ -1356,6 +1372,7 @@ function BY.DetailRelease(name)
         if D.state == "confirm" and D.quote then
             D.state, D.message = "buying", "Buying..."
             AH.ConfirmCommoditiesPurchase(D.itemID, D.qty)
+            BY.HoldDone()
         else
             DropQuote()
             D.message = "The price hasn't come back yet: hold again"
@@ -1367,6 +1384,7 @@ function BY.DetailRelease(name)
             D.state, D.message = "buying", "Buying..."
             D.bought = auction
             AH.PlaceBid(auction.auctionID, price)
+            BY.HoldDone()
         end
     end
     BY.Render()
@@ -1721,7 +1739,7 @@ local function DetailHints(onBuy)
         and (Glyph("DPAD_LR") .. " 1   " .. Glyph("DPAD_UD") .. " 5   "
             .. (onBuy and "" or (Glyph("LT") .. " " .. Glyph("RT") .. " 20   ")))
         or (Glyph("DPAD_UD") .. " Auction   ")
-    return Glyph("A") .. " Hold: Buy   " .. move .. Glyph("X") .. " Refresh   "
+    return Glyph("A") .. " Hold to Buy   " .. move .. Glyph("X") .. " Refresh   "
 end
 
 ---------------------------------------------------------------------------

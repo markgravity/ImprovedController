@@ -175,6 +175,51 @@ function IC.GlyphAtlas(key)
     return nil
 end
 
+-- A "Hold to" button, as the game draws its own (Hold to Create All): the
+-- glyph inside its press-and-hold ring, the ring lit as the hold comes
+-- (0 to 1: SetProgress). IC.HoldRing(parent, anchor, size) puts the ring
+-- round an existing icon (a legend prompt's); IC.HoldIcon(parent, size)
+-- makes the glyph too (SetKey).
+local HOLD_BG, HOLD_BAR = "gamepad-press&hold-indicator-BG", "gamepad-press&hold-loadBar"
+local HOLD_GLOW = "gamepad-press&hold-loadBar-glw-BG"
+
+function IC.HoldRing(parent, anchor, size)
+    local ring = {}
+    local function Layer(atlas, layer, sub)
+        local tex = parent:CreateTexture(nil, layer, nil, sub)
+        tex:SetSize(size, size)
+        tex:SetPoint("CENTER", anchor, "CENTER")
+        if hasAtlas(atlas) then tex:SetAtlas(atlas) else tex:Hide() end
+        return tex
+    end
+    ring.bg = Layer(HOLD_BG, "BACKGROUND", 1)
+    ring.bar = Layer(HOLD_BAR, "OVERLAY", 1)
+    ring.glow = Layer(HOLD_GLOW, "OVERLAY", 2)
+    function ring:SetProgress(p)
+        if hasAtlas(HOLD_BAR) then self.bar:SetAlpha(p) end
+        if hasAtlas(HOLD_GLOW) then self.glow:SetShown(p >= 1) end
+    end
+    ring:SetProgress(0)
+    return ring
+end
+
+function IC.HoldIcon(parent, size)
+    local f = CreateFrame("Frame", nil, nil)
+    f:SetParent(parent)
+    f:SetSize(size * 1.6, size * 1.6)
+    f.icon = f:CreateTexture(nil, "ARTWORK")
+    f.icon:SetSize(size, size)
+    f.icon:SetPoint("CENTER")
+    f.ring = IC.HoldRing(f, f, size * 1.6)
+    function f:SetKey(key)
+        local atlas = IC.GlyphAtlas(key)
+        if atlas then f.icon:SetAtlas(atlas) end
+        f.icon:SetShown(atlas ~= nil)
+    end
+    function f:SetProgress(p) self.ring:SetProgress(p) end
+    return f
+end
+
 -- A button's name as printed on the pad in use ("Cross", "A", "B"...)
 function IC.ButtonName(key)
     key = IC.PAD_KEY[key] or key

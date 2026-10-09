@@ -121,6 +121,12 @@ function TK.Remove(task)
     TK.Changed()
 end
 
+-- A task done: all its crafts made (kept until removed: its recipe opened
+-- from it, Quantity starts it again)
+function TK.Done(task)
+    return (task.made or 0) >= task.count
+end
+
 -- What all the tasks still need: { { itemID, need, have, missing, vendor } },
 -- by item (two tasks wanting the same: added up), the bags' count once
 function TK.Needs()
@@ -175,7 +181,8 @@ end
 -- is a frame of ours, its own pad: with the tracker focused, L2 (free
 -- there; watched, not taken) moves into the tasks: the D-pad picks one (the
 -- game's cursor on it), Cross crafts it (its recipe opened, the amount
--- set), Triangle opens its menu (more options: quantity, remove...),
+-- set), Square held removes it, Triangle opens its menu (more options:
+-- quantity),
 -- Circle / L2 / R2 hand the pad back. A click crafts too. Each task has a quest's status icon:
 -- in progress (still to buy) or ready to craft.
 ---------------------------------------------------------------------------
@@ -305,6 +312,16 @@ opener:SetScript("OnUpdate", function(self)
     end
 end)
 
+-- Cross on a task: crafting it; done: its recipe opened, no amount set
+function TK.Act(task)
+    if TK.Done(task) then
+        if IC.InCombat() then return end
+        if TK.TakePad then TK.TakePad(false) end
+        return TK.OpenRecipe(task)
+    end
+    TK.Craft(task)
+end
+
 function TK.Craft(task)
     if IC.InCombat() then return end
     if TK.TakePad then TK.TakePad(false) end
@@ -372,7 +389,10 @@ do
     Atlas(border, "gamepad-footer-slot-frameneutral")
     border:SetAllPoints()
 end
-local PANEL_PROMPTS = { { "PAD1", "A", "Craft" }, { "PAD4", "Y", "More" },
+local PANEL_PROMPTS = { { "PAD1", "A", "Craft" }, { "PAD3", "X", "Hold to Remove", hold = true }, { "PAD4", "Y", "More" },
+    { "PAD2", "B", "Back" } }
+-- (a task done: Cross opens its recipe)
+local DONE_PROMPTS = { { "PAD1", "A", "Open" }, { "PAD3", "X", "Hold to Remove", hold = true }, { "PAD4", "Y", "More" },
     { "PAD2", "B", "Back" } }
 local MENU_PROMPTS = { { "PAD1", "A", "Select" }, { "PAD2", "B", "Close" } }
 local QTY_PROMPTS = { { "PAD1", "A", "Set" }, { { "PADDLEFT", "PADDRIGHT" }, { "DPAD_LR" }, "1" },
@@ -398,6 +418,8 @@ local function BuildLegend(defs)
             end
             x:SetPromptText(def[3])
             x:EnablePrompt()
+            -- (a hold: the game's press-and-hold ring round its button)
+            if def.hold then x.holdRing = IC.HoldRing(x, x:GetInputIconControl(1), 36) end
             return x
         end)
         if not ok or not p then
@@ -468,10 +490,17 @@ end
 
 -- A task's status as a quest's icon: in progress (the quest number disc,
 -- the in-progress mark on it) or ready to craft (the turn-in "?")
-local function SetStatus(b, ready)
-    if b.ready == ready then return end
-    b.ready = ready
-    if ready then
+local function SetStatus(b, ready, done)
+    local state = done and "done" or ready and "ready" or "progress"
+    if b.state == state then return end
+    b.state = state
+    if done then
+        -- (the tracker's own check)
+        if not Atlas(b.status, "ui-questtracker-tracker-check") then
+            b.status:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+        end
+        b.statusMark:Hide()
+    elseif ready then
         if not Atlas(b.status, "UI-QuestIcon-TurnIn-Normal") then
             b.status:SetTexture("Interface\\GossipFrame\\ActiveQuestIcon")
         end
@@ -496,7 +525,7 @@ local function Block(i)
     b:SetParent(panel)
     b:RegisterForClicks("LeftButtonUp")
     b:SetScript("OnClick", function(self)
-        if self.task then TK.Craft(self.task) end
+        if self.task then TK.Act(self.task) end
     end)
     b.title = b:CreateFontString(nil, "ARTWORK")
     Font(b.title, "ObjectiveTrackerLineFont", GameFontNormal)
@@ -505,6 +534,12 @@ local function Block(i)
     b.title:SetJustifyH("LEFT")
     b.title:SetWordWrap(true)
     b.lines = {}
+    -- Square held on it (removing): a gold bar filling behind it
+    b.fill = b:CreateTexture(nil, "BACKGROUND")
+    b.fill:SetPoint("TOPLEFT", 16, 2)
+    b.fill:SetPoint("BOTTOMLEFT", 16, -2)
+    b.fill:SetWidth(1)
+    b.fill:Hide()
     -- The status icon, centred on the title's first line, at its left
     b.status = b:CreateTexture(nil, "ARTWORK")
     b.status:SetSize(30, 30)
@@ -542,8 +577,7 @@ end
 -- (its dark dropdown box, the task's name over a divider, the highlight
 -- bar and the game's cursor on the picked entry): a frame of ours, the
 -- game's Menu opened from addon code taints its gamepad navigation.
--- Quantity opens a submenu; Remove asks first (our popup,
--- AuctionConfirm.lua).
+-- Quantity opens a submenu. (Removing: Square held on the task.)
 ---------------------------------------------------------------------------
 local MENU_W, ENTRY_H = 200, 20
 local REPEAT_DELAY, REPEAT_EVERY = 0.35, 0.08
@@ -657,31 +691,10 @@ qtyBox.label = qtyBox:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 qtyBox.label:SetPoint("TOP", qtyBox.input, "BOTTOM", 0, -10)
 local qty = {}                  -- { task, value, held }
 
-local asking = false            -- our "remove?" popup up
-
-local function ConfirmRemove(task)
-    local left = math.max(0, task.count - (task.made or 0))
-    asking = true
-    IC.AuctionConfirm.Show({
-        title = "Remove Task",
-        icon = task.icon, quality = 1, name = task.name,
-        sub = left .. " left to craft",
-        text = "Remove this task? Its reagents won't be listed to buy any more.",
-        accept = "Remove",
-        onAccept = function()
-            asking = false
-            TK.Remove(task)
-        end,
-        onCancel = function() asking = false end,
-    })
-end
-
 local OpenQty
 -- An entry: its label, what it does (sub: opens a submenu, the menu kept)
 local MENU = {
-    { "Craft", function(task) TK.Craft(task) end },
     { "Quantity", function(task) OpenQty(task) end, sub = true },
-    { "Remove", ConfirmRemove },
 }
 
 local function RenderMenu()
@@ -932,7 +945,8 @@ function TK.RenderTracker()
     elseif menuOpen then
         ShowLegend(focus.on and MENU_PROMPTS or nil, menu, 8)
     else
-        ShowLegend(focus.on and PANEL_PROMPTS or nil, panel, 4)
+        local picked = tasks[math.max(1, math.min(focus.index, #tasks))]
+        ShowLegend(focus.on and (picked and TK.Done(picked) and DONE_PROMPTS or PANEL_PROMPTS) or nil, panel, 4)
     end
     focus.index = math.max(1, math.min(focus.index, #tasks))
     local needs = {}
@@ -947,14 +961,32 @@ function TK.RenderTracker()
             b:ClearAllPoints()
             b:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, y)
             b:SetWidth(W)
-            b.title:SetText(t.name .. " × " .. left)
+            local done = TK.Done(t)
+            b.title:SetText(done and t.name or (t.name .. " × " .. left))
             b.title:SetTextColor(Color(focus.on and i == focus.index and "HeaderHighlight" or "Header"))
             -- (its menu open: the cursor in the menu)
             b.arrow:SetShown(focus.on and i == focus.index and not menuOpen)
             CursorColor(b.arrow)
             local ready = true
             local by = -b.title:GetStringHeight() - 4
-            for j, r in ipairs(t.reagents) do
+            -- (done: one line, what was made, its reagents no more)
+            local shownLines = 0
+            if done then
+                local l = Line(b, 1)
+                l.icon:ClearAllPoints()
+                l.icon:SetPoint("TOPLEFT", b, "TOPLEFT", 20, by)
+                l.text:ClearAllPoints()
+                l.text:SetPoint("TOPLEFT", b, "TOPLEFT", 34, by)
+                l.text:SetWidth(W - 44)
+                l.text:SetText("Done  ·  " .. (t.made or 0) .. " made")
+                l.text:SetTextColor(Color("Complete"))
+                l.icon:Show()
+                l.dash:Hide()
+                l.text:Show()
+                by = by - l.text:GetStringHeight() - 2
+                shownLines = 1
+            end
+            for j, r in ipairs(done and {} or t.reagents) do
                 local l = Line(b, j)
                 local need = r.per * left
                 local have = math.min(need, TK.ItemCount(r.itemID))
@@ -975,14 +1007,15 @@ function TK.RenderTracker()
                 l.dash:SetShown(not met)
                 l.text:Show()
                 by = by - l.text:GetStringHeight() - 2
+                shownLines = j
             end
-            for j = #t.reagents + 1, #b.lines do
+            for j = shownLines + 1, #b.lines do
                 local l = b.lines[j]
                 l.icon:Hide()
                 l.dash:Hide()
                 l.text:Hide()
             end
-            SetStatus(b, ready)
+            SetStatus(b, ready, done)
             b:SetHeight(-by)
             y = y + by - 8
         end
@@ -1014,10 +1047,7 @@ function TK.TakePad(on)
         qty.task, qty.held = nil, nil
         menu:Hide()
         menu.task = nil
-        if asking then
-            asking = false
-            IC.AuctionConfirm.Hide()
-        end
+        TK.DropRemove()
     end
     if catcher.EnableGamePadButton then catcher:EnableGamePadButton(focus.on) end
     local tracker = _G.ObjectiveTrackerFrame
@@ -1035,16 +1065,62 @@ function TK.TakePad(on)
 end
 
 local KEYS = { PADDUP = "UP", PADDDOWN = "DOWN", PADDLEFT = "LEFT", PADDRIGHT = "RIGHT",
-    PAD1 = "A", PAD2 = "B", PAD4 = "Y",
+    PAD1 = "A", PAD2 = "B", PAD3 = "X", PAD4 = "Y",
     PADLSHOULDER = "LB", PADRSHOULDER = "RB", PADLTRIGGER = "LT", PADRTRIGGER = "RT" }
 
--- A press: our popup first, then the menu (and its submenu: L2 / R2 step
--- there), then the panel
-local function Press(name)
-    if asking then
-        if IC.AuctionConfirm.Press(name) then return end
-        asking = false          -- (closed some other way)
+-- Square held on a task: it goes once the bar is full (1.2 s; no need to
+-- let go: removing isn't a protected action), the pad rumbling with it
+-- (Vibration.lua); let go, or anything else pressed, before: kept
+local REMOVE_HOLD = 1.2
+local removing                  -- { task, start }
+
+local function RemoveProgress()
+    return removing and math.min(1, (GetTime() - removing.start) / REMOVE_HOLD) or 0
+end
+
+local function RenderRemove()
+    -- (the legend's Square ring lit as it comes)
+    for _, prompts in pairs(built) do
+        for _, p in ipairs(prompts) do
+            if p.holdRing then p.holdRing:SetProgress(RemoveProgress()) end
+        end
     end
+    for _, b in ipairs(blocks) do
+        local p = removing and b.task == removing.task and RemoveProgress() or 0
+        b.fill:SetShown(p > 0)
+        b.fill:SetWidth(math.max(1, (W - 16) * p))
+        b.fill:SetColorTexture(1, 0.3, 0.2, 0.18 + 0.2 * p)
+    end
+end
+
+function TK.DropRemove()
+    if not removing then return end
+    removing = nil
+    if IC.Vibe then IC.Vibe.Hold(nil) end
+    RenderRemove()
+end
+
+catcher:SetScript("OnUpdate", function()
+    if not removing then return end
+    local p = RemoveProgress()
+    if IC.Vibe then IC.Vibe.Hold(p) end
+    if p >= 1 then
+        local task = removing.task
+        TK.DropRemove()
+        if IC.Vibe and IC.Vibe.Confirm then IC.Vibe.Confirm() end
+        PlaySound(SOUNDKIT and SOUNDKIT.IG_QUEST_LOG_ABANDON_QUEST or 846)
+        IC.Print("task removed: " .. task.name .. ".")
+        TK.Remove(task)
+        return
+    end
+    RenderRemove()
+end)
+
+-- A press: the menu first (and its submenu: L2 / R2 step there), then the
+-- panel
+local function Press(name)
+    -- (anything else pressed while removing: kept)
+    if removing and name ~= "X" then TK.DropRemove() end
     if qtyBox:IsShown() then return TK.MenuPress(name) end
     if name == "LT" or name == "RT" then return TK.TakePad(false) end
     if menu:IsShown() then return TK.MenuPress(name) end
@@ -1053,9 +1129,11 @@ local function Press(name)
         focus.index = focus.index + (name == "UP" and -1 or 1)
         TK.RenderTracker()
     elseif name == "A" and task then
-        TK.Craft(task)
+        TK.Act(task)
     elseif name == "Y" and task then
         OpenMenu(focus.index)
+    elseif name == "X" and task then
+        removing = { task = task, start = GetTime() }
     elseif name == "B" then
         TK.TakePad(false)
     end
@@ -1072,6 +1150,8 @@ if catcher.EnableGamePadButton then
     catcher:SetScript("OnGamePadButtonUp", function(_, button)
         local name = KEYS[button]
         if qty.held and qty.held.name == name then qty.held = nil end
+        -- (Square let go before the bar is full: kept)
+        if name == "X" then TK.DropRemove() end
         -- (Circle on its release: the tracker's own Circle would take it too)
         if name == "B" then Press("B") end
     end)
@@ -1147,12 +1227,10 @@ events:SetScript("OnEvent", function(_, event, unit, _, spellID)
         for _, t in ipairs(TK.Tasks()) do
             if t.recipeID == spellID then
                 t.made = (t.made or 0) + 1
-                if t.made >= t.count then
+                if TK.Done(t) and t.made == t.count then
                     IC.Print("task done: " .. t.name .. " × " .. t.count .. ".")
-                    TK.Remove(t)
-                else
-                    TK.Changed()
                 end
+                TK.Changed()
                 return
             end
         end
