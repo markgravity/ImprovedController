@@ -61,6 +61,8 @@ local function Build()
     if d.EnableGamePadButton then
         d:SetScript("OnGamePadButtonDown", function(_, button) R.OnDown(button) end)
         d:SetScript("OnGamePadButtonUp", function(_, button) R.OnUp(button) end)
+        -- (a gamepad handler switches the input on by itself: off till recording)
+        d:EnableGamePadButton(false)
     end
     d:SetScript("OnUpdate", function() R.OnUpdate() end)
     box = d

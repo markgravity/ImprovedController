@@ -895,6 +895,9 @@ if catcher.EnableGamePadButton then
     catcher:SetScript("OnGamePadButtonUp", function(_, button)
         if PAD_NAME[button] then DS.Press(PAD_NAME[button], false) end
     end)
+    -- (setting a gamepad handler switches the frame's input on by itself: off
+    -- until it is wanted, else a frame on screen takes the pad from login)
+    catcher:EnableGamePadButton(false)
 end
 
 function DS.TakePad(on)

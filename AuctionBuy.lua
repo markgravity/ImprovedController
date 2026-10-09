@@ -2018,6 +2018,9 @@ if catcher.EnableGamePadButton then
         local page = CurrentPage()
         if page and page.Release then page.Release(name) end
     end)
+    -- (setting a gamepad handler switches the frame's input on by itself: off
+    -- until it is wanted, else a frame on screen takes the pad from login)
+    catcher:EnableGamePadButton(false)
 end
 if catcher.EnableGamePadStick then
     catcher:SetScript("OnGamePadStick", function(_, stick, x, y)

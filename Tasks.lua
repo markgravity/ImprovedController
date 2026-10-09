@@ -1139,6 +1139,9 @@ if catcher.EnableGamePadButton then
         -- (Circle on its release: the tracker's own Circle would take it too)
         if name == "B" then Press("B") end
     end)
+    -- (setting a gamepad handler switches the frame's input on by itself: off
+    -- until it is wanted, else a frame on screen takes the pad from login)
+    catcher:EnableGamePadButton(false)
 end
 
 local hooked = false
@@ -1206,6 +1209,12 @@ function TK.Report()
     end
     IC.Print("  panel " .. (panel:IsShown() and "shown" or "hidden") .. ", the tracker "
         .. (trackerFocused and "focused (L2: into the tasks)" or "not focused"))
+    local manager = _G.GamepadMode and GamepadMode.FrameControlsManager
+    IC.Print("  pad: tasks " .. (focus.on and "have it" or "don't")
+        .. ", catcher " .. tostring(catcher.IsGamePadButtonEnabled and catcher:IsGamePadButtonEnabled())
+        .. ", UI focused " .. tostring(manager and manager.isUIFocused)
+        .. ", focused frame " .. tostring(manager and manager.focusedFrame and (manager.focusedFrame.GetName
+            and manager.focusedFrame:GetName() or "?")))
 end
 
 ---------------------------------------------------------------------------

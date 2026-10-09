@@ -266,6 +266,9 @@ if catcher.EnableGamePadButton then
         if name == "B" then return TC.Close() end
         if held and held.name == name then held = nil end
     end)
+    -- (setting a gamepad handler switches the frame's input on by itself: off
+    -- until it is wanted, else a frame on screen takes the pad from login)
+    catcher:EnableGamePadButton(false)
 end
 panel:SetScript("OnUpdate", function()
     if held and GetTime() >= held.next then

@@ -301,6 +301,9 @@ if catcher.EnableGamePadButton then
         -- (Circle on its release: the merchant window's own Circle would close it)
         if name == "B" then VT.Close() end
     end)
+    -- (setting a gamepad handler switches the frame's input on by itself: off
+    -- until it is wanted, else a frame on screen takes the pad from login)
+    catcher:EnableGamePadButton(false)
 end
 
 function VT.Open()

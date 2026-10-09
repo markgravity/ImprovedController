@@ -392,6 +392,9 @@ if pad.EnableGamePadButton then
     pad:SetScript("OnGamePadStick", function(_, name, x, y)
         if name == "Left" or name == "Move" then stick.x, stick.y = x, y end
     end)
+    -- (setting a gamepad handler switches the frame's input on by itself: off
+    -- until it is wanted, else a frame on screen takes the pad from login)
+    pad:EnableGamePadButton(false)
 end
 pad:SetScript("OnKeyDown", function(_, key)
     if key == "ESCAPE" then Stop(false)
