@@ -51,6 +51,7 @@ end)
 -- /ic scan                 scan the auction house's prices (it must be open)
 -- /ic upgrade              why the Buy tab's picked item is an upgrade or not
 -- /ic tasks                the tasks, their recipes' tracking, the tracker's Professions section
+-- /ic addprobe             why the profession window's "Hold to Add Task" shows or not
 SLASH_IMPROVEDCONTROLLER1 = "/ic"
 SLASH_IMPROVEDCONTROLLER2 = "/improvedcontroller"
 SlashCmdList.IMPROVEDCONTROLLER = function(msg)
@@ -94,6 +95,14 @@ SlashCmdList.IMPROVEDCONTROLLER = function(msg)
         IC.SetPadStyle(style)
         IC.Print("Buttons shown: " .. IC.PAD_STYLE_LABELS[style]
             .. (style == "auto" and (" (" .. IC.PAD_STYLE_LABELS[IC.DetectedPadStyle()] .. ")") or ""))
+        return
+    end
+    if command == "addprobe" then
+        -- (again 3 s and 6 s later: back on the recipe list by then, the
+        -- chat no longer holding the pad)
+        IC.TaskCraft.Probe()
+        C_Timer.After(3, IC.TaskCraft.Probe)
+        C_Timer.After(6, IC.TaskCraft.Probe)
         return
     end
     if command == "tasks" then

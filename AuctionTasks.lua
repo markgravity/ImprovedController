@@ -1,7 +1,8 @@
 -- The auction house window's Tasks tab (AuctionBuy.lua's window): three
 -- columns.
---   Left, the tasks (Tasks.lua): "All tasks", each task still getting its
---     reagents, then a "Ready to craft" section (the bags hold all it needs);
+--   Left, the tasks (IC.TaskList below, shared with the vendor's Tasks,
+--     VendorTasks.lua): "All tasks", each task still getting its reagents,
+--     then a "Ready to craft" section (Tasks.lua's TK.TaskLines);
 --   middle, what the picked one (all of them: added up) still needs from the
 --     auction house, how many are missing (a vendor's items not: bought at
 --     one, its own Tasks; how many: said under the list);
@@ -15,7 +16,6 @@ local _, IC = ...
 
 local K = IC.ConfigKit
 local KC = K.C
-local A = IC.Auction
 local BY = IC.AuctionBuy
 local TK = IC.Tasks
 
@@ -27,82 +27,15 @@ local ROW_H = 48
 local OPEN_AFTER = 0.3             -- resting on an item this long: its screen opens (searched)
 local ALL_ICON = "Interface\\Icons\\INV_Misc_Note_01"
 
-local TT = { key = "tasks", label = "Tasks", icon = ALL_ICON }
-IC.AuctionTasks = TT
-
 local Glyph = function(key, size) return BY.Glyph(key, size) end
 
-local f, taskSlots, itemRows, itemsBox, blank
-local column = "items"                 -- the list the stick works
-local taskSel, taskTop = 1, 1          -- in taskLines
-local taskLines = {}                   -- { all } / { task } / { header, count }
-local itemSel, itemTop = 1, 1
-local items, vendorCount = {}, 0
-local pickedAt = 0
-
-local function ItemInfo(id)
-    return ((C_Item and C_Item.GetItemInfo) or GetItemInfo)(id)
-end
-
--- A task ready to craft (the bags hold all it still needs)
-local function Ready(t)
-    local left = math.max(0, t.count - (t.made or 0))
-    for _, r in ipairs(t.reagents) do
-        if TK.ItemCount(r.itemID) < r.per * left then return false end
-    end
-    return true
-end
-
--- The left list: all tasks, those still getting reagents, then the ready
--- ones under their header
-local function TaskLines()
-    taskLines = { { all = true } }
-    local ready = {}
-    for _, t in ipairs(TK.Tasks()) do
-        -- (a task done needs nothing: not here)
-        if TK.Done(t) then
-        elseif Ready(t) then ready[#ready + 1] = t else taskLines[#taskLines + 1] = { task = t } end
-    end
-    if #ready > 0 then
-        taskLines[#taskLines + 1] = { header = "Ready to craft", count = #ready }
-        for _, t in ipairs(ready) do taskLines[#taskLines + 1] = { task = t } end
-    end
-end
-
--- The picked task (nil: all of them)
-local function PickedTask()
-    local line = taskLines[taskSel]
-    return line and line.task or nil
-end
-
--- What the picked task (or all) still needs from the auction house:
--- { itemID, need, have, missing }; how many come from a vendor
-local function Gather()
-    items, vendorCount = {}, 0
-    local task = PickedTask()
-    if task then
-        local left = math.max(0, task.count - (task.made or 0))
-        for _, r in ipairs(task.reagents) do
-            local need = r.per * left
-            local have = TK.ItemCount(r.itemID)
-            local missing = math.max(0, need - have)
-            if missing > 0 then
-                if TK.FromVendor(r.itemID) then
-                    vendorCount = vendorCount + 1
-                else
-                    items[#items + 1] = { itemID = r.itemID, need = need, have = have, missing = missing }
-                end
-            end
-        end
-    else
-        for _, e in ipairs(TK.Needs()) do
-            if e.missing > 0 then
-                if e.vendor then vendorCount = vendorCount + 1 else items[#items + 1] = e end
-            end
-        end
-    end
-end
-
+---------------------------------------------------------------------------
+-- The tasks' column (here and at a vendor): a panel, its title, a row a
+-- task ("All tasks" first, the ready ones under their header). list =
+-- IC.TaskList(parent, width, rows, onClick): list.frame (to place),
+-- list:Render(focused, extra) (extra: "All tasks"' second line),
+-- list:Picked() (the task; nil: all), list:Step(dir), list:Pick(index)
+---------------------------------------------------------------------------
 local function Header(parent, width)
     local header = K.NewFrame("Frame", nil, parent)
     header:SetSize(width, ROW_H - 4)
@@ -118,6 +51,133 @@ local function Header(parent, width)
     return header
 end
 
+function IC.TaskList(parent, width, rowsFit, onClick)
+    local list = { sel = 1, top = 1, lines = {} }
+    local box = BY.Panel(parent, 0.4)
+    box:SetWidth(width)
+    list.frame = box
+    local title = K.ChatText(box, 12, KC.dimGold)
+    title:SetPoint("TOP", 0, -10)
+    local rows = {}
+    local rowW = width - 16
+    for i = 1, rowsFit do
+        local row = BY.ItemRow(box, rowW, ROW_H - 4, rowW - 50 - 6)
+        row:SetPoint("TOPLEFT", 8, -30 - (i - 1) * ROW_H)
+        row:SetScript("OnClick", function(self)
+            if self.index then
+                list:Pick(self.index)
+                if onClick then onClick() end
+            end
+        end)
+        row.header = Header(box, rowW)
+        row.header:SetPoint("TOPLEFT", 8, -30 - (i - 1) * ROW_H)
+        rows[i] = row
+    end
+
+    function list:Picked()
+        local line = self.lines[self.sel]
+        return line and line.task or nil
+    end
+
+    -- (a header: on past it, the way it was going); true: another picked
+    function list:Pick(index, dir)
+        index = math.max(1, math.min(#self.lines, index))
+        if self.lines[index] and self.lines[index].header then
+            local past = index + (dir or 1)
+            if self.lines[past] then index = past else index = self.sel end
+        end
+        if index == self.sel then return false end
+        self.sel = index
+        return true
+    end
+
+    function list:Step(dir)
+        return self:Pick(self.sel + dir, dir)
+    end
+
+    -- The lines again (the picked task kept picked as it moves between
+    -- sections)
+    function list:Refresh()
+        local picked = self:Picked()
+        self.lines = TK.TaskLines()
+        if picked then
+            for i, line in ipairs(self.lines) do
+                if line.task == picked then self.sel = i end
+            end
+        end
+        self.sel = math.max(1, math.min(self.sel, #self.lines))
+        if self.lines[self.sel].header then self.sel = self.sel + 1 end
+    end
+
+    function list:Render(focused, allLine)
+        local lines = self.lines
+        local n = #lines
+        local shown = #rows
+        if self.sel < self.top then self.top = self.sel end
+        if self.sel > self.top + shown - 1 then self.top = self.sel - shown + 1 end
+        self.top = math.max(1, math.min(self.top, math.max(1, n - shown + 1)))
+        local count = #TK.Tasks()
+        title:SetText((focused and Glyph(self.glyph or "LS", 18) .. " " or "") .. count
+            .. (count == 1 and " task" or " tasks"))
+        local fr, fg, fb = BY.FocusColor()
+        for i, row in ipairs(rows) do
+            local index = self.top + i - 1
+            local line = lines[index]
+            row.index = index
+            row:SetShown(line ~= nil and not line.header)
+            row.header:SetShown(line ~= nil and line.header ~= nil)
+            if line and line.header then
+                row.header.text:SetText("|cff5fd35f" .. line.header:upper() .. "|r")
+                row.header.info:SetText(line.count .. "")
+            elseif line then
+                if line.all then
+                    row:Fill({ icon = ALL_ICON, quality = 1, name = "All tasks", line = allLine or "" })
+                else
+                    local t = line.task
+                    local left = math.max(0, t.count - (t.made or 0))
+                    row:Fill({ icon = t.icon, quality = 1, name = t.name .. " × " .. left,
+                        line = TK.Ready(t) and "|cff5fd35fready to craft|r" or "reagents to get" })
+                end
+                -- (the list with the pad: its pick in the focus colour; else dimmed)
+                row.focus:SetShown(index == self.sel)
+                row.focus:SetVertexColor(fr, fg, fb, focused and 1 or 0.35)
+            end
+        end
+    end
+
+    -- (the stick's glyph in the title: the caller says which glyph)
+    function list:SetGlyph(key)
+        self.glyph = key
+    end
+
+    return list
+end
+
+---------------------------------------------------------------------------
+-- The tab
+---------------------------------------------------------------------------
+local TT = { key = "tasks", label = "Tasks", icon = ALL_ICON }
+IC.AuctionTasks = TT
+
+local f, tasks, itemRows, itemsBox, blank
+local column = "items"                 -- the list the stick works
+local itemSel, itemTop = 1, 1
+local items, vendorCount = {}, 0
+local pickedAt = 0
+
+local function ItemInfo(id)
+    return ((C_Item and C_Item.GetItemInfo) or GetItemInfo)(id)
+end
+
+-- What the picked task (or all) still needs from the auction house; how
+-- many come from a vendor
+local function Gather()
+    items, vendorCount = {}, 0
+    for _, e in ipairs(TK.NeedsFor(tasks:Picked())) do
+        if e.vendor then vendorCount = vendorCount + 1 else items[#items + 1] = e end
+    end
+end
+
 function TT.Build(parent)
     f = K.NewFrame("Frame", nil, parent)
     f:SetAllPoints(parent)
@@ -125,28 +185,13 @@ function TT.Build(parent)
     local rowsFit = math.floor((BY.H - 30 - 36 - 34) / ROW_H)
 
     -- Left: the tasks
-    local box = BY.Panel(f, 0.4)
-    box:SetPoint("TOPLEFT", 14, -30)
-    box:SetPoint("BOTTOMLEFT", 14, 36)
-    box:SetWidth(TASKS_W)
-    f.title = K.ChatText(box, 12, KC.dimGold)
-    f.title:SetPoint("TOP", 0, -10)
-    taskSlots = {}
-    local width = TASKS_W - 16
-    for i = 1, rowsFit do
-        local row = BY.ItemRow(box, width, ROW_H - 4, width - 50 - 6)
-        row:SetPoint("TOPLEFT", 8, -30 - (i - 1) * ROW_H)
-        row:SetScript("OnClick", function(self)
-            if self.index then
-                column = "tasks"
-                TT.PickTask(self.index)
-                BY.Render()
-            end
-        end)
-        row.header = Header(box, width)
-        row.header:SetPoint("TOPLEFT", 8, -30 - (i - 1) * ROW_H)
-        taskSlots[i] = row
-    end
+    tasks = IC.TaskList(f, TASKS_W, rowsFit, function()
+        column = "tasks"
+        itemSel, itemTop, pickedAt = 1, 1, GetTime()
+        BY.Render()
+    end)
+    tasks.frame:SetPoint("TOPLEFT", 14, -30)
+    tasks.frame:SetPoint("BOTTOMLEFT", 14, 36)
 
     -- Middle: what to buy here
     itemsBox = BY.Panel(f, 0.4)
@@ -164,7 +209,7 @@ function TT.Build(parent)
     itemsBox.empty:SetWidth(ITEMS_W - 30)
     itemsBox.empty:SetJustifyH("CENTER")
     itemRows = {}
-    width = ITEMS_W - 16
+    local width = ITEMS_W - 16
     for i = 1, rowsFit - 1 do
         local row = BY.ItemRow(itemsBox, width, ROW_H - 4, width - 50 - 6)
         row:SetPoint("TOPLEFT", 8, -30 - (i - 1) * ROW_H)
@@ -187,61 +232,6 @@ function TT.Build(parent)
     blank.text:SetWidth(BY.W - DETAIL_X - 16 - 60)
     blank.text:SetJustifyH("CENTER")
     return f
-end
-
--- A task picked (headers passed over, the way it was going): its items
--- from their top, the item's screen closed until one is picked
-function TT.PickTask(index, dir)
-    index = math.max(1, math.min(#taskLines, index))
-    if taskLines[index] and taskLines[index].header then
-        local past = index + (dir or 1)
-        if taskLines[past] then index = past else index = taskSel end
-    end
-    if index == taskSel then return end
-    taskSel = index
-    itemSel, itemTop, pickedAt = 1, 1, GetTime()
-end
-
-local function RenderTasks()
-    local tasks = TK.Tasks()
-    local n = #taskLines
-    taskSel = math.max(1, math.min(taskSel, n))
-    if taskLines[taskSel].header then taskSel = taskSel + 1 end
-    local shown = #taskSlots
-    if taskSel < taskTop then taskTop = taskSel end
-    if taskSel > taskTop + shown - 1 then taskTop = taskSel - shown + 1 end
-    taskTop = math.max(1, math.min(taskTop, math.max(1, n - shown + 1)))
-    f.title:SetText((column == "tasks" and Glyph("LS", 18) .. " " or "") .. #tasks
-        .. (#tasks == 1 and " task" or " tasks"))
-    local fr, fg, fb = BY.FocusColor()
-    for i, row in ipairs(taskSlots) do
-        local index = taskTop + i - 1
-        local line = taskLines[index]
-        row.index = index
-        row:SetShown(line ~= nil and not line.header)
-        row.header:SetShown(line ~= nil and line.header ~= nil)
-        if line and line.header then
-            row.header.text:SetText("|cff5fd35f" .. line.header:upper() .. "|r")
-            row.header.info:SetText(line.count .. "")
-        elseif line then
-            if line.all then
-                local count = 0
-                for _, e in ipairs(TK.Needs()) do
-                    if e.missing > 0 and not e.vendor then count = count + 1 end
-                end
-                row:Fill({ icon = ALL_ICON, quality = 1, name = "All tasks",
-                    line = count > 0 and (count .. " to buy here") or "|cff5fd35fnothing to buy here|r" })
-            else
-                local t = line.task
-                local left = math.max(0, t.count - (t.made or 0))
-                row:Fill({ icon = t.icon, quality = 1, name = t.name .. " × " .. left,
-                    line = Ready(t) and "|cff5fd35fready to craft|r" or "reagents to get" })
-            end
-            -- (the stick's list: its pick in the focus colour; the other: dimmed)
-            row.focus:SetShown(index == taskSel)
-            row.focus:SetVertexColor(fr, fg, fb, column == "tasks" and 1 or 0.35)
-        end
-    end
 end
 
 local function RenderItems()
@@ -302,16 +292,13 @@ end
 
 function TT.Render()
     if not f then return end
-    -- (the picked task kept picked as it moves between sections)
-    local picked = PickedTask()
-    TaskLines()
-    if picked then
-        for i, line in ipairs(taskLines) do
-            if line.task == picked then taskSel = i end
-        end
-    end
+    tasks:Refresh()
     Gather()
-    RenderTasks()
+    local count = 0
+    for _, e in ipairs(TK.NeedsFor(nil)) do
+        if not e.vendor then count = count + 1 end
+    end
+    tasks:Render(column == "tasks", count > 0 and (count .. " to buy here") or "|cff5fd35fnothing to buy here|r")
     RenderItems()
     RenderRight()
 end
@@ -335,7 +322,7 @@ end
 
 function TT.StickStep(dir)
     if column == "tasks" then
-        TT.PickTask(taskSel + dir, dir)
+        if tasks:Step(dir) then itemSel, itemTop, pickedAt = 1, 1, GetTime() end
     else
         local was = itemSel
         itemSel = math.max(1, math.min(#items, itemSel + dir))

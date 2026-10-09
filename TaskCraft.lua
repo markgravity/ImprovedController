@@ -1,9 +1,10 @@
--- The profession window's "Add Task": in a recipe's More options
--- (Triangle, the game's own menu), on the recipe picked. It opens a panel
--- that takes the pad: how many to make (the D-pad 1, L1 / R1 5, L2 / R2
--- 20), each reagent's had and still to buy, where from (a vendor, the
--- auction house) and about what it costs; Cross adds the task
--- (Tasks.lua), Circle backs out.
+-- The profession window's "Add Task": Cross held on a recipe of its list (a
+-- prompt of ours under the window's legend), for that recipe. It opens a panel
+-- beside the window that takes the pad: how many to make (the D-pad left /
+-- right 1, up / down 5), each reagent's had and still to buy, where from
+-- (a vendor, the auction house) and an estimate of its cost; Cross adds
+-- the task (Tasks.lua), Circle backs out. Its buttons in the game's legend
+-- under it (IC.InputLegend).
 local _, IC = ...
 
 local K = IC.ConfigKit
@@ -15,10 +16,6 @@ IC.TaskCraft = TC
 
 local W = 440
 local REPEAT_DELAY, REPEAT_EVERY = 0.35, 0.08
-
-local function Glyph(key, size)
-    return IC.GlyphText(key, size or 20)
-end
 
 ---------------------------------------------------------------------------
 -- The panel
@@ -91,10 +88,20 @@ rule:SetHeight(1)
 rule:SetColorTexture(0.45, 0.38, 0.25, 0.9)
 local totalLabel = K.ChatText(receipt, 14, KC.cream)
 local totalValue = K.ChatText(receipt, 14, KC.title)
+local profitLabel = K.ChatText(receipt, 14, KC.cream)
+local profitValue = K.ChatText(receipt, 14, KC.title)
+profitValue:SetJustifyH("RIGHT")
 totalValue:SetJustifyH("RIGHT")
 
-local legend = K.ChatText(panel, 12, KC.help)
-legend:SetPoint("BOTTOM", 0, 14)
+-- Its buttons in the game's legend under it
+local legend = IC.InputLegend(panel)
+legend:SetPoint("TOPRIGHT", panel, "BOTTOMRIGHT", 0, -6)
+local PROMPTS = {
+    { "PAD1", "A", "Add Task" },
+    { glyph = "DPAD_LR", text = "1" },
+    { glyph = "DPAD_UD", text = "5" },
+    { "PAD2", "B", "Cancel" },
+}
 
 ---------------------------------------------------------------------------
 -- What it shows: S = { recipe, count }
@@ -153,16 +160,32 @@ local function Render()
     totalLabel:SetPoint("TOPLEFT", 0, y)
     totalValue:ClearAllPoints()
     totalValue:SetPoint("TOPRIGHT", 0, y)
-    totalLabel:SetText("About" .. (unknown and " |cff9d917a(some prices unknown)|r" or ""))
+    totalLabel:SetText("Estimate cost" .. (unknown and " |cff9d917a(some prices unknown)|r" or ""))
     totalValue:SetText(IC.Auction and IC.Auction.Money(cost) or tostring(cost))
     y = y - LINE
+    -- What it would bring: what it makes at its usual auction price, after
+    -- the cut, less the estimate cost (what is still to buy)
+    local A = IC.Auction
+    local unitNet = A and r.output and A.UnitNet(r.output)
+    profitLabel:ClearAllPoints()
+    profitLabel:SetPoint("TOPLEFT", 0, y)
+    profitValue:ClearAllPoints()
+    profitValue:SetPoint("TOPRIGHT", 0, y)
+    if unitNet then
+        local profit = math.floor(unitNet * S.count * r.makes - cost)
+        profitLabel:SetText("Estimate profit |cff9d917a(" .. S.count * r.makes .. " sold at its usual price)|r")
+        profitValue:SetText((profit < 0 and "|cffff7a5c-" or "|cff5fd35f") .. A.Money(math.abs(profit)) .. "|r")
+    else
+        profitLabel:SetText("Estimate profit")
+        profitValue:SetText("|cff9d917aunknown (no price yet)|r")
+    end
+    y = y - LINE
     receipt:SetHeight(-y)
-    panel:SetHeight(170 - y + 50)
+    panel:SetHeight(170 - y + 20)
     local fr, fg, fb = 1, 0.9, 0.4
     qtyLeft:SetTextColor(fr, fg, fb)
     qtyRight:SetTextColor(fr, fg, fb)
-    legend:SetText(Glyph("A") .. " Add task   " .. Glyph("DPAD_LR") .. " 1   " .. Glyph("LB") .. " " .. Glyph("RB")
-        .. " 5   " .. Glyph("LT") .. " " .. Glyph("RT") .. " 20   " .. Glyph("B") .. " Cancel")
+    legend:Set(PROMPTS)
 end
 
 function TC.Open(recipeID, count)
@@ -173,13 +196,17 @@ function TC.Open(recipeID, count)
     end
     S = { recipe = recipe, count = math.max(1, count or 1) }
     panel:ClearAllPoints()
+    -- (beside the profession window, on its right)
     local over = _G.ProfessionsFrame
     if over and over:IsShown() then
-        panel:SetPoint("CENTER", over, "CENTER", 0, 0)
+        panel:SetPoint("TOPLEFT", over, "TOPRIGHT", 12, 0)
     else
         panel:SetPoint("CENTER")
     end
+    -- (over the game's More options menu, still open beneath it)
+    panel:SetFrameLevel(500)
     panel:Show()
+    panel:Raise()
     Render()
 end
 
@@ -194,14 +221,15 @@ end
 local catcher = K.NewFrame("Frame", nil, panel)
 catcher:SetAllPoints(panel)
 local KEYS = {
-    PADDLEFT = "LEFT", PADDRIGHT = "RIGHT", PADLSHOULDER = "LB", PADRSHOULDER = "RB",
-    PADLTRIGGER = "LT", PADRTRIGGER = "RT", PAD1 = "A", PAD2 = "B",
+    PADDLEFT = "LEFT", PADDRIGHT = "RIGHT", PADDUP = "UP", PADDDOWN = "DOWN",
+    PAD1 = "A", PAD2 = "B",
 }
 local held
 
 local function Step(name)
-    local step = (name == "LEFT" or name == "RIGHT") and 1 or (name == "LB" or name == "RB") and 5 or 20
-    local up = name == "RIGHT" or name == "RB" or name == "RT"
+    -- (the D-pad: left / right 1, up / down 5)
+    local step = (name == "LEFT" or name == "RIGHT") and 1 or 5
+    local up = name == "RIGHT" or name == "UP"
     local count = S.count
     if step == 1 then
         count = count + (up and 1 or -1)
@@ -255,9 +283,7 @@ panel:SetScript("OnHide", function()
 end)
 
 ---------------------------------------------------------------------------
--- The profession window: "Add task" in a recipe's More options (Triangle:
--- the game's own menu, tagged MORE_CONTEXT_ACTIONS; added to as the game
--- opens it, only for a recipe of the profession window's list)
+-- The profession window: on a recipe of its list, Cross held adds a task
 ---------------------------------------------------------------------------
 local function CurrentRecipe()
     local page = _G.ProfessionsFrame and _G.ProfessionsFrame.CraftingPage
@@ -275,11 +301,36 @@ local function CurrentAmount()
 end
 
 -- The menu's owner: a row of the profession window's recipe list
-local function InRecipeList(region)
+-- Cross held on a recipe of the list opens it: "Hold to Add Task" (the
+-- game's hold ring, filling) in the profession window's own legend, while
+-- the cursor is on the list (there Cross only selects
+-- the recipe: holding it does nothing else). Cross is only watched
+-- (IsKeyDown), never bound, and nothing of ours goes into the game's UI (an
+-- entry added to its More options menu, Menu.ModifyMenu, sat in the game's
+-- menu data and tainted the window's closing: ADDON_ACTION_FORBIDDEN;
+-- Triangle held could not be used: the game opens that menu on its press).
+local ADD_KEY, ADD_HOLD = "PAD1", 0.8
+local ADD_PROMPTS = { { ADD_KEY, "A", "Hold to Add Task", hold = true } }
+local addLegend = IC.InputLegend(UIParent)
+addLegend:SetFrameStrata("HIGH")
+local addStart, addWasDown, addUsed = nil, false, false
+
+-- The profession window's legend, while it shows (its crafting page's)
+local function ProfessionLegend()
+    local frame = _G.ProfessionsFrame
+    local footer = frame and frame:IsShown() and frame.craftingPageFooter
+    local legend = footer and footer.isShown and footer.inputLegend
+    return legend and legend:IsVisible() and legend or nil
+end
+
+-- The game's cursor on a recipe of the profession window's list (read only)
+local function OnRecipeList()
     local page = _G.ProfessionsFrame and _G.ProfessionsFrame.CraftingPage
     local list = page and page.RecipeList
-    if not (list and list:IsVisible()) then return false end
-    local frame = region
+    local nav = _G.SmartNavigation
+    if not (list and list:IsVisible() and nav and nav.GetCurrentButton) then return false end
+    local ok, button = pcall(nav.GetCurrentButton, nav)
+    local frame = ok and button or nil
     while frame do
         if frame == list then return true end
         frame = frame.GetParent and frame:GetParent()
@@ -287,14 +338,151 @@ local function InRecipeList(region)
     return false
 end
 
-if Menu and Menu.ModifyMenu then
-    Menu.ModifyMenu("MORE_CONTEXT_ACTIONS", function(owner, rootDescription)
-        if not InRecipeList(owner) or not CurrentRecipe() then return end
-        rootDescription:CreateButton("Add Task", function()
-            -- (after the menu has gone: the panel takes the pad)
-            C_Timer.After(0, function() TC.Open(CurrentRecipe(), CurrentAmount()) end)
+-- The prompt inside the game's own legend, as the Destroy panel's in the
+-- loot window's (Destroy.lua): a holder of ours on the profession window,
+-- the game's prompt template in it, set after the last of the game's
+-- prompts inside the legend box, the box widened to hold it (its width
+-- given back after); the legend is read, never handed anything
+local LEGEND_PAD, PROMPT_GAP = 10, 15   -- the game's legend layout (InputLegendPromptGroup.lua)
+local inPrompt
+local function InPrompt()
+    if inPrompt == nil then
+        inPrompt = false
+        local frame = _G.ProfessionsFrame
+        if not frame then
+            inPrompt = nil
+            return nil
+        end
+        local holder = K.NewFrame("Frame", nil, frame)
+        local ok, x = pcall(function()
+            local x = K.NewFrame("Frame", nil, holder, "InputPromptOneIconWithTextTemplate")
+            x:SetPromptInputIconKey(1, _G.GAMEPAD_FACE_BOTTOM or ADD_KEY)
+            x:SetPromptText("Hold to Add Task")
+            x:EnablePrompt()
+            x.ring = IC.HoldRing(x, x:GetInputIconControl(1), 32)
+            return x
         end)
-    end)
+        if ok and x then
+            holder.prompt, holder.ring = x, x.ring
+            holder:Hide()
+            inPrompt = holder
+        end
+    end
+    return inPrompt or nil
+end
+
+-- Puts it after the last of the game's prompts, the box widened to hold it
+local function PlaceInLegend(legend)
+    local holder = InPrompt()
+    local box = legend.promptContainerFrame
+    if not (holder and box) then return false end
+    local width = box:GetWidth()
+    -- The game laid its legend out again (or a new box): that's its width
+    if holder.box ~= box or not holder.setWidth or math.abs(width - holder.setWidth) > 0.5 then
+        holder.box, holder.baseWidth = box, width
+        holder.prompt:ClearAllPoints()
+        holder.prompt:SetPoint("TOPLEFT", box, "TOPLEFT", width - LEGEND_PAD + PROMPT_GAP, -LEGEND_PAD)
+    end
+    holder:SetFrameLevel(box:GetFrameLevel() + 2)
+    holder.setWidth = holder.baseWidth + PROMPT_GAP + holder.prompt:GetWidth()
+    box:SetWidth(holder.setWidth)
+    holder:Show()
+    return true
+end
+
+local function GiveBackWidth()
+    local holder = inPrompt
+    if not holder or not holder:IsShown() then return end
+    holder:Hide()
+    -- The box's own width back, unless the game has set it since
+    local box = holder.box
+    if box and holder.setWidth and math.abs(box:GetWidth() - holder.setWidth) <= 0.5 then
+        box:SetWidth(holder.baseWidth)
+    end
+    holder.box, holder.setWidth = nil, nil
+end
+
+local function SetAddRing(p)
+    for _, ring in ipairs(addLegend.rings) do ring:SetProgress(p) end
+    if inPrompt then inPrompt.ring:SetProgress(p) end
+end
+
+local addShown = false              -- the prompt up last frame (the press checked against it)
+local watch = CreateFrame("Frame")
+watch:SetScript("OnUpdate", function()
+    local frame = _G.ProfessionsFrame
+    if not (frame and frame:IsShown()) then
+        if addLegend:IsShown() then addLegend:Hide() end
+        GiveBackWidth()
+        addStart, addWasDown, addShown = nil, false, false
+        return
+    end
+    local down = IsKeyDown and IsKeyDown(ADD_KEY) or false
+    -- (a press counts if the prompt was up just before it: the cursor on
+    -- the list then)
+    if down and not addWasDown and addShown then addStart, addUsed = GetTime(), false end
+    if not down then
+        if addStart and IC.Vibe then IC.Vibe.Hold(nil) end
+        addStart, addUsed = nil, false
+    end
+    addWasDown = down
+    local holding = addStart and not addUsed
+    local legend = not panel:IsShown() and not IC.InCombat() and CurrentRecipe() and OnRecipeList()
+        and ProfessionLegend()
+    if legend then
+        -- (in the game's legend, else in our own box under it)
+        if PlaceInLegend(legend) then
+            addLegend:Hide()
+        else
+            GiveBackWidth()
+            addLegend:Set(ADD_PROMPTS)
+            addLegend:ClearAllPoints()
+            addLegend:SetPoint("TOPRIGHT", legend, "BOTTOMRIGHT", 0, -4)
+        end
+    elseif not holding then
+        -- (while held it stays where it was, its ring filling)
+        addLegend:Hide()
+        GiveBackWidth()
+    end
+    addShown = legend and true or false
+    if holding then
+        local p = math.min(1, (GetTime() - addStart) / ADD_HOLD)
+        SetAddRing(p)
+        if IC.Vibe then IC.Vibe.Hold(p) end
+        if p >= 1 then
+            addUsed = true
+            SetAddRing(0)
+            if IC.Vibe then IC.Vibe.Confirm() end
+            TC.Open(CurrentRecipe(), CurrentAmount())
+        end
+    else
+        SetAddRing(0)
+    end
+end)
+
+-- /ic addprobe: why "Hold to Add Task" shows or not (each check's answer)
+function TC.Probe()
+    local frame = _G.ProfessionsFrame
+    local legend = ProfessionLegend()
+    local x = inPrompt
+    IC.Print("addprobe: window " .. tostring(frame and frame:IsShown()) .. ", recipe " .. tostring(CurrentRecipe())
+        .. ", cursor on list " .. tostring(OnRecipeList()) .. ", legend " .. tostring(legend ~= nil)
+        .. (legend and (", wrap " .. tostring(legend.wrapAroundRowWidth)) or ""))
+    if legend then
+        local box = legend.promptContainerFrame
+        IC.Print("addprobe: box width " .. tostring(box and math.floor(box:GetWidth())) .. ", right "
+            .. tostring(box and box:GetRight() and math.floor(box:GetRight())) .. ", strata "
+            .. tostring(box and box:GetFrameStrata()) .. " level " .. tostring(box and box:GetFrameLevel()))
+    end
+    if x then
+        local pr = x.prompt
+        IC.Print("addprobe: prompt shown " .. tostring(x:IsShown()) .. " visible " .. tostring(pr:IsVisible())
+            .. ", width " .. math.floor(pr:GetWidth()) .. ", left " .. tostring(pr:GetLeft() and math.floor(pr:GetLeft()))
+            .. ", strata " .. x:GetFrameStrata() .. " level " .. x:GetFrameLevel() .. ", alpha " .. x:GetEffectiveAlpha())
+    else
+        IC.Print("addprobe: prompt " .. (inPrompt == false and "couldn't be made (template)" or "not made yet"))
+    end
+    IC.Print("addprobe: fallback box shown " .. tostring(addLegend:IsShown()))
 end
 
 local events = CreateFrame("Frame")

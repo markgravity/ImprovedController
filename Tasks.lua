@@ -86,6 +86,7 @@ function TK.Recipe(recipeID)
         recipeID = recipeID, reagents = reagents,
         name = schematic.name or (info and info.name) or ("recipe " .. recipeID),
         icon = info and info.icon, makes = math.max(1, schematic.quantityMin or 1),
+        output = schematic.outputItemID,
     }
 end
 
@@ -150,6 +151,53 @@ function TK.Needs()
     return list
 end
 
+-- What one task still needs (nil: all of them, added up): { itemID, need,
+-- have, missing, vendor }, only what is missing
+function TK.NeedsFor(task)
+    local list = {}
+    if not task then
+        for _, e in ipairs(TK.Needs()) do
+            if e.missing > 0 then list[#list + 1] = e end
+        end
+        return list
+    end
+    local left = math.max(0, task.count - (task.made or 0))
+    for _, r in ipairs(task.reagents) do
+        local need = r.per * left
+        local have = ItemCount(r.itemID)
+        if need > have then
+            list[#list + 1] = { itemID = r.itemID, need = need, have = have, missing = need - have,
+                vendor = TK.FromVendor(r.itemID) }
+        end
+    end
+    return list
+end
+
+-- A task ready to craft: the bags hold all it still needs
+function TK.Ready(task)
+    local left = math.max(0, task.count - (task.made or 0))
+    for _, r in ipairs(task.reagents) do
+        if ItemCount(r.itemID) < r.per * left then return false end
+    end
+    return true
+end
+
+-- The tasks as the buying lists show them: "All tasks", those still
+-- getting reagents, then the ready ones under a header (done ones not:
+-- they need nothing). { all } / { task } / { header, count }
+function TK.TaskLines()
+    local lines, ready = { { all = true } }, {}
+    for _, t in ipairs(TK.Tasks()) do
+        if TK.Done(t) then
+        elseif TK.Ready(t) then ready[#ready + 1] = t else lines[#lines + 1] = { task = t } end
+    end
+    if #ready > 0 then
+        lines[#lines + 1] = { header = "Ready to craft", count = #ready }
+        for _, t in ipairs(ready) do lines[#lines + 1] = { task = t } end
+    end
+    return lines
+end
+
 -- One item's still-missing count (0: none)
 function TK.Missing(itemID)
     for _, e in ipairs(TK.Needs()) do
@@ -196,7 +244,8 @@ TK.ItemName = ItemName
 -- press: a hardware event)
 function TK.OpenRecipe(task)
     if IC.InCombat() then return end
-    if not _G.ProfessionsFrame and ProfessionsFrame_LoadUI then ProfessionsFrame_LoadUI() end
+    -- (the game loads and shows its own window for it: never loaded from
+    -- here, a Blizzard window loaded by addon code is tainted)
     local ui = C_TradeSkillUI
     if ui and ui.OpenRecipe then
         local ok = pcall(ui.OpenRecipe, task.recipeID)
@@ -373,87 +422,23 @@ local headerText = header:CreateFontString(nil, "ARTWORK")
 Font(headerText, "ObjectiveTrackerHeaderFont", GameFontNormalMed2 or GameFontNormal)
 headerText:SetPoint("LEFT", 7, 0)
 headerText:SetJustifyH("LEFT")
--- The button legend while the panel has the pad: as the game's own (its
--- footer box: slot and neutral border, its prompt template; 10 padding,
--- 15 between prompts), right-aligned under the panel
-local LEGEND_PAD, PROMPT_GAP = 10, 15
-local legend = CreateFrame("Frame", nil, nil)
-legend:SetParent(panel)
+-- The button legend while the panel has the pad: the game's own look
+-- (IC.InputLegend, Pad.lua), right-aligned under the panel (or its menu)
+local legend = IC.InputLegend(panel)
 legend:SetFrameStrata("MEDIUM")
-legend:Hide()
-do
-    local slot = legend:CreateTexture(nil, "BACKGROUND")
-    if not Atlas(slot, "gamepad-footer-slot-bg") then slot:SetColorTexture(0.05, 0.04, 0.03, 0.92) end
-    slot:SetAllPoints()
-    local border = legend:CreateTexture(nil, "BORDER")
-    Atlas(border, "gamepad-footer-slot-frameneutral")
-    border:SetAllPoints()
-end
 local PANEL_PROMPTS = { { "PAD1", "A", "Craft" }, { "PAD3", "X", "Hold to Remove", hold = true }, { "PAD4", "Y", "More" },
     { "PAD2", "B", "Back" } }
 -- (a task done: Cross opens its recipe)
 local DONE_PROMPTS = { { "PAD1", "A", "Open" }, { "PAD3", "X", "Hold to Remove", hold = true }, { "PAD4", "Y", "More" },
     { "PAD2", "B", "Back" } }
 local MENU_PROMPTS = { { "PAD1", "A", "Select" }, { "PAD2", "B", "Close" } }
-local QTY_PROMPTS = { { "PAD1", "A", "Set" }, { { "PADDLEFT", "PADDRIGHT" }, { "DPAD_LR" }, "1" },
-    { { "PADLSHOULDER", "PADRSHOULDER" }, { "LB", "RB" }, "5" },
-    { { "PADLTRIGGER", "PADRTRIGGER" }, { "LT", "RT" }, "20" }, { "PAD2", "B", "Back" } }
-local built = {}
-local function BuildLegend(defs)
-    if built[defs] then return built[defs] end
-    local prompts = {}
-    built[defs] = prompts
-    for i, def in ipairs(defs) do
-        -- (a pair of buttons, as -/+: the game's two-icon prompt)
-        local pair = type(def[1]) == "table"
-        local ok, p = pcall(function()
-            local x = CreateFrame("Frame", nil, nil,
-                pair and "InputPromptTwoIconWithTextTemplate" or "InputPromptOneIconWithTextTemplate")
-            x:SetParent(legend)
-            if pair then
-                x:SetPromptInputIconKey(1, def[1][1])
-                x:SetPromptInputIconKey(2, def[1][2])
-            else
-                x:SetPromptInputIconKey(1, def[1])
-            end
-            x:SetPromptText(def[3])
-            x:EnablePrompt()
-            -- (a hold: the game's press-and-hold ring round its button)
-            if def.hold then x.holdRing = IC.HoldRing(x, x:GetInputIconControl(1), 36) end
-            return x
-        end)
-        if not ok or not p then
-            -- (no prompt template: the glyphs and the words)
-            p = legend:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            local glyphs = ""
-            for _, g in ipairs(type(def[2]) == "table" and def[2] or { def[2] }) do
-                glyphs = glyphs .. IC.GlyphText(g, 26)
-            end
-            p:SetText(glyphs .. " " .. def[3])
-        end
-        prompts[i] = p
-    end
-    return prompts
-end
-
--- defs: the prompts shown (nil: none), under the panel or the open menu
+local QTY_PROMPTS = { { "PAD1", "A", "Set" }, { glyph = "DPAD_LR", text = "1" }, { glyph = "DPAD_UD", text = "5" },
+    { "PAD2", "B", "Back" } }
 local function ShowLegend(defs, under, gap)
     if not defs then return legend:Hide() end
-    local list = BuildLegend(defs)
-    for set, ps in pairs(built) do
-        for _, p in ipairs(ps) do p:SetShown(set == defs) end
-    end
-    local x, height = LEGEND_PAD, 0
-    for _, p in ipairs(list) do
-        p:ClearAllPoints()
-        p:SetPoint("LEFT", legend, "LEFT", x, 0)
-        x = x + p:GetWidth() + PROMPT_GAP
-        height = math.max(height, p:GetHeight())
-    end
-    legend:SetSize(x - PROMPT_GAP + LEGEND_PAD, height + 2 * LEGEND_PAD)
+    legend:Set(defs)
     legend:ClearAllPoints()
     legend:SetPoint("TOPRIGHT", under or panel, "BOTTOMRIGHT", 0, -(gap or 4))
-    legend:Show()
 end
 
 -- The game's own cursor: its large arrow at 80 %, bobbing (its RIGHT
@@ -522,6 +507,9 @@ local function Block(i)
     local b = blocks[i]
     if b then return b end
     b = CreateFrame("Button", nil, nil)
+    -- (not a stop for the game's own cursor: the panel has its own pad, L2
+    -- in; else the cursor lands on it, a reload in, as on any button)
+    b.smartNavigationIgnored = true
     b:SetParent(panel)
     b:RegisterForClicks("LeftButtonUp")
     b:SetScript("OnClick", function(self)
@@ -618,7 +606,7 @@ menu.sel, menu.entries = 1, {}
 
 -- "Quantity"'s submenu, beside the menu (on its left: the panel is
 -- on its right): how many are still to craft, as the profession window's
--- Add Task sets it (TaskCraft.lua): the D-pad 1, L1 / R1 5, L2 / R2 20,
+-- Add Task sets it (TaskCraft.lua): the D-pad left / right 1, up / down 5,
 -- held to repeat; Cross sets it, Circle goes back to the menu
 local qtyBox = MenuBox("ImprovedControllerTasksQuantity")
 qtyBox.title:SetText("Quantity")
@@ -706,6 +694,7 @@ local function RenderMenu()
         local e = menu.entries[i]
         if not e then
             e = CreateFrame("Button", nil, nil)
+            e.smartNavigationIgnored = true
             e:SetParent(menu)
             e:SetHeight(ENTRY_H)
             e:RegisterForClicks("LeftButtonUp")
@@ -781,8 +770,8 @@ local function CloseQty()
     TK.RenderTracker()
 end
 
-local STEPS = { LEFT = 1, RIGHT = 1, LB = 5, RB = 5, LT = 20, RT = 20 }
-local UP = { RIGHT = true, RB = true, RT = true }
+local STEPS = { LEFT = 1, RIGHT = 1, UP = 5, DOWN = 5 }
+local UP = { RIGHT = true, UP = true }
 
 -- As Add Task's: 1 at a time, or to the next / last multiple of 5 or 20
 local function StepQty(name)
@@ -869,9 +858,8 @@ end
 -- layoutIndex; the tracker's is 50), before the tracker (40): the game
 -- stacks it under the minimap's gap, puts "All Objectives" under it and
 -- makes the tracker as much shorter (ObjectiveTrackerFrame:UpdateHeight),
--- all its own layout. (A test: the game's frame positioning reads our
--- panel; if that gets "blocked" messages, the setting turns it off.)
--- The column missing (or in combat): beside the tracker, on its left.
+-- all its own layout. The column missing (or in combat): beside the
+-- tracker, on its left.
 panel.layoutIndex = 40
 panel.topPadding = 30           -- (the column's own padding: room under the minimap)
 panel.align = "right"
@@ -1080,11 +1068,7 @@ end
 
 local function RenderRemove()
     -- (the legend's Square ring lit as it comes)
-    for _, prompts in pairs(built) do
-        for _, p in ipairs(prompts) do
-            if p.holdRing then p.holdRing:SetProgress(RemoveProgress()) end
-        end
-    end
+    for _, ring in ipairs(legend.rings) do ring:SetProgress(RemoveProgress()) end
     for _, b in ipairs(blocks) do
         local p = removing and b.task == removing.task and RemoveProgress() or 0
         b.fill:SetShown(p > 0)
@@ -1169,11 +1153,25 @@ local function HookTracker()
     end)
 end
 
-local lastL2 = false
+-- The tracker the game's focused frame now, the UI with the pad (read
+-- only; the hook's flag alone can outlast a reload)
+local function TrackerHasPad()
+    local tracker = _G.ObjectiveTrackerFrame
+    local manager = _G.GamepadMode and GamepadMode.FrameControlsManager
+    if manager and manager.focusedFrame ~= nil then
+        return manager.isUIFocused and manager.focusedFrame == tracker or false
+    end
+    return trackerFocused
+end
+
+-- (L2 counted only once seen up: one read as down as the UI loads, a
+-- trigger resting a little in, is no press)
+local lastL2 = true
 local keys = CreateFrame("Frame")
 keys:SetScript("OnUpdate", function()
     local l2 = IsKeyDown and IsKeyDown("PADLTRIGGER") or false
-    if l2 and not lastL2 and trackerFocused and not focus.on and panel:IsShown() and not IC.InCombat() then
+    if l2 and not lastL2 and trackerFocused and TrackerHasPad() and not focus.on and panel:IsShown()
+        and not IC.InCombat() then
         TK.TakePad(true)
     end
     lastL2 = l2

@@ -180,21 +180,33 @@ end
 -- (0 to 1: SetProgress). IC.HoldRing(parent, anchor, size) puts the ring
 -- round an existing icon (a legend prompt's); IC.HoldIcon(parent, size)
 -- makes the glyph too (SetKey).
-local HOLD_BG, HOLD_BAR = "gamepad-press&hold-indicator-BG", "gamepad-press&hold-loadBar"
-local HOLD_GLOW = "gamepad-press&hold-loadBar-glw-BG"
+-- (under the icon: its dark disc; round it, at rest: its bronze ring; lit
+-- as the hold comes: its gold bar; full: its glow. The ring drawn above the
+-- icon, the prompt's icon a frame of its own)
+local HOLD_DISC, HOLD_RING = "gamepad-press&hold-indicator-BG", "gamepad-press&hold-indicator"
+local HOLD_BAR, HOLD_GLOW = "gamepad-press&hold-loadBar", "gamepad-press&hold-loadBar-glw-BG"
 
 function IC.HoldRing(parent, anchor, size)
     local ring = {}
-    local function Layer(atlas, layer, sub)
-        local tex = parent:CreateTexture(nil, layer, nil, sub)
-        tex:SetSize(size, size)
-        tex:SetPoint("CENTER", anchor, "CENTER")
+    local disc = parent:CreateTexture(nil, "BACKGROUND", nil, 1)
+    disc:SetSize(size, size)
+    disc:SetPoint("CENTER", anchor, "CENTER")
+    if hasAtlas(HOLD_DISC) then disc:SetAtlas(HOLD_DISC) else disc:Hide() end
+    local holder = CreateFrame("Frame", nil, nil)
+    holder:SetParent(parent)
+    holder:SetSize(size, size)
+    holder:SetPoint("CENTER", anchor, "CENTER")
+    holder:SetFrameLevel((anchor.GetFrameLevel and anchor:GetFrameLevel() or parent:GetFrameLevel()) + 2)
+    ring.frame, ring.disc = holder, disc
+    local function Layer(atlas, sub)
+        local tex = holder:CreateTexture(nil, "OVERLAY", nil, sub)
+        tex:SetAllPoints()
         if hasAtlas(atlas) then tex:SetAtlas(atlas) else tex:Hide() end
         return tex
     end
-    ring.bg = Layer(HOLD_BG, "BACKGROUND", 1)
-    ring.bar = Layer(HOLD_BAR, "OVERLAY", 1)
-    ring.glow = Layer(HOLD_GLOW, "OVERLAY", 2)
+    ring.track = Layer(HOLD_RING, 1)
+    ring.bar = Layer(HOLD_BAR, 2)
+    ring.glow = Layer(HOLD_GLOW, 3)
     function ring:SetProgress(p)
         if hasAtlas(HOLD_BAR) then self.bar:SetAlpha(p) end
         if hasAtlas(HOLD_GLOW) then self.glow:SetShown(p >= 1) end
@@ -206,11 +218,11 @@ end
 function IC.HoldIcon(parent, size)
     local f = CreateFrame("Frame", nil, nil)
     f:SetParent(parent)
-    f:SetSize(size * 1.6, size * 1.6)
+    f:SetSize(size * 1.4, size * 1.4)
     f.icon = f:CreateTexture(nil, "ARTWORK")
     f.icon:SetSize(size, size)
     f.icon:SetPoint("CENTER")
-    f.ring = IC.HoldRing(f, f, size * 1.6)
+    f.ring = IC.HoldRing(f, f.icon, size * 1.4)
     function f:SetKey(key)
         local atlas = IC.GlyphAtlas(key)
         if atlas then f.icon:SetAtlas(atlas) end
@@ -218,6 +230,112 @@ function IC.HoldIcon(parent, size)
     end
     function f:SetProgress(p) self.ring:SetProgress(p) end
     return f
+end
+
+-- The game's button legend (its footer box: slot and neutral border, its
+-- prompt templates; 10 padding, 15 between prompts), for a panel of ours:
+-- legend = IC.InputLegend(parent); legend:Set(defs) lays it out and shows
+-- it (nil: hidden). A def: { key, glyph, text } (key: the button, "PAD1";
+-- glyph: its IC.GlyphText key, when no template; hold = true: the game's
+-- press-and-hold ring round it, in legend.rings), or { glyph = "DPAD_LR",
+-- text } (one glyph for a pair: the D-pad's left / right, up / down).
+-- Placed by the caller.
+local LEGEND_PAD, PROMPT_GAP = 10, 15
+function IC.InputLegend(parent)
+    local legend = CreateFrame("Frame", nil, nil)
+    legend:SetParent(parent)
+    legend:SetFrameStrata(parent:GetFrameStrata())
+    legend:SetFrameLevel(parent:GetFrameLevel() + 5)
+    legend:Hide()
+    local slot = legend:CreateTexture(nil, "BACKGROUND")
+    if hasAtlas("gamepad-footer-slot-bg") then slot:SetAtlas("gamepad-footer-slot-bg")
+    else slot:SetColorTexture(0.05, 0.04, 0.03, 0.92) end
+    slot:SetAllPoints()
+    local border = legend:CreateTexture(nil, "BORDER")
+    if hasAtlas("gamepad-footer-slot-frameneutral") then border:SetAtlas("gamepad-footer-slot-frameneutral") end
+    border:SetAllPoints()
+    local built = {}
+    legend.rings = {}
+    local textFont                  -- (the prompts' own font, for a glyph's)
+
+    -- A glyph and its words, as a prompt looks
+    local function GlyphPrompt(def)
+        local x = CreateFrame("Frame", nil, nil)
+        x:SetParent(legend)
+        local icon = x:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(24, 24)
+        icon:SetPoint("LEFT")
+        local atlas = IC.GlyphAtlas(def.glyph)
+        if atlas then icon:SetAtlas(atlas) end
+        local text = x:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        if textFont then text:SetFontObject(textFont) end
+        text:SetPoint("LEFT", icon, "RIGHT", 4, 0)
+        text:SetText(def.text)
+        x:SetSize(24 + 4 + text:GetStringWidth(), 24)
+        return x
+    end
+
+    local function Build(defs)
+        if built[defs] then return built[defs] end
+        local prompts = {}
+        built[defs] = prompts
+        for i, def in ipairs(defs) do
+            local pair = type(def[1]) == "table"
+            local ok, p
+            if def.glyph then ok, p = pcall(GlyphPrompt, def) else ok, p = pcall(function()
+                local x = CreateFrame("Frame", nil, nil,
+                    pair and "InputPromptTwoIconWithTextTemplate" or "InputPromptOneIconWithTextTemplate")
+                x:SetParent(legend)
+                if pair then
+                    x:SetPromptInputIconKey(1, def[1][1])
+                    x:SetPromptInputIconKey(2, def[1][2])
+                    -- (either of the pair: the game's "/" between, not its big "+")
+                    if _G.GAMEPAD_PROMPT_DIVIDER_SLASH then x:SetDividerType(_G.GAMEPAD_PROMPT_DIVIDER_SLASH) end
+                else
+                    x:SetPromptInputIconKey(1, def[1])
+                end
+                x:SetPromptText(def[3])
+                x:EnablePrompt()
+                local fs = x.ControlDescText and x.ControlDescText.FontString
+                if fs and not textFont then textFont = fs:GetFontObject() end
+                if def.hold then
+                    x.holdRing = IC.HoldRing(x, x:GetInputIconControl(1), 32)
+                    legend.rings[#legend.rings + 1] = x.holdRing
+                end
+                return x
+            end) end
+            if not ok or not p then
+                -- (no prompt template: the glyphs and the words)
+                p = legend:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                local glyphs = ""
+                for _, g in ipairs(type(def[2]) == "table" and def[2] or { def[2] or def.glyph }) do
+                    glyphs = glyphs .. IC.GlyphText(g, 26)
+                end
+                p:SetText(glyphs .. " " .. (def[3] or def.text))
+            end
+            prompts[i] = p
+        end
+        return prompts
+    end
+
+    function legend:Set(defs)
+        if not defs then return self:Hide() end
+        local list = Build(defs)
+        for set, ps in pairs(built) do
+            for _, p in ipairs(ps) do p:SetShown(set == defs) end
+        end
+        local x, height = LEGEND_PAD, 0
+        for _, p in ipairs(list) do
+            p:ClearAllPoints()
+            p:SetPoint("LEFT", self, "LEFT", x, 0)
+            x = x + p:GetWidth() + PROMPT_GAP
+            height = math.max(height, p:GetHeight())
+        end
+        self:SetSize(x - PROMPT_GAP + LEGEND_PAD, height + 2 * LEGEND_PAD)
+        self:Show()
+    end
+
+    return legend
 end
 
 -- A button's name as printed on the pad in use ("Cross", "A", "B"...)
