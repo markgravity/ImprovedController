@@ -187,12 +187,25 @@ ITEMS[#ITEMS + 1] = Item({
     IC.Upgrades.Refresh()
 end, "Bag arrows"))
 
+ITEMS[#ITEMS + 1] = Item({
+    key = "tasksTracker", group = "tasks", label = "Tasks panel",
+    icon = ICON .. "INV_Misc_Note_01",
+    tip = "A Tasks panel on top of the quest tracker (the game stacks it there, the tracker made shorter), in its look: each task (a recipe's More options,"
+        .. " Triangle, in a profession window: Add Task) with its reagents for all its crafts, had and needed,"
+        .. " where from. With the tracker focused, L2 moves into it: Cross opens a recipe, Square crafts."
+        .. " The auction house's Tasks tab and a vendor's (Triangle) buy what is missing.",
+}, OnOff(function() return S().tasksTracker end, function(on)
+    S().tasksTracker = on
+    IC.Tasks.RenderTracker()
+end, "Tasks panel"))
+
 local GROUPS = {
     { key = "scan", label = "Prices" },
     { key = "buy", label = "Buying" },
     { key = "sell", label = "Selling" },
     { key = "use", label = "Using prices" },
     { key = "upgrades", label = "Upgrades" },
+    { key = "tasks", label = "Tasks" },
 }
 
 menu.AddTab({ key = "auction", label = "Auction", sections = {} }, "vibration")

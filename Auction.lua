@@ -33,6 +33,7 @@ local DEFAULTS = {
     buyUsable = false,     -- its filters: usable only, qualities (none ticked: any), up to my level, sort
     buyMyLevel = false,
     buySort = "price",
+    tasksTracker = true,   -- tasks tracked in the objective tracker (Tasks.lua)
     buyUpgrades = "mark",  -- upgrades (Upgrades.lua) in it: off, mark (an arrow), only
     destroy = true,        -- the Destroy panel leaves out what sells better here than to a vendor
     keepDays = 30,         -- days of prices kept

@@ -540,12 +540,7 @@ local function Move(step)
     DS.Render()
 end
 
-local lastName, lastDown, lastAt
 function DS.Press(name, down)
-    -- (the same press can arrive twice: as a pad button and as a binding)
-    local now = GetTime()
-    if name == lastName and down == lastDown and lastAt and now - lastAt < 0.05 then return end
-    lastName, lastDown, lastAt = name, down, now
     -- L2 / R2 (L2 is the game's Shift: a quick tap): the focus over to the bag window and back
     if name == "SWITCH" then
         if down then DS.SetFocus(DS.focus == "bags" and "panel" or "bags") end
@@ -612,25 +607,40 @@ for key, name in pairs(KEYS) do
     buttons[key] = b
 end
 
+-- Only Escape is bound: the pad's buttons are taken by the panel's catcher
+-- (below) while it has the focus, and L2 / R2 watched while the bags have
+-- it. Override bindings on the pad (Cross above all) carry our taint into
+-- the game's gamepad navigation (ADDON_ACTION_FORBIDDEN). (No catcher on
+-- this client: the pad bound as before.)
 local function Bind()
     if IC.InCombat() then return end
     ClearOverrideBindings(panel)
+    local catcherPad = panel.EnableGamePadButton ~= nil
     for key in pairs(KEYS) do
         local name = buttons[key]:GetName()
-        if DS.focus == "bags" and not SWITCH_KEYS[key] then
-            -- (the bag window's own navigation has it)
+        if DS.focus == "bags" and not (SWITCH_KEYS[key] and not catcherPad) then
+            -- (the bag window's own navigation has it; L2 / R2 watched)
         elseif key == "ESCAPE" then
             SetOverrideBindingClick(panel, true, key, name)
-        else
+        elseif not catcherPad then
             for _, prefix in ipairs(PREFIXES) do SetOverrideBindingClick(panel, true, prefix .. key, name) end
         end
     end
+end
+
+-- L2 / R2 while the bags have the focus (the catcher is off then): watched,
+-- a fresh press bringing the focus back (one held from the switch waits
+-- for its release)
+local switchHeld = false
+local function SwitchDown()
+    return IsKeyDown and (IsKeyDown("PADLTRIGGER") or IsKeyDown("PADRTRIGGER")) or false
 end
 
 -- Which has the pad: the panel (ours, the game's focus hidden) or the bag
 -- window (the game's own navigation, ours dimmed; L2 / R2 come back)
 function DS.SetFocus(focus)
     DS.focus = focus
+    switchHeld = SwitchDown()
     DS.armed, DS.holdStart = nil, nil
     holdBar:Hide()
     Bind()
@@ -640,6 +650,11 @@ function DS.SetFocus(focus)
 end
 
 panel:SetScript("OnUpdate", function()
+    if DS.focus == "bags" and panel.EnableGamePadButton then
+        local down = SwitchDown()
+        if down and not switchHeld and not IC.InCombat() then DS.SetFocus("panel") end
+        switchHeld = down
+    end
     if DS.holdStart then
         local p = math.min(1, (GetTime() - DS.holdStart) / HOLD_ALL)
         holdBar:SetWidth(math.max(1, (legend:GetWidth() - 10) * p))

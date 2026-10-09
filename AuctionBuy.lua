@@ -1176,16 +1176,35 @@ function BY.SearchItem()
     BY.Render()
 end
 
-function BY.OpenItem()
-    local result = BY.results[BY.index]
+-- result: a browse result ({ itemKey }); qty: where a commodity's quantity starts
+local function Open(result, qty)
     local info = KeyInfo(result)
-    if not result or not info then return end
+    if not result or not info then return false end
     D = {
         result = result, info = info, itemID = result.itemKey.itemID, commodity = info.isCommodity,
-        row = 1, qty = 1, listings = {},
+        row = 1, qty = math.max(1, qty or 1), listings = {}, wantQty = qty,
     }
     detail:Show()
     BY.SearchItem()
+    return true
+end
+
+function BY.OpenItem()
+    Open(BY.results[BY.index])
+end
+
+-- An item to buy from elsewhere (a task): the Buy tab, its item open,
+-- qty to start at (once its data have come, if not yet)
+local pendingOpen
+function BY.OpenFor(itemID, qty)
+    if not win:IsShown() then return end
+    BY.SetTab("buy")
+    filterBox:Hide()
+    if D then BY.CloseItem() end
+    local result = { itemKey = AH.MakeItemKey(itemID) }
+    pendingOpen = nil
+    if not Open(result, qty) then pendingOpen = { result = result, qty = qty } end
+    BY.Render()
 end
 
 function BY.CloseItem()
@@ -1514,6 +1533,7 @@ end
 -- For the other pages: the window's parts and looks
 BY.Glyph, BY.Panel, BY.FocusStroke, BY.ItemIcon, BY.FocusColor, BY.Atlas, BY.Deal =
     Glyph, Panel, FocusStroke, ItemIcon, FocusColor, Atlas, Deal
+BY.ItemRow, BY.DealBadge = ItemRow, DealBadge
 BY.W, BY.H = W, H
 function BY.IsShown() return win:IsShown() end
 function BY.Tab() return BY.tab end
@@ -1592,6 +1612,13 @@ function BY.SetTab(key)
     if old then old.Hide() else buyPage:Hide() end
     if GameTooltip:GetOwner() == win then GameTooltip:Hide() end
     BY.tab, BY.held = key, nil
+    -- (an item's screen open: closed, back home)
+    pendingOpen = nil
+    if D then
+        D = nil
+        detail:Hide()
+    end
+    BY.DetailHome()
     local page = CurrentPage()
     if page then
         if not page.frame then page.frame = page.Build(win) end
@@ -1610,6 +1637,58 @@ function BY.StepTab(dir)
         if t.key == BY.tab then return BY.SetTab(BY.TABS[(i - 1 + dir) % n + 1].key) end
     end
 end
+
+-- The item's screen's buttons (no Circle: its page says what that does)
+local function DetailHints()
+    if not D then return "" end
+    -- (a commodity's quantity steps: 1, 5, 20)
+    local move = D.commodity
+        and (Glyph("DPAD_LR") .. " 1   " .. Glyph("LB") .. " " .. Glyph("RB") .. " 5   "
+            .. Glyph("LT") .. " " .. Glyph("RT") .. " 20   ")
+        or (Glyph("DPAD_UD") .. " Auction   ")
+    return Glyph("A") .. " Buy   " .. move .. Glyph("X") .. " Refresh   "
+end
+
+---------------------------------------------------------------------------
+-- The item's screen in another page (the Tasks tab): moved into a frame
+-- there and back; an item opened in place; drawn, its buttons
+---------------------------------------------------------------------------
+function BY.DetailInto(parent, left, top, right, bottom)
+    detail:SetParent(parent)
+    detail:ClearAllPoints()
+    detail:SetPoint("TOPLEFT", parent, "TOPLEFT", left, top)
+    detail:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", right, bottom)
+    detail:SetFrameLevel(parent:GetFrameLevel() + 20)
+end
+
+function BY.DetailHome()
+    detail:SetParent(buyPage)
+    detail:ClearAllPoints()
+    detail:SetAllPoints(content)
+    detail:SetFrameLevel(win:GetFrameLevel() + 20)
+end
+
+function BY.DetailOpen(itemID, qty)
+    if D then BY.CloseItem() end
+    local result = { itemKey = AH.MakeItemKey(itemID) }
+    pendingOpen = nil
+    if not Open(result, qty) then pendingOpen = { result = result, qty = qty } end
+end
+
+function BY.DetailClose()
+    pendingOpen = nil
+    if D then BY.CloseItem() end
+end
+
+function BY.DetailItemID()
+    return (D and D.itemID) or (pendingOpen and pendingOpen.result.itemKey.itemID)
+end
+
+function BY.DetailRender()
+    if D then RenderDetail() end
+end
+
+BY.DetailHints = DetailHints
 
 function BY.Render()
     if not win:IsShown() then return end
@@ -1635,12 +1714,7 @@ function BY.Render()
     if filterBox:IsShown() then
         text = Glyph("DPAD") .. " Move   " .. Glyph("A") .. " Select   " .. Glyph("LS") .. " / " .. Glyph("B") .. " Close"
     elseif D then
-        -- (a commodity's quantity steps: 1, 5, 20)
-        local move = D.commodity
-            and (Glyph("DPAD_LR") .. " 1   " .. Glyph("LB") .. " " .. Glyph("RB") .. " 5   "
-                .. Glyph("LT") .. " " .. Glyph("RT") .. " 20   ")
-            or (Glyph("DPAD_UD") .. " Auction   ")
-        text = Glyph("A") .. " Buy   " .. move .. Glyph("X") .. " Refresh   " .. Glyph("B") .. " Back"
+        text = DetailHints() .. Glyph("B") .. " Back"
     else
         text = Glyph("A") .. " Open   " .. Glyph("DPAD") .. " Move   " .. Glyph("LS") .. " Filters   "
             .. Glyph("B") .. " Close"
@@ -1692,6 +1766,50 @@ local function CloseFilters()
     end
 end
 
+-- The item's screen's presses (true: taken). stay: Circle not taken (a
+-- page showing it all along: the Tasks tab)
+local function DetailPress(name, fast, stay)
+    if not D then return false end
+    if name == "B" then
+        if stay then return false end
+        BY.CloseItem()
+        return true
+    end
+    if name == "A" then
+        Buy()
+        return true
+    end
+    if name == "X" then
+        BY.SearchItem()
+        return true
+    end
+    if D.state == "buying" or D.state == "quote" then return true end
+    if D.commodity and (name == "LEFT" or name == "RIGHT") then
+        D.qty = math.max(1, math.min(math.max(1, Available()), D.qty + (name == "RIGHT" and 1 or -1) * (fast and 10 or 1)))
+        D.state, D.quote, D.message = nil, nil, nil
+    elseif D.commodity and (name == "LB" or name == "RB" or name == "LT" or name == "RT") then
+        -- L1 / R1: by 5, L2 / R2: by 20 (held: again), on their round
+        -- numbers: 1 -> 5 -> 10..., 7 -> 10 up, 5 down; never under 1
+        local step = (name == "LB" or name == "RB") and 5 or 20
+        local qty
+        if name == "RB" or name == "RT" then
+            qty = (math.floor(D.qty / step) + 1) * step
+        else
+            qty = (math.ceil(D.qty / step) - 1) * step
+        end
+        D.qty = math.max(1, math.min(math.max(1, Available()), qty))
+        D.state, D.quote, D.message = nil, nil, nil
+    elseif not D.commodity and (name == "UP" or name == "DOWN") then
+        D.row = D.row + (name == "UP" and -1 or 1)
+        D.state, D.message = nil, nil
+    else
+        return false
+    end
+    BY.Render()
+    return true
+end
+BY.DetailPress = DetailPress
+
 function BY.Press(name, fast)
     -- (a popup up, AuctionConfirm.lua: its press)
     if IC.AuctionConfirm.Press(name) then return BY.Render() end
@@ -1717,30 +1835,8 @@ function BY.Press(name, fast)
         return BY.Render()
     end
     if D then
-        if name == "B" then return BY.CloseItem() end
-        if name == "A" then return Buy() end
-        if name == "X" then return BY.SearchItem() end
-        if D.state == "buying" or D.state == "quote" then return end
-        if D.commodity and (name == "LEFT" or name == "RIGHT") then
-            D.qty = math.max(1, math.min(math.max(1, Available()), D.qty + (name == "RIGHT" and 1 or -1) * (fast and 10 or 1)))
-            D.state, D.quote, D.message = nil, nil, nil
-        elseif D.commodity and (name == "LB" or name == "RB" or name == "LT" or name == "RT") then
-            -- L1 / R1: by 5, L2 / R2: by 20 (held: again), on their round
-            -- numbers: 1 -> 5 -> 10..., 7 -> 10 up, 5 down; never under 1
-            local step = (name == "LB" or name == "RB") and 5 or 20
-            local qty
-            if name == "RB" or name == "RT" then
-                qty = (math.floor(D.qty / step) + 1) * step
-            else
-                qty = (math.ceil(D.qty / step) - 1) * step
-            end
-            D.qty = math.max(1, math.min(math.max(1, Available()), qty))
-            D.state, D.quote, D.message = nil, nil, nil
-        elseif not D.commodity and (name == "UP" or name == "DOWN") then
-            D.row = D.row + (name == "UP" and -1 or 1)
-            D.state, D.message = nil, nil
-        end
-        return BY.Render()
+        DetailPress(name, fast)
+        return
     end
     if name == "UP" or name == "DOWN" or name == "LEFT" or name == "RIGHT" then
         MoveResults(name, fast)
@@ -1824,6 +1920,16 @@ win:SetScript("OnUpdate", function()
     else
         local page = CurrentPage()
         if page and page.Update then page.Update(now) end
+        -- The left stick, up / down: a page's own list (its StickStep)
+        if page and page.StickStep and not IC.AuctionConfirm.IsShown() then
+            local dir = stickY > STICK_ON and -1 or stickY < -STICK_ON and 1 or 0
+            if dir == 0 then
+                if math.abs(stickY) < STICK_OFF then stickNext = nil end
+            elseif not stickNext or now >= stickNext then
+                stickNext = now + (stickNext and REPEAT_EVERY * 2 or REPEAT_DELAY)
+                page.StickStep(dir)
+            end
+        end
     end
     local held = BY.held
     if held and now >= held.next then
@@ -1950,6 +2056,11 @@ events:SetScript("OnEvent", function(_, event, ...)
             end)
         end
     elseif event == "ITEM_KEY_ITEM_INFO_RECEIVED" then
+        if pendingOpen and pendingOpen.result.itemKey.itemID == ... then
+            local p = pendingOpen
+            pendingOpen = nil
+            Open(p.result, p.qty)
+        end
         BY.Render()
     elseif event == "AUCTION_HOUSE_THROTTLED_SYSTEM_READY" then
         if BY.queryWaiting then SendQuery() end

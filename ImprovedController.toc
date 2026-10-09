@@ -43,6 +43,10 @@ AuctionSell.lua
 AuctionBuy.lua
 AuctionSellTab.lua
 AuctionOwned.lua
+Tasks.lua
+AuctionTasks.lua
+TaskCraft.lua
+VendorTasks.lua
 AuctionEditor.lua
 Destroy.lua
 Options.lua
