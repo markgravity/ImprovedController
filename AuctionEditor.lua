@@ -141,7 +141,7 @@ local ITEMS = {
         icon = WATCH,
         tip = "How long auctions run: longer costs a bigger deposit. Changing it while selling sets it here too.",
     }, Choice("duration", "Duration", {
-        { 1, "12 hours" }, { 2, "24 hours" }, { 3, "48 hours" },
+        { 1, IC.Auction.Durations()[1] }, { 2, IC.Auction.Durations()[2] }, { 3, IC.Auction.Durations()[3] },
     }, WATCH)),
     Item({
         key = "chartDays", group = "sell", label = "Chart",

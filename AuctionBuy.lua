@@ -14,8 +14,8 @@
 -- lowest quality, upgrades: marked with the game's green arrow or only
 -- them, Upgrades.lua; list or grid; sort). Cross opens an item: its price
 -- chart (AuctionChart.lua), and for goods sold by the unit (commodities) a
--- quantity and its cost, for the rest its auctions one by one; Cross buys,
--- asking first in a popup (AuctionConfirm.lua). Circle goes back, and from a page's top closes the
+-- quantity and its cost, for the rest its auctions one by one; Cross held
+-- buys (a "Hold to Buy" bar: full, letting go buys). Circle goes back, and from a page's top closes the
 -- auction house. R3 (a click) shows / hides the tooltips (with what is
 -- worn in the item's place beside them).
 local _, IC = ...
@@ -37,6 +37,11 @@ local CONTENT_H = H - 116 - 36
 local LIST_H = 50                  -- a row: its name, a line of badges under it, inside the ring
 local LIST_ROWS = math.floor(CONTENT_H / LIST_H)
 local NAME_ROOM = MAIN_W - 50 - 200     -- a list row's name (the price on the right)
+-- The list view: the item's screen beside the list (a preview of the
+-- picked one; Cross goes into it), the list the rest
+local PREVIEW_W = 400
+local SIDE_LIST_W = MAIN_W - PREVIEW_W - 10
+local PREVIEW_AFTER = 0.3          -- resting on an item this long: its screen beside the list
 local CELL_W, CELL_H = 114, 148     -- room for two badges side by side, a name on three lines
 local GRID_COLS = math.floor(MAIN_W / CELL_W)
 local GRID_ROWS = math.floor(CONTENT_H / CELL_H)
@@ -374,6 +379,9 @@ local function ItemRow(parent, width, height, nameW)
         self.name:SetText(o.name or "...")
         self.name:SetTextColor(c and c.r or 1, c and c.g or 1, c and c.b or 1)
         self.price:SetText(o.price or "")
+        -- (the name: all the room up to the price, however wide the row)
+        local priceW = (o.price and o.price ~= "") and (self.price:GetStringWidth() + 8) or 0
+        self.name:SetWidth(math.max(40, self:GetWidth() - 50 - 12 - priceW))
         self.upgrade:SetShown(o.upgrade and true or false)
         self.gain:Set(o.gain and o.gain[1], o.gain and o.gain[2])
         self.deal:Set(o.deal and o.deal[1], o.deal and o.deal[2])
@@ -610,6 +618,75 @@ end
 ---------------------------------------------------------------------------
 -- The item (Cross): a box over the content: chart, then buying
 ---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+-- Hold to act (buying, selling, cancelling: no popups): a button held
+-- fills a bar; full, letting go does it (these want a hardware event: the
+-- release is one, a timer isn't). The box: the game's footer box, the
+-- button and "Hold to <verb>", the bar filling; the rumble with it
+---------------------------------------------------------------------------
+BY.HOLD_TIME = 1.2
+
+function BY.HoldProgress(start)
+    if not start then return 0 end
+    return math.min(1, (GetTime() - start) / BY.HOLD_TIME)
+end
+
+-- A gold bar over a frame from its left, as far as the hold has come
+function BY.HoldFill(frame, inset)
+    local fill = frame:CreateTexture(nil, "ARTWORK", nil, 3)
+    inset = inset or 3
+    fill:SetPoint("TOPLEFT", inset, -inset)
+    fill:SetPoint("BOTTOMLEFT", inset, inset)
+    fill:SetWidth(1)
+    fill:Hide()
+    function fill:SetProgress(p)
+        self:SetShown(p > 0)
+        self:SetWidth(math.max(1, (frame:GetWidth() - 2 * inset) * p))
+        self:SetColorTexture(1, 0.82, 0, p >= 1 and 0.6 or 0.35)
+    end
+    return fill
+end
+
+function BY.HoldBox(parent)
+    local hold = K.NewFrame("Frame", nil, parent)
+    hold:SetHeight(34)
+    hold.bg = hold:CreateTexture(nil, "BACKGROUND")
+    hold.bg:SetAllPoints()
+    if not Atlas(hold.bg, "gamepad-footer-slot-bg") then hold.bg:SetColorTexture(0.05, 0.04, 0.03, 0.92) end
+    hold.fill = BY.HoldFill(hold)
+    hold.border = hold:CreateTexture(nil, "BORDER")
+    hold.border:SetAllPoints()
+    Atlas(hold.border, "gamepad-footer-slot-frameneutral")
+    hold.text = hold:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    hold.text:SetPoint("CENTER")
+    -- p: 0 to 1; key: the button's glyph key; verb: "Buy"...; extra
+    -- (optional): after it ("· 1 silver": what it costs)
+    function hold:SetHold(p, key, verb, extra)
+        local full = p >= 1
+        self.fill:SetProgress(p)
+        self.text:SetText(Glyph(key, 22) .. "  " .. (full and "Release to " or "Hold to ") .. verb
+            .. (extra and ("  |cffd8ccb0·|r  " .. extra) or ""))
+        self.text:SetTextColor(1, full and 1 or 0.82, full and 0.6 or 0)
+    end
+    return hold
+end
+
+-- The feel of a hold, every update: the rumble rising with it (Vibration.lua),
+-- a click once full; nil: none under way (still)
+local holdVibing, holdWasFull = false, false
+function BY.HoldFeel(p)
+    if p then
+        local full = p >= 1
+        if full and not holdWasFull then PlaySound(SOUNDKIT and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or 856) end
+        holdWasFull = full
+        if IC.Vibe then IC.Vibe.Hold(p) end
+        holdVibing = true
+    elseif holdVibing then
+        if IC.Vibe then IC.Vibe.Hold(nil) end
+        holdVibing, holdWasFull = false, false
+    end
+end
+
 local detail = Panel(buyPage, 0.97)
 detail:SetFrameLevel(win:GetFrameLevel() + 20)
 detail:SetAllPoints(content)
@@ -626,52 +703,84 @@ dName:SetWordWrap(false)
 local dSub = K.ChatText(detail, 11, KC.help)
 dSub:SetPoint("BOTTOMLEFT", dIcon, "BOTTOMRIGHT", 10, 2)
 
+-- One column, as the Sell tab's: the chart across, the lowest and usual
+-- prices under it; then the quantity (commodities) or the auctions one by
+-- one (items); the receipt; "Hold to Buy". Every part spans the screen, so
+-- it fits any width (the Buy tab's main area, the Tasks tab's column).
 local dChart = IC.AuctionChart.New(detail, "Pay")
-dChart:SetPoint("TOPLEFT", 14, -66)
-dChart:SetSize(MAIN_W / 2 - 22, 170)
-local dInfo = K.ChatText(detail, 11, KC.cream2)
-dInfo:SetPoint("TOPLEFT", dChart, "BOTTOMLEFT", 4, -10)
-dInfo:SetWidth(MAIN_W / 2 - 30)
-dInfo:SetJustifyH("LEFT")
+dChart:SetPoint("TOPLEFT", 10, -66)
+dChart:SetPoint("TOPRIGHT", -10, -66)
+dChart:SetHeight(140)
+local dInfo = K.ChatText(detail, 12, KC.cream2)
+dInfo:SetPoint("TOPLEFT", dChart, "BOTTOMLEFT", 0, -8)
+dInfo:SetPoint("TOPRIGHT", dChart, "BOTTOMRIGHT", 0, -8)
+dInfo:SetJustifyH("CENTER")
 
--- Right: the auctions (items), or the quantity and its cost (commodities)
-local RIGHT_X = MAIN_W / 2 + 6
-local RIGHT_W = MAIN_W / 2 - 22
-local AUCTION_ROWS = 5
-local AUCTION_H = 50
+-- The middle: the auctions (items), or the quantity and its cost (commodities)
+local AUCTION_ROWS = 8                 -- made; as many shown as fit
+local AUCTION_H = 44
+-- (a short screen, beside the list: a shorter chart, more auctions)
+local function ChartHeight()
+    return detail:GetHeight() >= 520 and 140 or 80
+end
+local ROW_NAME_W = 430 - 28 - 50 - 110
 -- (as the browse list's rows: each auction its own name, stats' badges)
 local dRows = {}
 for i = 1, AUCTION_ROWS do
-    local r = ItemRow(detail, RIGHT_W, AUCTION_H - 4, RIGHT_W - 50 - 90)
-    r:SetPoint("TOPLEFT", RIGHT_X, -66 - (i - 1) * AUCTION_H)
+    local r = ItemRow(detail, 100, AUCTION_H - 4, ROW_NAME_W)
+    -- (a line's room above the rows for the "more above" mark)
+    r:SetPoint("TOPLEFT", dInfo, "BOTTOMLEFT", 4, -22 - (i - 1) * AUCTION_H)
+    r:SetPoint("RIGHT", detail, "RIGHT", -14, 0)
     dRows[i] = r
 end
--- A commodity's quantity: big, centred up and down above the receipt
--- (placed once the receipt is: below); its steps in the legend
+-- More auctions above / below those shown: the game's expand arrow turned
+-- up / down, above the first row / under the last, how many beside it
+local function MoreMark()
+    local m = K.NewFrame("Frame", nil, detail)
+    m:SetSize(60, 16)
+    m:SetFrameLevel(detail:GetFrameLevel() + 10)
+    m.arrow = m:CreateTexture(nil, "OVERLAY")
+    m.arrow:SetSize(16, 16)
+    m.arrow:SetPoint("LEFT")
+    m.arrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow")
+    m.arrow:SetVertexColor(1, 0.82, 0)
+    m.text = K.ChatText(m, 11, KC.dimGold)
+    m.text:SetPoint("LEFT", m.arrow, "RIGHT", 2, 0)
+    m:Hide()
+    return m
+end
+local dMoreUp, dMoreDown = MoreMark(), MoreMark()
+local HoldPrice
+dMoreUp.arrow:SetRotation(math.pi / 2)
+dMoreDown.arrow:SetRotation(-math.pi / 2)
+
+-- A commodity's quantity: big, centred up and down between the prices
+-- and the receipt; its steps in the legend
 local dQtyMid = K.NewFrame("Frame", nil, detail)
-dQtyMid:SetPoint("TOPLEFT", detail, "TOPLEFT", RIGHT_X, -66)
-dQtyMid:SetWidth(RIGHT_W)
+dQtyMid:SetPoint("TOPLEFT", dInfo, "BOTTOMLEFT", 0, 0)
+dQtyMid:SetPoint("RIGHT", detail, "RIGHT", -10, 0)
 local dQtyGroup = K.NewFrame("Frame", nil, dQtyMid)
 dQtyGroup:SetPoint("LEFT")
 dQtyGroup:SetPoint("RIGHT")
-dQtyGroup:SetHeight(44 + 10 + 18)
-local dQty = K.Text(dQtyGroup, 44, KC.title)
+dQtyGroup:SetHeight(30)
+local dQty = K.Text(dQtyGroup, 30, KC.title)
 dQty:SetPoint("TOP", 0, 0)
-local dQtyLeft = K.Text(dQtyGroup, 44, KC.focus)
-dQtyLeft:SetPoint("RIGHT", dQty, "LEFT", -20, 0)
+local dQtyLeft = K.Text(dQtyGroup, 30, KC.focus)
+dQtyLeft:SetPoint("RIGHT", dQty, "LEFT", -14, 0)
 dQtyLeft:SetText("‹")
-local dQtyRight = K.Text(dQtyGroup, 44, KC.focus)
-dQtyRight:SetPoint("LEFT", dQty, "RIGHT", 20, 0)
+local dQtyRight = K.Text(dQtyGroup, 30, KC.focus)
+dQtyRight:SetPoint("LEFT", dQty, "RIGHT", 14, 0)
 dQtyRight:SetText("›")
 local dQtyLabel = K.ChatText(dQtyGroup, 16, KC.dimGold)
-dQtyLabel:SetPoint("TOP", dQty, "BOTTOM", 0, -10)
+dQtyLabel:SetPoint("TOP", dQty, "BOTTOM", 0, -8)
 
-
--- The receipt, along the right's bottom
+-- The receipt, above the hold box
 local RECEIPT = 3
+local RECEIPT_BOTTOM = 70
 local receipt = K.NewFrame("Frame", nil, detail)
-receipt:SetPoint("BOTTOMLEFT", detail, "BOTTOMLEFT", RIGHT_X, 48)
-receipt:SetSize(RIGHT_W, 18 * RECEIPT + 7)
+receipt:SetPoint("BOTTOMLEFT", detail, "BOTTOMLEFT", 22, RECEIPT_BOTTOM)
+receipt:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -22, RECEIPT_BOTTOM)
+receipt:SetHeight(18 * RECEIPT + 7)
 dQtyMid:SetPoint("BOTTOM", receipt, "TOP", 0, 8)
 dQtyGroup:SetPoint("CENTER")
 local receiptLines = {}
@@ -689,9 +798,12 @@ rule:SetHeight(1)
 rule:SetPoint("TOPLEFT", 0, -18 * (RECEIPT - 1) - 1)
 rule:SetPoint("TOPRIGHT", 0, -18 * (RECEIPT - 1) - 1)
 rule:SetColorTexture(0.45, 0.38, 0.25, 0.9)
+local dHold = BY.HoldBox(detail)
+dHold:SetPoint("BOTTOMLEFT", detail, "BOTTOMLEFT", 14, 12)
+dHold:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -14, 12)
 local dStatus = K.ChatText(detail, 12, KC.warn)
-dStatus:SetPoint("BOTTOM", detail, "BOTTOMLEFT", RIGHT_X + RIGHT_W / 2, 18)
-dStatus:SetWidth(RIGHT_W)
+dStatus:SetPoint("BOTTOMLEFT", detail, "BOTTOMLEFT", 14, 52)
+dStatus:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -14, 52)
 dStatus:SetJustifyH("CENTER")
 
 ---------------------------------------------------------------------------
@@ -1193,6 +1305,49 @@ function BY.OpenItem()
     Open(BY.results[BY.index])
 end
 
+-- The list view: the item's screen beside the list (else over it, the grid)
+local function SideMode()
+    return S().buyView ~= "grid"
+end
+
+-- Where the item's screen goes on the Buy tab: beside the list, or over it
+local function PlaceDetail()
+    if detail:GetParent() ~= buyPage then return end
+    detail:ClearAllPoints()
+    if SideMode() then
+        detail:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_LIST_W + 10, 0)
+        detail:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT")
+    else
+        detail:SetAllPoints(content)
+    end
+end
+
+-- The list view: a moment's rest on an item, its screen beside the list
+-- (searched); the one shown before closed
+local function Preview(now)
+    if not SideMode() or BY.detailFocus or filterBox:IsShown() then
+        BY.previewOn = nil
+        return
+    end
+    local result = BY.results[BY.index]
+    if not result then
+        -- (nothing listed now: the one shown before closed)
+        BY.previewOn = nil
+        if D and not BY.searching then BY.CloseItem() end
+        return
+    end
+    local key = KeyString(result.itemKey)
+    if D and KeyString(D.result.itemKey) == key then return end
+    if BY.previewOn ~= key then
+        BY.previewOn, BY.previewSince = key, now
+        return
+    end
+    if now - BY.previewSince < PREVIEW_AFTER then return end
+    if D then BY.CloseItem() end
+    Open(result)
+    BY.Render()
+end
+
 -- An item to buy from elsewhere (a task): the Buy tab, its item open,
 -- qty to start at (once its data have come, if not yet)
 local pendingOpen
@@ -1203,11 +1358,13 @@ function BY.OpenFor(itemID, qty)
     if D then BY.CloseItem() end
     local result = { itemKey = AH.MakeItemKey(itemID) }
     pendingOpen = nil
+    BY.detailFocus = true
     if not Open(result, qty) then pendingOpen = { result = result, qty = qty } end
     BY.Render()
 end
 
 function BY.CloseItem()
+    BY.detailFocus = false
     if D and D.state == "quote" or D and D.state == "confirm" then
         if AH.CancelCommoditiesPurchase then AH.CancelCommoditiesPurchase() end
     end
@@ -1216,60 +1373,11 @@ function BY.CloseItem()
     BY.Render()
 end
 
--- The header of a buy popup (AuctionConfirm.lua): the item as in the
--- list, how its price compares with its usual one
-local function Header(count, unit)
-    local info = D.info
-    local deal = Deal(D.itemID, unit)
-    return {
-        icon = info.iconFileID, count = count, name = info.itemName or "item", quality = info.quality,
-        sub = deal ~= "" and (deal .. "  |cff9d917aagainst its usual price|r") or "",
-    }
-end
-
-local function Popup(o, header)
-    for k, v in pairs(header) do o[k] = v end
-    o.over = win
-    IC.AuctionConfirm.Show(o)
-end
-
--- A commodity's price from the server (StartCommoditiesPurchase): asked
--- in a popup, its Cross buys; it holds for a short while
-local function ConfirmQuote(unit, total)
-    local itemID, qty = D.itemID, D.qty
-    local expected = Cost(qty)
-    local header = Header(qty, unit)
-    if expected and total > expected then
-        header.sub = "|cffff7a5cThe price went up by " .. A.Money(total - expected) .. "|r"
-    end
-    Popup({
-        title = "Buy",
-        lines = {
-            { "Price each", A.Money(unit) },
-            { "Quantity", qty .. " of " .. Available() },
-            { "Your money", A.Money(GetMoney()) },
-        },
-        total = { "You pay", A.Money(total) },
-        accept = "Buy",
-        onAccept = function()
-            if not (D and D.itemID == itemID and D.state == "confirm") or IC.InCombat() then return end
-            D.state, D.message = "buying", "Buying..."
-            AH.ConfirmCommoditiesPurchase(itemID, qty)
-            BY.Render()
-        end,
-        onCancel = function()
-            if AH.CancelCommoditiesPurchase then AH.CancelCommoditiesPurchase() end
-            if D then D.state, D.quote, D.message = nil, nil, nil end
-            BY.Render()
-        end,
-    }, header)
-end
-
--- Cross (the server wants a hardware event for these): a commodity's price
--- asked of the server first, then the popup; an auction: the popup, its
--- Cross buys it out
-local function Buy()
-    if not D or D.searching or D.state or IC.InCombat() then return end
+-- Cross held: the hold starts (a commodity's price asked of the server
+-- now: that wants a hardware event too, the press is one); short of
+-- money or of that many: said, no hold
+local function BuyStart()
+    if not D or D.searching or D.state == "buying" or IC.InCombat() then return end
     if D.commodity then
         local total = Cost(D.qty)
         if not total then
@@ -1280,8 +1388,10 @@ local function Buy()
             D.message = "Not enough money"
             return BY.Render()
         end
-        D.state, D.message = "quote", "Getting the price..."
-        AH.StartCommoditiesPurchase(D.itemID, D.qty, math.ceil(total / D.qty))
+        if D.state ~= "confirm" then
+            D.state, D.quote = "quote", nil
+            AH.StartCommoditiesPurchase(D.itemID, D.qty, math.ceil(total / D.qty))
+        end
     else
         local auction = Auctions()[D.row]
         if not auction then return end
@@ -1290,26 +1400,45 @@ local function Buy()
             D.message = "Not enough money"
             return BY.Render()
         end
-        local itemID, id = D.itemID, auction.auctionID
-        local header = Header(auction.count, auction.unit)
-        if auction.link then header.name = auction.link:match("%[(.-)%]") or header.name end
-        Popup({
-            title = "Buy",
-            lines = {
-                { "Price each", A.Money(auction.unit) },
-                { "Quantity", tostring(auction.count) },
-                { "Item level", auction.itemLevel and auction.itemLevel > 0 and tostring(auction.itemLevel) or "—" },
-            },
-            total = { "You pay", A.Money(price) },
-            accept = "Buy",
-            onAccept = function()
-                if not (D and D.itemID == itemID) or IC.InCombat() then return end
-                D.state, D.message = "buying", "Buying..."
-                D.bought = auction
-                AH.PlaceBid(id, price)
-                BY.Render()
-            end,
-        }, header)
+    end
+    D.holdStart, D.message = GetTime(), nil
+    BY.Render()
+end
+
+-- A commodity's price asked and not bought: let go
+local function DropQuote()
+    if D and (D.state == "quote" or D.state == "confirm") then
+        if AH.CancelCommoditiesPurchase then AH.CancelCommoditiesPurchase() end
+        D.state, D.quote = nil, nil
+    end
+end
+
+-- Cross let go (a hardware event): full, bought (a commodity: at the
+-- server's price, once it has come); short of full, nothing
+function BY.DetailRelease(name)
+    if name ~= "A" or not (D and D.holdStart) then return end
+    local full = BY.HoldProgress(D.holdStart) >= 1
+    D.holdStart = nil
+    if not full or IC.InCombat() then
+        DropQuote()
+        return BY.Render()
+    end
+    if D.commodity then
+        if D.state == "confirm" and D.quote then
+            D.state, D.message = "buying", "Buying..."
+            AH.ConfirmCommoditiesPurchase(D.itemID, D.qty)
+        else
+            DropQuote()
+            D.message = "The price hasn't come back yet: hold again"
+        end
+    else
+        local auction = Auctions()[D.row]
+        if auction then
+            local price = auction.total or auction.unit * auction.count
+            D.state, D.message = "buying", "Buying..."
+            D.bought = auction
+            AH.PlaceBid(auction.auctionID, price)
+        end
     end
     BY.Render()
 end
@@ -1361,8 +1490,13 @@ local function RenderResults()
     emptyText:SetShown(n == 0)
     emptyText:SetText(BY.searching and "Searching..." or "Nothing listed here")
     local fr, fg, fb = FocusColor()
-    local focusOn = not D and not filterBox:IsShown()
-    for _, r in ipairs(listRows) do r:Hide() end
+    local focusOn = not (D and BY.detailFocus) and not filterBox:IsShown()
+    -- (the list view: narrower, its item's screen beside it)
+    local listW = SideMode() and SIDE_LIST_W or MAIN_W
+    for _, r in ipairs(listRows) do
+        r:Hide()
+        r:SetWidth(listW)
+    end
     for _, c in ipairs(gridCells) do c:Hide() end
     local frames = grid and gridCells or listRows
     for i, f in ipairs(frames) do
@@ -1425,8 +1559,23 @@ local function RenderResults()
         .. (#active > 0 and ("   ·   |cffc9a25a" .. table.concat(active, ", ") .. "|r") or ""))
 end
 
+-- What the picked auction costs, for the hold box (a commodity's: on its
+-- receipt)
+function HoldPrice()
+    if not D or D.commodity then return nil end
+    local a = Auctions()[D.row]
+    return a and A.Money(a.total or a.unit * a.count) or nil
+end
+
+-- The item's screen has the pad: gone into (beside the list), or shown
+-- over it (the grid) or in another page (the Tasks tab)
+local function DetailActive()
+    return BY.detailFocus or detail:GetParent() ~= buyPage or not SideMode()
+end
+
 local function RenderDetail()
     if not D then return end
+    dChart:SetHeight(ChartHeight())
     local info = D.info
     local c = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[info.quality]
     dIcon:SetTexture(info.iconFileID or 134400)
@@ -1457,11 +1606,13 @@ local function RenderDetail()
     if D.commodity then
         for _, r in ipairs(dRows) do r:Hide() end
         dQtyMid:Show()
-        dQty:SetText(D.qty)
+        dMoreUp:Hide()
+        dMoreDown:Hide()
+        dQty:SetText(D.qty .. "|cff9d917a/" .. available .. "|r")
         local fr, fg, fb = FocusColor()
         dQtyLeft:SetTextColor(fr, fg, fb)
         dQtyRight:SetTextColor(fr, fg, fb)
-        dQtyLabel:SetText("to buy, of " .. available)
+        dQtyLabel:SetText("")
 
         local total = Cost(D.qty)
         local unit = D.quote and D.quote.unit or (total and total / D.qty)
@@ -1475,10 +1626,30 @@ local function RenderDetail()
         dQtyMid:Hide()
         local auctions = Auctions()
         D.row = math.max(1, math.min(D.row, math.max(1, #auctions)))
-        local top = math.max(1, D.row - AUCTION_ROWS + 1)
+        -- (as many rows as fit between the prices and the receipt)
+        -- (no receipt for an auction: its price is on the hold box)
+        -- (a line's room above and below them for the "more" marks)
+        local room = detail:GetHeight() - (66 + ChartHeight() + 30) - RECEIPT_BOTTOM - 8 - 14 - 18
+        local fit = math.max(1, math.min(AUCTION_ROWS, math.floor(room / AUCTION_H)))
+        local top = math.max(1, D.row - fit + 1)
+        -- (more above / below: marked above the first row / under the last)
+        local shownN = math.min(fit, #auctions - top + 1)
+        dMoreUp:SetShown(top > 1)
+        if top > 1 then
+            dMoreUp:ClearAllPoints()
+            dMoreUp:SetPoint("BOTTOM", dRows[1], "TOP", 0, 1)
+            dMoreUp.text:SetText(top - 1 .. " more")
+        end
+        local below = #auctions - (top + shownN - 1)
+        dMoreDown:SetShown(below > 0 and shownN > 0)
+        if below > 0 and shownN > 0 then
+            dMoreDown:ClearAllPoints()
+            dMoreDown:SetPoint("TOP", dRows[shownN], "BOTTOM", 0, -2)
+            dMoreDown.text:SetText(below .. " more")
+        end
         for i, r in ipairs(dRows) do
-            local a = auctions[top + i - 1]
-            r:SetShown(a ~= nil)
+            local a = i <= fit and auctions[top + i - 1]
+            r:SetShown(a and true or false)
             if a then
                 local on = top + i - 1 == D.row
                 local upgrade = S().buyUpgrades ~= "off" and a.link and IC.Upgrades.IsUpgrade(a.link, nil, nil, true)
@@ -1500,7 +1671,8 @@ local function RenderDetail()
                     upgrade = upgrade,
                     gain = gainText and { gainText, gainColor }, deal = dealText and { dealText, dealColor },
                 })
-                r.focus:SetShown(on)
+                -- (beside the list, not gone into: no pick shown)
+                r.focus:SetShown(on and DetailActive())
                 r.focus:SetVertexColor(fr, fg, fb)
             end
         end
@@ -1512,11 +1684,13 @@ local function RenderDetail()
             { "You pay", price and A.Money(price) or "—" },
         }
     end
+    receipt:SetShown(D.commodity)
     for i, line in ipairs(receiptLines) do
         line.label:SetText(lines[i][1])
         line.value:SetText(lines[i][2])
     end
     dStatus:SetText(D.message or "")
+    dHold:SetHold(BY.HoldProgress(D.holdStart), "A", "Buy", HoldPrice())
 end
 
 local function RenderFilters()
@@ -1618,8 +1792,11 @@ function BY.SetTab(key)
         D = nil
         detail:Hide()
     end
+    BY.detailFocus = false
     BY.DetailHome()
     local page = CurrentPage()
+    -- (a page may want the window wider: the Tasks tab's three columns)
+    win:SetWidth(page and page.width or W)
     if page then
         if not page.frame then page.frame = page.Build(win) end
         page.Show()
@@ -1646,7 +1823,7 @@ local function DetailHints()
         and (Glyph("DPAD_LR") .. " 1   " .. Glyph("LB") .. " " .. Glyph("RB") .. " 5   "
             .. Glyph("LT") .. " " .. Glyph("RT") .. " 20   ")
         or (Glyph("DPAD_UD") .. " Auction   ")
-    return Glyph("A") .. " Buy   " .. move .. Glyph("X") .. " Refresh   "
+    return Glyph("A") .. " Hold: Buy   " .. move .. Glyph("X") .. " Refresh   "
 end
 
 ---------------------------------------------------------------------------
@@ -1708,12 +1885,15 @@ function BY.Render()
     if not sub then names3 = { "—" } end
     LayoutBar(bar3, names3, sub and BY.subsub or 1)
     RenderResults()
+    -- (the grid: no preview; one left from the list view: closed)
+    if D and not SideMode() and not BY.detailFocus then BY.CloseItem() end
+    PlaceDetail()
     if D then RenderDetail() end
     if filterBox:IsShown() then RenderFilters() end
     local text
     if filterBox:IsShown() then
         text = Glyph("DPAD") .. " Move   " .. Glyph("A") .. " Select   " .. Glyph("LS") .. " / " .. Glyph("B") .. " Close"
-    elseif D then
+    elseif D and BY.detailFocus then
         text = DetailHints() .. Glyph("B") .. " Back"
     else
         text = Glyph("A") .. " Open   " .. Glyph("DPAD") .. " Move   " .. Glyph("LS") .. " Filters   "
@@ -1776,8 +1956,13 @@ local function DetailPress(name, fast, stay)
         return true
     end
     if name == "A" then
-        Buy()
+        BuyStart()
         return true
+    end
+    -- (anything else pressed while holding: the hold dropped)
+    if D.holdStart then
+        D.holdStart = nil
+        DropQuote()
     end
     if name == "X" then
         BY.SearchItem()
@@ -1834,7 +2019,13 @@ function BY.Press(name, fast)
         end
         return BY.Render()
     end
-    if D then
+    if D and BY.detailFocus then
+        -- (beside the list: Circle back to it, the screen kept)
+        if SideMode() and name == "B" then
+            if D.holdStart then D.holdStart = nil end
+            BY.detailFocus = false
+            return BY.Render()
+        end
         DetailPress(name, fast)
         return
     end
@@ -1847,7 +2038,15 @@ function BY.Press(name, fast)
         BY.SetSubSub(BY.subsub + (name == "RT" and 1 or -1))
         return
     elseif name == "A" then
-        return BY.OpenItem()
+        -- (the list view: into the screen beside it, opened now if not yet)
+        local result = BY.results[BY.index]
+        if not result then return end
+        if not (D and KeyString(D.result.itemKey) == KeyString(result.itemKey)) then
+            if D then BY.CloseItem() end
+            BY.OpenItem()
+        end
+        BY.detailFocus = D ~= nil
+        return BY.Render()
     elseif name == "LS" then
         if not Selectable(ENTRIES[BY.filterRow]) then
             BY.filterRow = 0
@@ -1867,10 +2066,11 @@ catcher:SetAllPoints(win)
 
 -- The left stick, up / down: the main category (held: again, steadily)
 local stickY, stickNext = 0, nil
+local stickX, sideHeld = 0, false
 -- The right stick, up / down: the tab above / below (once a push)
 local rightY, rightHeld = 0, false
 local function Stick(now)
-    if filterBox:IsShown() or D then
+    if filterBox:IsShown() or (D and BY.detailFocus) then
         stickNext = nil
         return
     end
@@ -1897,11 +2097,16 @@ if catcher.EnableGamePadButton then
         local name = KEYS[button]
         if name == "B" then return BY.Press("B") end
         if BY.held and BY.held.name == name then BY.held = nil end
+        -- (a hold let go: the item's screen's, or a page's)
+        if not name or IC.AuctionConfirm.IsShown() then return end
+        if D and D.holdStart then return BY.DetailRelease(name) end
+        local page = CurrentPage()
+        if page and page.Release then page.Release(name) end
     end)
 end
 if catcher.EnableGamePadStick then
-    catcher:SetScript("OnGamePadStick", function(_, stick, _, y)
-        if stick == "Left" or stick == "Movement" then stickY = y or 0 end
+    catcher:SetScript("OnGamePadStick", function(_, stick, x, y)
+        if stick == "Left" or stick == "Movement" then stickY, stickX = y or 0, x or 0 end
         if stick == "Right" or stick == "Camera" then rightY = y or 0 end
     end)
 end
@@ -1917,12 +2122,25 @@ win:SetScript("OnUpdate", function()
     if BY.tab == "buy" then
         Stick(now)
         Prefetch(now)
+        Preview(now)
     else
         local page = CurrentPage()
         if page and page.Update then page.Update(now) end
+        -- The left stick, left / right: a page's lists (its StickSide), once
+        -- a tilt
+        if page and page.StickSide and not IC.AuctionConfirm.IsShown() then
+            local side = stickX > STICK_ON and 1 or stickX < -STICK_ON and -1 or 0
+            if side ~= 0 and not sideHeld and math.abs(stickX) > math.abs(stickY) then
+                sideHeld = true
+                page.StickSide(side)
+            elseif math.abs(stickX) < STICK_OFF then
+                sideHeld = false
+            end
+        end
         -- The left stick, up / down: a page's own list (its StickStep)
         if page and page.StickStep and not IC.AuctionConfirm.IsShown() then
-            local dir = stickY > STICK_ON and -1 or stickY < -STICK_ON and 1 or 0
+            local dir = math.abs(stickY) < math.abs(stickX) and 0
+                or stickY > STICK_ON and -1 or stickY < -STICK_ON and 1 or 0
             if dir == 0 then
                 if math.abs(stickY) < STICK_OFF then stickNext = nil end
             elseif not stickNext or now >= stickNext then
@@ -1937,11 +2155,21 @@ win:SetScript("OnUpdate", function()
         BY.Press(held.name, now - held.at > FAST_AFTER)
     end
     -- A commodity's price, held for a short while
-    if D and D.state == "confirm" and AH.GetQuoteDurationRemaining and AH.GetQuoteDurationRemaining() == 0 then
-        IC.AuctionConfirm.Hide()
-        D.state, D.quote, D.message = nil, nil, "The price ran out: " .. Glyph("A") .. " again"
+    if D and D.state == "confirm" and not D.holdStart and AH.GetQuoteDurationRemaining
+        and AH.GetQuoteDurationRemaining() == 0 then
+        D.state, D.quote, D.message = nil, nil, nil
         BY.Render()
     end
+    -- A hold under way (the item's screen, or a page's): its bar, its feel
+    local progress
+    if D and D.holdStart then
+        progress = BY.HoldProgress(D.holdStart)
+        dHold:SetHold(progress, "A", "Buy", HoldPrice())
+    else
+        local page = CurrentPage()
+        if page and page.HoldProgress then progress = page.HoldProgress() end
+    end
+    BY.HoldFeel(progress)
 end)
 
 local function TakePad(on)
@@ -1983,6 +2211,7 @@ function BY.Show()
     else
         win:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
     end
+    win:SetWidth(CurrentPage() and CurrentPage().width or W)
     win:Show()
     TakePad(true)
     SyncNative()
@@ -2001,7 +2230,9 @@ end
 
 win:SetScript("OnHide", function()
     TakePad(false)
+    BY.HoldFeel(nil)
     BY.held, stickY, stickNext, rightY, rightHeld = nil, 0, nil, 0, false
+    stickX, sideHeld = 0, false
     filterBox:Hide()
     if D then BY.CloseItem() end
     local page = CurrentPage()
@@ -2068,7 +2299,11 @@ events:SetScript("OnEvent", function(_, event, ...)
         if D and D.state == "quote" then
             local unit, total = ...
             D.state, D.quote, D.message = "confirm", { unit = unit, total = total }, nil
-            ConfirmQuote(unit, total)
+            -- (dearer than it looked: said before the release)
+            local expected = Cost(D.qty)
+            if expected and total > expected then
+                D.message = "|cffff7a5cThe price went up by " .. A.Money(total - expected) .. "|r"
+            end
             BY.Render()
         end
     elseif event == "COMMODITY_PRICE_UNAVAILABLE" or event == "COMMODITY_PURCHASE_FAILED" then

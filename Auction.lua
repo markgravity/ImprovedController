@@ -24,7 +24,7 @@ local DEFAULTS = {
     sell = true,           -- Square on a bag item opens the Sell panel
     undercut = "1",        -- under the lowest: copper ("1", "100") or a share ("1%", "5%")
     pricing = "undercut",  -- the price it starts at: undercut, match, market
-    duration = 2,          -- 1 / 2 / 3: 12 / 24 / 48 hours
+    duration = 2,          -- 1 / 2 / 3: the game's three (A.Durations)
     quantity = "all",      -- all, stack, one
     vendorFloor = true,    -- never under what a vendor pays (after the cut)
     tooltip = true,        -- item tooltips show the usual and lowest price
@@ -76,6 +76,16 @@ local COINS = {
     { 100, "Interface\\MoneyFrame\\UI-SilverIcon" },
     { 1, "Interface\\MoneyFrame\\UI-CopperIcon" },
 }
+-- The auction durations' names, as the game's own Sell window shows them
+-- (this client's: 2 / 8 / 24 hours; posting takes their index)
+function A.Durations()
+    return {
+        _G.AUCTION_DURATION_ONE or "2 Hours",
+        _G.AUCTION_DURATION_TWO or "8 Hours",
+        _G.AUCTION_DURATION_THREE or "24 Hours",
+    }
+end
+
 function A.Money(copper)
     copper = math.floor(copper or 0)
     local parts = {}

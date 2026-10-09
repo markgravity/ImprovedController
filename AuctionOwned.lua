@@ -2,9 +2,10 @@
 -- player's own auctions, each with what it asks, how long it has left and
 -- whether it is still the lowest (Auction.lua's prices: "Undercut" when
 -- someone asks less), sold ones first (their money waits in the mail).
--- The D-pad picks; Cross cancels (asking first in a popup,
--- AuctionConfirm.lua: its cost; the deposit is lost), Triangle looks again; the picked one's tooltip beside
--- the window.
+-- The D-pad picks; Square held cancels: a "Hold to Cancel" bar fills while
+-- held (the row says what cancelling costs; the deposit is lost), and once full letting go
+-- cancels (the server wants a hardware event: the release is one).
+-- Triangle looks again; the picked one's tooltip beside the window.
 local _, IC = ...
 
 local K = IC.ConfigKit
@@ -26,6 +27,7 @@ local f, rows, summary, message
 local auctions = {}
 local sel, top = 1, 1
 local loading = false
+local holding                      -- { id, start }: Square held on an auction
 
 local function TimeLeft(a)
     local s = a.timeLeftSeconds
@@ -86,7 +88,8 @@ function OW.Build(parent)
     f.empty:SetPoint("CENTER")
     rows = {}
     local width = BY.W - 30 - 12
-    for i = 1, math.floor((BY.H - 54 - 36 - 12) / ROW_H) do
+    -- (room under the rows for the hold box)
+    for i = 1, math.floor((BY.H - 54 - 36 - 12 - 44) / ROW_H) do
         local r = K.NewFrame("Button", nil, box)
         r:SetSize(width, ROW_H - 4)
         r:SetPoint("TOPLEFT", 6, -6 - (i - 1) * ROW_H)
@@ -119,6 +122,10 @@ function OW.Build(parent)
         end)
         rows[i] = r
     end
+    -- "Hold to Cancel", at the bottom (AuctionBuy.lua's hold box)
+    f.hold = BY.HoldBox(box)
+    f.hold:SetPoint("BOTTOMLEFT", 8, 8)
+    f.hold:SetPoint("BOTTOMRIGHT", -8, 8)
     return f
 end
 
@@ -174,6 +181,7 @@ function OW.Render()
             r.focus:SetVertexColor(fr, fg, fb)
         end
     end
+    OW.RenderHold()
     -- The picked one's tooltip, under the tabs
     local a = not BY.TipsOff() and auctions[sel]
     if a then
@@ -191,11 +199,36 @@ function OW.Render()
     end
 end
 
+-- The hold box (as far as the hold has come); the held row: what
+-- cancelling costs
+function OW.RenderHold()
+    if not rows then return end
+    local a = auctions[sel]
+    f.hold:SetShown(a ~= nil and a.status ~= SOLD)
+    f.hold:SetHold(BY.HoldProgress(holding and holding.start), "X", "Cancel")
+    if not holding then return end
+    for _, r in ipairs(rows) do
+        local a = r:IsShown() and auctions[r.index]
+        if a and a.auctionID == holding.id then
+            r.state:SetText("|cffff7a5cCancelling costs " .. A.Money(holding.cost) .. "|r")
+        end
+    end
+end
+
+-- A hold under way (the window rumbles with it; nil: none)
+function OW.HoldProgress()
+    if f and f:IsShown() and holding then return BY.HoldProgress(holding.start) end
+end
+
+function OW.Update()
+    if holding then OW.RenderHold() end
+end
+
 function OW.Hints()
     local a = auctions[sel]
     local parts = {}
     if a and a.status ~= SOLD then
-        parts[#parts + 1] = Glyph("A") .. " Cancel"
+        parts[#parts + 1] = Glyph("X") .. " Hold: Cancel"
     end
     parts[#parts + 1] = Glyph("DPAD_UD") .. " Move"
     parts[#parts + 1] = Glyph("Y") .. " Refresh"
@@ -203,49 +236,41 @@ function OW.Hints()
     return table.concat(parts, "   ")
 end
 
--- Cross: asked first in a popup (what it costs; the deposit is lost); its
--- Cross cancels (the server wants a hardware event for it)
-local function Cancel()
+-- Square held: the hold starts on the picked auction (one that can be)
+local function CancelStart()
     local a = auctions[sel]
     if not a or a.status == SOLD or IC.InCombat() then return end
     if AH.CanCancelAuction and not AH.CanCancelAuction(a.auctionID) then
         OW.message = "That one can't be cancelled"
         return
     end
-    local info = AH.GetItemKeyInfo(a.itemKey)
-    local cost = AH.GetCancelCost and AH.GetCancelCost(a.auctionID) or 0
-    local id = a.auctionID
-    local unit = Unit(a)
-    IC.AuctionConfirm.Show({
-        title = "Cancel auction", over = BY.window,
-        icon = info and info.iconFileID, count = a.quantity, name = info and info.itemName or "item",
-        quality = info and info.quality,
-        sub = "|cffff7a5cThe deposit is lost|r",
-        lines = {
-            { "Price each", unit and A.Money(unit) or "—" },
-            { "Time left", TimeLeft(a) },
-            { "Listed for", A.Money(a.buyoutAmount or a.bidAmount or 0) },
-        },
-        total = { "Cancelling costs", A.Money(cost) },
-        accept = "Cancel auction", cancel = "Keep it",
-        onAccept = function()
-            if IC.InCombat() then return end
-            OW.message = "Cancelling..."
-            AH.CancelAuction(id)
-            BY.Render()
-        end,
-    })
+    holding = { id = a.auctionID, start = GetTime(), cost = AH.GetCancelCost and AH.GetCancelCost(a.auctionID) or 0 }
+    OW.message = nil
+end
+
+-- Square let go (a hardware event): full, cancelled; short of it, nothing
+function OW.Release(name)
+    if name ~= "X" or not holding then return end
+    local h = holding
+    holding = nil
+    if BY.HoldProgress(h.start) >= 1 and not IC.InCombat() then
+        OW.message = "Cancelling..."
+        AH.CancelAuction(h.id)
+    end
+    BY.Render()
 end
 
 function OW.Press(name, fast)
+    -- (anything else pressed while holding: the hold dropped)
+    if holding and name ~= "X" then holding = nil end
     if name == "UP" or name == "DOWN" then
         sel = math.max(1, math.min(#auctions, sel + (name == "UP" and -1 or 1) * (fast and 5 or 1)))
         OW.message = nil
     elseif name == "Y" then
         OW.message = nil
         OW.Query()
-    elseif name == "A" then
-        Cancel()
+    elseif name == "X" then
+        CancelStart()
     else
         return name ~= "B"
     end
@@ -261,6 +286,7 @@ end
 
 function OW.Hide()
     if f then f:Hide() end
+    holding = nil
     if GameTooltip:GetOwner() == BY.window then GameTooltip:Hide() end
 end
 
@@ -271,7 +297,7 @@ for _, event in ipairs({ "OWNED_AUCTIONS_UPDATED", "AUCTION_CANCELED", "AUCTION_
 end
 events:SetScript("OnEvent", function(_, event)
     if event == "AUCTION_HOUSE_CLOSED" then
-        auctions, OW.message = {}, nil
+        auctions, OW.message, holding = {}, nil, nil
         return
     end
     if not (f and f:IsShown()) then return end

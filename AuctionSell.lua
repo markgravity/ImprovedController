@@ -25,7 +25,7 @@ local SELL_KEY = "PAD3"
 local PANEL_W = 340
 local CHART_H = 110
 local REPEAT_DELAY, REPEAT_EVERY, FAST_AFTER = 0.35, 0.07, 1.5
-local DURATIONS = { "12 hours", "24 hours", "48 hours" }
+local DURATIONS = A.Durations()
 
 local function Atlas(tex, name)
     if IC.HasAtlas(name) then

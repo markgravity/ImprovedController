@@ -368,6 +368,31 @@ function V.Stop()
     if C_GamePad and C_GamePad.StopVibration then C_GamePad.StopVibration() end
 end
 
+-- A hold under way (a "Hold to" bar): a rumble on the left grip rising with
+-- its progress (0 to 1), both grips at full strength once full; the caller sends it every
+-- update (sent on at most every 0.1 s); nil: stopped
+local holdSent = 0
+function V.Hold(progress)
+    if not (C_GamePad and C_GamePad.SetVibration and IC.db) then return end
+    if not progress then
+        holdSent = 0
+        return V.Stop()
+    end
+    local s = V.Settings()
+    if not s.enabled then return end
+    local now = GetTime()
+    if now - holdSent < 0.1 then return end
+    holdSent = now
+    local gain = s.intensity
+    if progress >= 1 then
+        -- (full: both grips at full strength, whatever the intensity: it
+        -- must stand out from the filling)
+        motors(1, 1)
+    else
+        motors((0.1 + 0.35 * progress) * gain, 0)
+    end
+end
+
 -- A pattern at the set strength; the newest replaces the one playing.
 -- loop: played again and again (with a short gap) until V.Stop. shape
 -- (optional) varies it: { strength, duration (times each step's length),

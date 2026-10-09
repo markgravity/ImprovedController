@@ -12,8 +12,10 @@
 -- Auction.lua), the receipt (duration, deposit, profit).
 -- The D-pad: up / down picks (L2 / R2 by section), left / right the price
 -- (held: faster); L1 / R1 the duration; Triangle the suggestions; Cross
--- posts, asking first in a popup (AuctionConfirm.lua; a price the server
--- warns about: a second one).
+-- held posts: a "Hold to Sell" bar under the receipt fills while it is
+-- held, and once full letting go posts (posting wants a hardware event: the
+-- release is one; a timer isn't). A price the server warns about: asked in
+-- a popup (AuctionConfirm.lua).
 local _, IC = ...
 
 local K = IC.ConfigKit
@@ -29,7 +31,8 @@ local LEFT_W = 430
 local ROW_H = 36
 local SEARCH_AFTER = 0.35          -- resting on an item this long: its listings looked up
 local PROFIT_SHARE = 1.25          -- "worth more": over a vendor's pay by a quarter...
-local DURATIONS = { "12 hours", "24 hours", "48 hours" }
+local DURATIONS = A.Durations()
+
 local SECTIONS = {
     { key = "profit", label = "Sell here", color = "|cff5fd35f" },
     { key = "unknown", label = "No price yet", color = "|cffc9a25a" },
@@ -282,29 +285,30 @@ function ST.Build(parent)
     left.chart:SetHeight(140)
     -- The price, its suggestion, the market: big, centred up and down
     -- between the chart and the receipt (a group sized to what it shows)
+    -- (the lowest and usual prices under the chart, as the Buy tab's)
+    left.info = K.ChatText(left, 12, KC.cream2)
+    left.info:SetPoint("TOPLEFT", left.chart, "BOTTOMLEFT", 0, -8)
+    left.info:SetPoint("TOPRIGHT", left.chart, "BOTTOMRIGHT", 0, -8)
+    left.info:SetJustifyH("CENTER")
     left.mid = K.NewFrame("Frame", nil, left)
-    left.mid:SetPoint("TOPLEFT", left.chart, "BOTTOMLEFT", 0, -4)
-    left.mid:SetPoint("TOPRIGHT", left.chart, "BOTTOMRIGHT", 0, -4)
+    left.mid:SetPoint("TOPLEFT", left.info, "BOTTOMLEFT", 0, -4)
+    left.mid:SetPoint("TOPRIGHT", left.info, "BOTTOMRIGHT", 0, -4)
     left.group = K.NewFrame("Frame", nil, left.mid)
     left.group:SetPoint("LEFT")
     left.group:SetPoint("RIGHT")
     left.group:SetPoint("CENTER")
-    left.price = K.Text(left.group, 40, KC.title)
+    left.price = K.Text(left.group, 26, KC.title)
     left.price:SetPoint("TOP", 0, 0)
-    left.leftArrow = K.Text(left.group, 40, KC.focus)
-    left.leftArrow:SetPoint("RIGHT", left.price, "LEFT", -18, 0)
+    left.leftArrow = K.Text(left.group, 26, KC.focus)
+    left.leftArrow:SetPoint("RIGHT", left.price, "LEFT", -12, 0)
     left.leftArrow:SetText("‹")
-    left.rightArrow = K.Text(left.group, 40, KC.focus)
-    left.rightArrow:SetPoint("LEFT", left.price, "RIGHT", 18, 0)
+    left.rightArrow = K.Text(left.group, 26, KC.focus)
+    left.rightArrow:SetPoint("LEFT", left.price, "RIGHT", 12, 0)
     left.rightArrow:SetText("›")
     left.preset = K.ChatText(left.group, 16, KC.dimGold)
-    left.preset:SetPoint("TOP", left.price, "BOTTOM", 0, -10)
-    left.info = K.ChatText(left.group, 14, KC.cream2)
-    left.info:SetPoint("TOP", left.preset, "BOTTOM", 0, -14)
-    left.info:SetWidth(LEFT_W - 28)
-    left.info:SetJustifyH("CENTER")
+    left.preset:SetPoint("TOP", left.price, "BOTTOM", 0, -8)
     left.warn = K.ChatText(left.group, 14, KC.warn)
-    left.warn:SetPoint("TOP", left.info, "BOTTOM", 0, -6)
+    left.warn:SetPoint("TOP", left.preset, "BOTTOM", 0, -10)
     left.warn:SetWidth(LEFT_W - 28)
     left.warn:SetJustifyH("CENTER")
     left.warn:SetWordWrap(true)
@@ -313,9 +317,14 @@ function ST.Build(parent)
     left.vendorOnly:SetWidth(LEFT_W - 40)
     left.vendorOnly:SetJustifyH("CENTER")
     -- The receipt
+    -- The hold status, at the bottom (AuctionBuy.lua's hold box)
+    local hold = BY.HoldBox(left)
+    hold:SetPoint("BOTTOMLEFT", 14, 12)
+    hold:SetPoint("BOTTOMRIGHT", -14, 12)
+    left.hold = hold
     local receipt = K.NewFrame("Frame", nil, left)
-    receipt:SetPoint("BOTTOMLEFT", 22, 14)
-    receipt:SetPoint("BOTTOMRIGHT", -22, 14)
+    receipt:SetPoint("BOTTOMLEFT", hold, "TOPLEFT", 8, 10)
+    receipt:SetPoint("BOTTOMRIGHT", hold, "TOPRIGHT", -8, 10)
     receipt:SetHeight(18 * 3 + 7)
     left.receipt = receipt
     left.mid:SetPoint("BOTTOM", receipt, "TOP", 0, 6)
@@ -453,34 +462,24 @@ local function DoPost(e)
     })
 end
 
--- Cross: asked first in a popup (what, how many, at what, how long, what
--- it brings; why not, for something to keep or worth more to a vendor)
-local function Post()
+-- Cross held: the bar fills; full, letting go posts (from the release: a
+-- hardware event)
+local function CanPost()
     local e = P and P.entry
-    if not e or not e.auction or IC.InCombat() or not StillThere(e) then return end
-    local deposit = e.commodity and AH.CalculateCommodityDeposit(e.itemID, P.duration, P.qty)
-        or AH.CalculateItemDeposit(e.loc, P.duration, P.qty)
-    local sec
-    for _, x in ipairs(SECTIONS) do
-        if x.key == e.section then sec = x end
-    end
-    IC.AuctionConfirm.Show({
-        title = "Sell", over = BY.window,
-        icon = e.icon, count = P.qty, name = e.name or "item", quality = e.quality,
-        sub = sec.color .. sec.label .. "|r  ·  " .. e.why,
-        lines = {
-            { "Price each", A.Money(P.price) },
-            { "Duration", DURATIONS[P.duration] },
-            { "Deposit |cff9d917a(back if sold)|r", deposit and A.Money(deposit) or "?" },
-        },
-        total = { "Profit |cff9d917a(" .. P.qty .. " × after " .. math.floor(A.Cut() * 100) .. "% cut)|r",
-            A.Money(P.price * P.qty * (1 - A.Cut())) },
-        accept = "Sell",
-        onAccept = function()
-            DoPost(e)
-            BY.Render()
-        end,
-    })
+    return e and e.auction and not IC.InCombat() and StillThere(e) and not P.pending
+end
+
+local function HoldProgress()
+    return BY.HoldProgress(P and P.holdStart)
+end
+
+local function RenderHold()
+    if left and left.hold then left.hold:SetHold(HoldProgress(), "A", "Sell") end
+end
+
+-- A hold under way (the window rumbles with it; nil: none)
+function ST.HoldProgress()
+    if f and f:IsShown() and P and P.holdStart then return HoldProgress() end
 end
 
 ---------------------------------------------------------------------------
@@ -567,7 +566,8 @@ local function RenderLeft()
     left.chart:Draw({ itemID = e.itemID, lowestNow = P.lowestNow, price = e.auction and P.price or nil,
         searching = P.searching })
     local sale = e.auction
-    for _, part in ipairs({ left.price, left.leftArrow, left.rightArrow, left.preset, left.info, left.receipt }) do
+    for _, part in ipairs({ left.price, left.leftArrow, left.rightArrow, left.preset, left.info, left.receipt,
+        left.hold }) do
         part:SetShown(sale)
     end
     left.vendorOnly:SetShown(not sale)
@@ -577,8 +577,8 @@ local function RenderLeft()
         left.warn:SetText("")
         return
     end
-    left.price:SetText(A.Money(P.price))
-    left.preset:SetText((P.qty > 1 and "each  ·  " or "") .. (P.presetLabel or "Your own price"))
+    left.price:SetText(A.Money(P.price) .. (P.qty > 1 and "|cff9d917a/each|r" or ""))
+    left.preset:SetText(P.presetLabel or "Your own price")
     local fr, fg, fb = BY.FocusColor()
     left.leftArrow:SetTextColor(fr, fg, fb)
     left.rightArrow:SetTextColor(fr, fg, fb)
@@ -595,9 +595,8 @@ local function RenderLeft()
     left.info:SetText(table.concat(parts, "   ·   "))
     left.warn:SetText(P.message or P.warn or "")
     -- The group's height: what it shows, so it sits in the middle
-    local warnH = left.warn:GetText() ~= "" and (6 + left.warn:GetStringHeight()) or 0
-    left.group:SetHeight(left.price:GetStringHeight() + 10 + left.preset:GetStringHeight()
-        + 14 + left.info:GetStringHeight() + warnH)
+    local warnH = left.warn:GetText() ~= "" and (10 + left.warn:GetStringHeight()) or 0
+    left.group:SetHeight(left.price:GetStringHeight() + 8 + left.preset:GetStringHeight() + warnH)
     local total = P.price * P.qty
     local deposit = Deposit()
     local lines3 = {
@@ -610,6 +609,7 @@ local function RenderLeft()
         l.label:SetText(lines3[i][1])
         l.value:SetText(lines3[i][2])
     end
+    RenderHold()
 end
 
 local function RenderTip()
@@ -636,7 +636,7 @@ function ST.Hints()
     local e = P and P.entry
     local parts = {}
     if e and e.auction then
-        parts[#parts + 1] = Glyph("A") .. " Sell"
+        parts[#parts + 1] = Glyph("A") .. " Hold: Sell"
         parts[#parts + 1] = Glyph("DPAD_LR") .. " Price"
         parts[#parts + 1] = Glyph("LB") .. " " .. Glyph("RB") .. " Duration"
         parts[#parts + 1] = Glyph("Y") .. " Suggested"
@@ -674,6 +674,8 @@ local function MoveSection(dir)
 end
 
 function ST.Press(name, fast)
+    -- (anything else pressed while holding: the hold dropped)
+    if P and P.holdStart and name ~= "A" then P.holdStart = nil end
     if name == "UP" or name == "DOWN" then
         Move(name == "UP" and -1 or 1)
         ST.Pick()
@@ -706,8 +708,11 @@ function ST.Press(name, fast)
             P.preset, P.presetLabel, P.price, P.picked = p.key, p.label, p.price, p.key
         end
     elseif name == "A" then
-        Post()
-        BY.Render()
+        if CanPost() then
+            P.holdStart = GetTime()
+            P.message = nil
+            BY.Render()
+        end
         return true
     else
         return name ~= "B"
@@ -717,8 +722,20 @@ function ST.Press(name, fast)
     return true
 end
 
+-- Cross let go: full, posted (the release: a hardware event); short of it,
+-- nothing
+function ST.Release(name)
+    if name ~= "A" or not (P and P.holdStart) then return end
+    local full = HoldProgress() >= 1
+    P.holdStart = nil
+    if full and CanPost() then DoPost(P.entry) end
+    BY.Render()
+end
+
 -- A moment's rest on an item: its listings looked up (once a visit)
 function ST.Update(now)
+    -- (the hold bar filling)
+    if P and P.holdStart then RenderHold() end
     if not P or P.searching or P.searched or not P.entry.auction then return end
     if now - P.pickedAt >= SEARCH_AFTER then
         Search()
@@ -757,6 +774,7 @@ end
 
 function ST.Hide()
     if f then f:Hide() end
+    if P then P.holdStart = nil end
     if GameTooltip:GetOwner() == BY.window then GameTooltip:Hide() end
 end
 
