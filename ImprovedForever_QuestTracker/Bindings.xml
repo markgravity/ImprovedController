@@ -1,0 +1,5 @@
+<Bindings>
+	<Binding name="IMPROVEDFOREVER_QUESTS_TOGGLE" header="IMPROVEDFOREVER_QUESTS" category="ADDONS">
+		ImprovedForever_ToggleQuestSort()
+	</Binding>
+</Bindings>

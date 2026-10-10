@@ -212,6 +212,14 @@ end)
 
 local pending = false
 
+-- A game window open (bags, Character...): the click is the game's own then
+-- (TOGGLEUIFOCUS), moving the pad onto the window and back. Read from the
+-- frame manager, never called (Focus.lua)
+local function WindowsShown()
+    local manager = _G.GamepadMode and GamepadMode.FrameControlsManager
+    return manager ~= nil and manager.shownFrames ~= nil and #manager.shownFrames > 0
+end
+
 local function GetCVarSafe(name)
     local getter = (C_CVar and C_CVar.GetCVar) or GetCVar
     local ok, value = pcall(getter, name)
@@ -245,9 +253,12 @@ function touch.Apply()
     -- Only a PlayStation pad has a touchpad: on others the same button is
     -- View / Minus, left to the game.
     local panelOpen = IF.Menu and IF.Menu.IsOpen and IF.Menu.IsOpen()
-    -- (and only while the game has the gamepad's focus, Binds.lua; or the
-    -- peek map has it: the pad's release closes it)
-    local inGame = IF.Binds.InGame() or (IF.PeekMap and IF.PeekMap.IsPeeking())
+    -- (and only while the game has the gamepad's focus, Binds.lua, with no
+    -- window of its open for its own click to focus; through combat whatever
+    -- is open, as the other world bindings. Or the peek map has it: the
+    -- pad's release closes it)
+    local free = not WindowsShown() or UnitAffectingCombat("player")
+    local inGame = (IF.Binds.InGame() and free) or (IF.PeekMap and IF.PeekMap.IsPeeking())
     if settings.enabled ~= false and not panelOpen and IF.PadStyle() == "Shapes" and inGame then
         for _, modifier in ipairs(MODIFIERS) do
             SetOverrideBindingClick(click, true, modifier .. KEY, click:GetName(), "LeftButton")
@@ -292,6 +303,19 @@ events:SetScript("OnEvent", function(_, event)
         return
     end
     if pending or event == "CVAR_UPDATE" then
+        touch.Apply()
+    end
+end)
+
+-- A game window opened or closed: the click is ours or the game's again
+local lastShown, wait = nil, 0
+events:SetScript("OnUpdate", function(_, elapsed)
+    wait = wait - elapsed
+    if wait > 0 or not IF.db then return end
+    wait = 0.1
+    local now = WindowsShown()
+    if now ~= lastShown then
+        lastShown = now
         touch.Apply()
     end
 end)

@@ -9,6 +9,7 @@ shapes, green accents, holes cut; shapes drawn with radial_icon's helpers):
   ic_mod_auction      a stack of coins, a green tag
   ic_mod_destroy      a bin, a green cross over it
   ic_mod_library      an open book, a green bookmark
+  ic_mod_quests       a quest list (its "!" and lines cut), green sort arrows
 
 Run: python3 tools/make_module_icons.py   (needs Pillow)
 """
@@ -154,6 +155,21 @@ def make():
     icon.polygon(dm, [(84, 20), (100, 20), (100, 60), (92, 52), (84, 60)])
     save("ic_mod_library", [(book, GOLD), (mark, GREEN)])
 
+    # Quest Tracker: a list (a "!" and three lines cut in it), green arrows
+    # up and down beside it (sorting)
+    page, dp = new()
+    rounded(dp, 14, 14, 84, 114, 10)
+    cuts, dc = new()
+    icon.bar(dc, 32, 28, 56, 8)
+    icon.circle(dc, 32, 70, 5)
+    for y in (36, 60, 84):
+        icon.stroke(dc, [(48, y), (70, y)], 6)
+    page = icon.cut(page, cuts)
+    arrows, da = new()
+    icon.stroke(da, [(104, 30), (104, 98)], 7)
+    icon.polygon(da, [(90, 40), (104, 20), (118, 40)])
+    icon.polygon(da, [(90, 88), (104, 108), (118, 88)])
+    save("ic_mod_quests", [(page, GOLD), (arrows, GREEN)])
 
 if __name__ == "__main__":
     make()

@@ -12,6 +12,8 @@ enabled or disabled in the AddOns list. The core (ImprovedForever) is needed by 
   its settings as fields in the middle (left / right change them in place, Cross picks from the
   list on the right).
 - **Destroy** has its own tab: on / off and the press that opens it.
+- **Quest Tracker**: the Improved Quest Tracker addon is now a module (`ImprovedForever_QuestTracker`), set up
+  in its own tab; `/iqt` is now `/if quests`. Its options are no longer added to the quest's right-click menu.
 - `/if` replaces `/ic` (`/if help` lists the commands).
 - Settings start fresh: they're kept in new saved variables (ImprovedForeverDB...).
 

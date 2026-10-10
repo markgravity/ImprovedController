@@ -1,0 +1,18 @@
+## Interface: 16001, 16002, 16003, 16100, 16101, 16200
+## Title: Improved Forever: Quest Tracker
+## Notes: Sort options for the quest tracker (zone, level, title, distance, completed) and an objective complete sound.
+## Author: markg
+## Version: 0.3.0
+## X-Website: https://github.com/markgravity/ImprovedForever
+## X-License: MIT
+## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_mod_quests
+## Group: ImprovedForever
+## Dependencies: ImprovedForever
+
+Core.lua
+Sort.lua
+ObjectiveSound.lua
+Dropdown.lua
+Menu.lua
+Slash.lua
+QuestTrackerEditor.lua

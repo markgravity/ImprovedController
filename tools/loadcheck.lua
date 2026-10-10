@@ -118,6 +118,8 @@ setmetatable(env, { __index = function(_, k)
     -- (our own globals and saved variables: nil until set; QuestieDB isn't
     -- installed)
     if type(k) == "string" and (k:find("^ImprovedForever") or k:find("^Questie")) then return nil end
+    -- (other clients' APIs Forever doesn't have)
+    if k == "WatchFrame" or k == "ShiftQuestWatches" or k == "GetSuperTrackedQuestID" then return nil end
     -- (the game's global strings: ITEM_MIN_LEVEL = "Requires Level %d"...)
     if type(k) == "string" and (k:find("^NUM_") or k:find("^MAX_")) then return 4 end
     if type(k) == "string" and k:find("^[A-Z][A-Z0-9_]+$") then
@@ -189,6 +191,12 @@ C_Timer = { After = function() end, NewTicker = function() return Stub() end, Ne
 C_Container = { GetContainerNumSlots = function() return 0 end, GetContainerItemID = function() return nil end,
     GetContainerItemInfo = function() return nil end, GetContainerNumFreeSlots = function() return 0, 0 end }
 function GetContainerNumSlots() return 0 end
+C_QuestLog = { GetNumQuestWatches = function() return 0 end, GetNumQuestLogEntries = function() return 0, 0 end,
+    GetQuestIDForQuestWatchIndex = function() return nil end, AddQuestWatch = function() end,
+    GetLogIndexForQuestID = function() return nil end, GetDistanceSqToQuest = function() return nil end,
+    GetInfo = function() return nil end, IsComplete = function() return false end }
+function GetNumQuestLeaderBoards() return 0 end
+function GetNumQuestWatches() return 0 end
 C_Texture = { GetAtlasInfo = function() return nil end }
 C_CVar = { GetCVar = function() return "1" end, GetCVarBool = function() return false end, SetCVar = function() end }
 C_AddOns = { IsAddOnLoaded = function() return false end, GetAddOnMetadata = function() return "0.3.0" end }

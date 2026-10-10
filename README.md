@@ -17,6 +17,7 @@ the core, **Improved Forever**:
 | `ImprovedForever_Auction` | The controller auction window, prices over time, tasks. |
 | `ImprovedForever_Destroy` | Destroy junk from the bags or the loot window. |
 | `ImprovedForever_Library` | Everything about an item. |
+| `ImprovedForever_QuestTracker` | Sort options for the quest tracker (zone, level, title, distance, completed) and an objective complete sound. Formerly Improved Quest Tracker. |
 
 ## Features
 
