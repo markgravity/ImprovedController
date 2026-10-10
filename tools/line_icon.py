@@ -61,3 +61,28 @@ def render(path, layers, size=128, ss=4):
     out = out.resize((size, size), Image.LANCZOS)
     out.save(path)
     print("wrote", path)
+
+
+def render_solid(path, layers, size=128, ss=4):
+    """As render, the shapes filled instead of outlined: each in its colour
+    (cream, or green for an accent), a gap cut round the shapes in front of
+    it; holes cut in a mask stay holes. A thin stroke stays a line."""
+    S = size * ss
+    fills = []
+    for i, (mask, palette) in enumerate(layers):
+        fill = mask
+        for front, _ in layers[i + 1:]:
+            fill = ImageChops.subtract(fill, _grow(front, GAP, ss))
+        accent = palette in (RED, GREEN, BLUE)
+        fills.append((fill, ACCENT if accent else CREAM))
+    out = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    union = Image.new("L", (S, S), 0)
+    for fill, _ in fills:
+        union = ImageChops.lighter(union, fill)
+    shadow = union.filter(ImageFilter.GaussianBlur(3 * ss)).point(lambda v: min(200, v * 2))
+    out.paste((10, 10, 10, 255), (0, 0), shadow)
+    for fill, color in fills:
+        out.paste(color + (255,), (0, 0), fill)
+    out = out.resize((size, size), Image.LANCZOS)
+    out.save(path)
+    print("wrote", path)

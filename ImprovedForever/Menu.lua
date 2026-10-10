@@ -1,6 +1,6 @@
 -- The configuration panel, in the auction window's look (Window.lua): one
--- tab per module loaded down the window's right (L1 / R1, or the right
--- stick tilted up / down), the tab's page inside: a module's settings as
+-- tab per module loaded down the window's right (the right stick tilted up
+-- / down), the tab's page inside: a module's settings as
 -- form fields (SettingsPage.lua: its sections down the left, their fields
 -- in the middle, the focused one's choices on the right), or a page of its
 -- own (the wheel editor, the vibration patterns, the controller drawing).
@@ -28,9 +28,9 @@ local STEP_DELAY, STEP_EVERY = 0.35, 0.2
 
 ---------------------------------------------------------------------------
 -- The tabs: menu.AddTab{ key, label, icon, order, page }. A page: Build(body),
--- Show(), Hide(), Render(), Press(name) -> handled (LB / RB unhandled: the
--- tabs; Circle unhandled: the panel closes), Help() -> { K.H... }, and
--- optionally OnStick(stick, x, y, len) (it takes both sticks), StickStep(dir)
+-- Show(), Hide(), Render(), Press(name) -> handled (Circle unhandled: the
+-- panel closes), Help() -> { K.H... }, and
+-- optionally OnStick(stick, x, y, len) -> true (it takes that stick), StickStep(dir)
 -- (the left stick up / down: -1 up, 1 down, repeating while held),
 -- StickSide(dir) (the left stick left / right: once a tilt), OnTouch() (the
 -- touchpad clicked).
@@ -160,13 +160,14 @@ local function Build()
 
     f:SetScript("OnUpdate", function() menu.OnUpdate() end)
     -- The panel takes both sticks while it is open (the camera and the
-    -- character stay still): a page may point with them (the wheel editor),
-    -- else the right one moves through the tabs, the left one the page's list
+    -- character stay still): a page may point with one (the wheel editor),
+    -- else the right one moves through the tabs, the left one the page's lists
     if f.EnableGamePadStick then
         f:EnableGamePadStick(true)
         f:SetScript("OnGamePadStick", function(_, stick, x, y, len)
             local page = CurrentPage()
-            if page and page.OnStick then return page:OnStick(stick, x, y, len) end
+            -- (a page may take a stick: its OnStick answers true)
+            if page and page.OnStick and page:OnStick(stick, x, y, len) then return end
             if stick == "Right" or stick == "Camera" then
                 menu.rightY = y or 0
             elseif stick == "Left" or stick == "Movement" then
@@ -266,11 +267,8 @@ function menu.Press(name)
         if name ~= "A" then menu.Disarm() end
     end
     if page:Press(name) then return end
-    if name == "LB" or name == "RB" then
-        menu.StepTab(name == "LB" and -1 or 1)
-    elseif name == "B" then
-        menu.Close()
-    end
+    -- (the tabs are the right stick's: L1 / R1 change nothing here)
+    if name == "B" then menu.Close() end
 end
 
 function menu.CreateInput()

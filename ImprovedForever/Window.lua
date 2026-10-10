@@ -146,7 +146,11 @@ function UI.SideTabs(win, onSelect)
         for i, t in ipairs(list) do
             local b = Button(i)
             b.key, b.label = t.key, t.label
+            -- (the template's icon takes its texture's own size: an atlas's;
+            -- ours are 128 px. Our art uncropped, the game's icons trimmed)
             K.SetIcon(b.Icon, t.icon or 134400)
+            b.Icon:SetSize(32, 32)
+            if type(t.icon) == "string" and t.icon:find(IF.TEX, 1, true) == 1 then b.Icon:SetTexCoord(0, 1, 0, 1) end
             b:ClearAllPoints()
             if previous then
                 b:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -2)
@@ -250,8 +254,8 @@ end
 ---------------------------------------------------------------------------
 -- A bar of chips, as the Buy page's categories along its top: the
 -- bumper / trigger glyphs at its ends (they move through the chips), the
--- chosen one lit and kept in view. bar:Render(names, selected); onClick(i)
--- as a chip is clicked.
+-- chosen one lit and kept in view (a key nil: no glyph that end).
+-- bar:Render(names, selected); onClick(i) as a chip is clicked.
 ---------------------------------------------------------------------------
 function UI.ChipBar(parent, leftKey, rightKey, onClick)
     local bar = UI.Panel(parent, 0.4)
@@ -283,8 +287,8 @@ function UI.ChipBar(parent, leftKey, rightKey, onClick)
     -- names: the chips' names; selected: which (1-based); one name: nothing to pick
     function bar:Render(names, selected)
         local enabled = #names > 1
-        self.left:SetText(IF.GlyphText(leftKey, 22))
-        self.right:SetText(IF.GlyphText(rightKey, 22))
+        self.left:SetText(leftKey and IF.GlyphText(leftKey, 22) or "")
+        self.right:SetText(rightKey and IF.GlyphText(rightKey, 22) or "")
         self.left:SetAlpha(enabled and 1 or 0.3)
         self.right:SetAlpha(enabled and 1 or 0.3)
         local widths, total = {}, 0
@@ -345,7 +349,7 @@ function UI.CardRow(parent, width, height)
     r.focus = UI.FocusStroke(r)
     r.icon = r:CreateTexture(nil, "ARTWORK")
     r.icon:SetSize(height - 16, height - 16)
-    r.icon:SetPoint("LEFT", 6, 0)
+    r.icon:SetPoint("CENTER", r, "LEFT", 6 + (height - 16) / 2, 0)
     r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     r.border = r:CreateTexture(nil, "OVERLAY")
     r.border:SetPoint("TOPLEFT", r.icon, -1, 1)
@@ -355,12 +359,14 @@ function UI.CardRow(parent, width, height)
     r.border:SetTexCoord(0.2, 0.8, 0.2, 0.8)
     r.border:SetVertexColor(0.6, 0.6, 0.6, 0.9)
     r.name = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    r.name:SetPoint("TOPLEFT", r.icon, "TOPRIGHT", 10, -1)
+    -- (the text from the icon's square, whatever the art's shape)
+    local textX = 6 + (height - 16) + 10
+    r.name:SetPoint("TOPLEFT", r, "TOPLEFT", textX, -9)
     r.name:SetPoint("RIGHT", r, "RIGHT", -28, 0)
     r.name:SetJustifyH("LEFT")
     r.name:SetWordWrap(false)
     r.line = K.ChatText(r, 11, KC.help)
-    r.line:SetPoint("BOTTOMLEFT", r.icon, "BOTTOMRIGHT", 10, 1)
+    r.line:SetPoint("BOTTOMLEFT", r, "BOTTOMLEFT", textX, 9)
     r.line:SetPoint("RIGHT", r, "RIGHT", -28, 0)
     r.line:SetJustifyH("LEFT")
     r.line:SetWordWrap(false)
@@ -372,16 +378,29 @@ function UI.CardRow(parent, width, height)
     else
         r.tick:SetTexture(IF.TEX .. "ic_emote_yes")
     end
+    local box = height - 16
     function r:Fill(o)
         K.SetIcon(self.icon, o.icon or 134400)
+        -- (art, as the radial menu's, kept to its own shape inside the
+        -- icon's square, unframed; an icon fills it, framed)
+        local info = type(o.icon) == "string" and C_Texture and C_Texture.GetAtlasInfo
+            and C_Texture.GetAtlasInfo(o.icon)
+        if info and info.width and info.height and info.width > 0 and info.height > 0 then
+            local k = box / math.max(info.width, info.height)
+            self.icon:SetSize(info.width * k, info.height * k)
+            self.border:Hide()
+        else
+            self.icon:SetSize(box, box)
+            self.border:Show()
+        end
         self.name:SetText(o.name or "")
         self.line:SetText(o.line or "")
         -- (no line: the name in the middle)
         self.name:ClearAllPoints()
         if o.line and o.line ~= "" then
-            self.name:SetPoint("TOPLEFT", self.icon, "TOPRIGHT", 10, -1)
+            self.name:SetPoint("TOPLEFT", self, "TOPLEFT", textX, -9)
         else
-            self.name:SetPoint("LEFT", self.icon, "RIGHT", 10, 0)
+            self.name:SetPoint("LEFT", self, "LEFT", textX, 0)
         end
         self.name:SetPoint("RIGHT", self, "RIGHT", -28, 0)
         self.tick:SetShown(o.ticked and true or false)
@@ -390,17 +409,18 @@ function UI.CardRow(parent, width, height)
 end
 
 ---------------------------------------------------------------------------
--- A picker of cards: its lists in a chip bar along its top (L2 / R2), the
--- list's entries as cards in columns under it; the D-pad moves, Cross
--- picks. The shape of ConfigKit's K.Picker: picker:Open{ lists = { { key,
+-- A picker of cards: its lists in a chip bar along its top (the glyphs at
+-- its ends: leftKey / rightKey; L2 / R2 switch them), the list's entries as
+-- cards in columns under it; the D-pad moves, Cross picks. The shape of ConfigKit's K.Picker: picker:Open{ lists = { { key,
 -- label, entries() -> { { action, name, icon, sub } or { header } } } },
 -- list, rows (rows of cards), current(list) -> action, marked(entry) -> the
--- one it holds, onChoose(entry), onBack() }; picker.entries / .index / .list
+-- one it holds, status() -> a line on what it is for, onChoose(entry),
+-- onBack() }; picker.entries / .index / .list
 ---------------------------------------------------------------------------
-function UI.CardPicker(parent, cols, cardH, onRender)
+function UI.CardPicker(parent, cols, cardH, onRender, leftKey, rightKey)
     local p = K.NewFrame("Frame", nil, parent)
     p.cols, p.cards = cols, {}
-    p.bar = UI.ChipBar(p, "LT", "RT", function(i)
+    p.bar = UI.ChipBar(p, leftKey, rightKey, function(i)
         p:SetList(i)
         onRender()
     end)
@@ -503,7 +523,9 @@ function UI.CardPicker(parent, cols, cardH, onRender)
         for i, list in ipairs(def.lists) do names[i] = list.label end
         self.bar:Render(names, self.list)
         local n = #(self.entries or {})
-        self.status:SetText(def.lists[self.list].label .. "  ·  " .. n .. (n == 1 and " choice" or " choices"))
+        -- (what is picked and holds now first, when the picker says)
+        self.status:SetText((def.status and (def.status() .. "      ") or "")
+            .. "|cff9d917a" .. def.lists[self.list].label .. "  ·  " .. n .. (n == 1 and " choice" or " choices") .. "|r")
         local gw = self.grid:GetWidth()
         if not gw or gw <= 0 then gw = 700 end
         local cardW = (gw - (self.cols - 1) * 8) / self.cols

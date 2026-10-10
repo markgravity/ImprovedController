@@ -1,11 +1,14 @@
 -- The panel's Wheels tab, adapted from Easy Controller - Forever's MyWheels
--- (moust4ki, MIT License, see LICENSE-EasyController.md). On the
--- left a rail of every wheel (the built-in ones, the player's own, "New
--- wheel"); beside it the selected wheel's editor: its slots around it (8 a
--- page), what opens it (bound in the Controller tab), Rename / Delete (or
--- Reset), and
--- the spells / items / macros / emotes picker on the right: a choice fills
--- the slot aimed at and moves on to the next one.
+-- (moust4ki, MIT License, see LICENSE-EasyController.md), in the auction
+-- window's look: down the left every wheel (the built-in ones, the
+-- player's own, "New wheel"; the left stick picks one); beside it the
+-- wheel, its slots around it (8 a page: the D-pad left / right steps
+-- round them, L2 / R2 turn the page), what opens it in the
+-- hub (bound in the Controller tab); on the right what a slot can take,
+-- its lists (Spells, Items, Macros, Emotes) in a bar along the top (the
+-- left stick left / right), each a list of cards (the D-pad up / down):
+-- Cross fills the slot and moves on to the next one. Triangle clears a
+-- slot (held: renames, or resets a built-in wheel), Square held deletes.
 local IF = ImprovedForever
 
 local K = IF.ConfigKit
@@ -13,24 +16,22 @@ local KC = K.C
 local MW = IF.MyWheels
 local menu = IF.Menu
 
-local ZONE_W, PANEL_W = 540, 340
+local UI = IF.UI
+
+local SIDE_W = 200
 local BOX_W = 380                   -- the rename box over the wheel
--- The Stage layout (ConfigKit): the wheel in the middle, its visible rim
--- 226 from its centre (the art's frame has a clear margin round it), the
--- side lists centred on it up and down
-local LIST_STEP = 42
-local LIST_SHOWN = 8                -- wheels shown at once on the left; the rest scroll
-local PICKER_ROWS = 7               -- entries shown at once on the right
-local STAGE = K.Stage(226, 0)
--- The wheel: Forever's radial menu (the R3 ring's art and layout, Ring.lua)
--- at SCALE
+local PICKER_ROWS = 7
+-- The wheel: Forever's radial menu (the R3 ring's art and layout, Ring.lua),
+-- its 540 x 541 frame drawn at ZONE_SCALE between the list and the picker
+local ZONE_SCALE = 0.74
 local SCALE = 1
 local CX, CY = 270, 270             -- in the wheel's 540 x 541 frame
 local WEDGE_RADIUS = 150 * SCALE    -- highlight / empty wedges
 local ICON_SIZE = math.floor(38 * SCALE + 0.5)
 local PER_PAGE = 8
 
-local W = { zone = "rail", index = 1, slot = 1, btn = 1 }
+-- zone: nil, or "popup" (a confirmation up), "rename" (naming the wheel)
+local W = { index = 1, slot = 1, btn = 1 }
 MW.Page = W
 
 ---------------------------------------------------------------------------
@@ -99,38 +100,27 @@ function W:Build(parent)
     f:Hide()
     self.frame = f
 
-    -- The wheels, in rows down the left (placed in Render)
-    local rail = K.NewFrame("Frame", nil, f)
-    rail:SetAllPoints(f)
-    rail:EnableMouseWheel(true)
-    rail:SetScript("OnMouseWheel", function(_, delta)
+    -- Left: the wheels
+    f.side = UI.SideList(f, SIDE_W, 17, function(i)
+        if MW.renaming then return end
+        W:Select(i)
+        menu.Render()
+    end)
+    f.side:SetPoint("TOPLEFT", 8, -8)
+    f.side:SetPoint("BOTTOMLEFT", 8, 8)
+    f.side:EnableMouseWheel(true)
+    f.side:SetScript("OnMouseWheel", function(_, delta)
         if MW.renaming then return end
         W:Select(W.index - delta)
         menu.Render()
     end)
-    self.railUp, self.railDown = K.MoreArrows(rail)
-    self.railEntries = {}
-    for i = 1, #MW.BUILT_IN_WHEELS + MW.MAX + 1 do
-        local e = K.NewFrame("Button", nil, rail)
-        -- A row (K.Segment: a straight slot)
-        e:SetSize(200, 34)
-        e.seg = K.Segment(e)
-        e.label = K.Text(e, 14, KC.rail, "OVERLAY")
-        e.label:SetPoint("CENTER")
-        e.label:SetWidth(180)
-        e.label:SetJustifyH("CENTER")
-        e:SetScript("OnClick", function()
-            if MW.renaming then return end
-            W:Select(i)
-            W.zone = "rail"
-            menu.Render()
-        end)
-        self.railEntries[i] = e
-    end
     -- The wheel
     local zone = K.NewFrame("Frame", nil, f)
-    zone:SetPoint("CENTER", f, "CENTER", 0, 0)
     zone:SetSize(540, 541)
+    zone:SetScale(ZONE_SCALE)
+    -- (a scaled frame's offsets are in its own units)
+    zone:SetPoint("LEFT", f, "LEFT", (8 + SIDE_W + 6) / ZONE_SCALE, 0)
+    f.zone = zone
     -- In the hub: the wheel's name, its count, its page
     f.title = K.Text(zone, 15, KC.white)
     f.title:SetPoint("CENTER", zone, "TOPLEFT", CX, -(CY - 16))
@@ -231,9 +221,11 @@ function W:Build(parent)
     K.Solid(veil, { 0.04, 0.03, 0.02 }, 0.72, "BACKGROUND"):SetAllPoints()
     veil:Hide()
     f.veil = veil
-    local box = K.NewFrame("Frame", nil, veil)
+    -- (the box itself unscaled, over the wheel's middle)
+    local box = K.NewFrame("Frame", nil, f)
     box:SetSize(BOX_W, 136)
     box:SetPoint("CENTER", zone, "CENTER", 0, 0)
+    box:SetFrameLevel(zone:GetFrameLevel() + 25)
     box.bg = K.Box(box, 4, 2, "BACKGROUND")
     box.bg:SetPoints(box)
     box.bg:SetColors(KC.panel, 1, KC.focus, 1)
@@ -290,21 +282,34 @@ function W:Build(parent)
     d:Hide()
     self.dialog = d
 
-    -- Right: the picker, or for a self-filling wheel what it does
-    self.picker = K.Picker(f, PANEL_W, menu.Render, {
-        bare = true, rowHeight = 38,
-    })
-    self.picker:Center(f, STAGE.picker, STAGE.mid)
-    self.picker:SetHeight(400)
-    self.detail = K.Detail(f, PANEL_W)
-    self.detail:SetPoint("LEFT", f, "CENTER", STAGE.right, STAGE.mid)
+    -- Right: the picker (its lists in a bar, its choices as cards), or for
+    -- a self-filling wheel what it does
+    local right = (8 + SIDE_W + 6) + 540 * ZONE_SCALE + 6
+    self.picker = UI.CardPicker(f, 1, 46, menu.Render, "LS")
+    self.picker:SetPoint("TOPLEFT", f, "TOPLEFT", right, -8)
+    self.picker:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
+    self.detail = K.Detail(f, 340)
+    self.detail:SetPoint("TOPLEFT", f, "TOPLEFT", right, -8)
+    self.detail:SetPoint("RIGHT", f, "RIGHT", -8, 0)
     self.detail:SetHeight(300)
 end
 
 function W:Show()
-    self.zone = "rail"
+    self.zone = nil
     self.frame:Show()
     self:Select(self.index)
+end
+
+-- The left stick (Menu.lua): up / down the wheels, left / right the
+-- picker's lists
+function W:StickStep(dir)
+    if self.zone or MW.renaming then return end
+    self:Select(self.index + dir)
+end
+
+function W:StickSide(dir)
+    if self.zone or MW.renaming or not self.picker.def then return end
+    self.picker:Press(dir < 0 and "LT" or "RT")
 end
 
 function W:Hide()
@@ -355,17 +360,12 @@ function W:OpenPicker(wheel)
         onChoose = function(e)
             if not MW.renaming then W:Fill(e) end
         end,
-        onBack = function()
-            W.zone = "rail"
-            menu.Render()
-        end,
     })
 end
 
 function W:Aim()
     local wheel = self:Current()
     if not Editable(wheel) then return menu.Render() end
-    self.zone = "picker"
     local def = self.picker.def
     local current = wheel.slots[self.slot]
     if def then
@@ -404,7 +404,6 @@ end
 ---------------------------------------------------------------------------
 function W:Confirm(text, acceptLabel, onAccept, onCancel)
     if IF.InCombat() then return end
-    self.popupReturn = self.zone ~= "popup" and self.zone or self.popupReturn
     self.zone = "popup"
     self.popup = { onAccept = onAccept, onCancel = onCancel }
     self:ShowDialog(text, {
@@ -419,7 +418,7 @@ function W:AnswerPopup(accepted)
     local popup = self.popup
     self.popup = nil
     self.dialog:Hide()
-    self.zone = self.popupReturn or "rail"
+    self.zone = nil
     if popup then
         if accepted then
             popup.onAccept()
@@ -498,8 +497,6 @@ function W:Square(wheel)
             MW.Delete(wheel.id)
             W.key = nil
             W:Select(W.index)
-            W.popupReturn = "rail"
-            W.zone = "rail"
             menu.Toast("Wheel deleted")
         end)
     end)
@@ -553,7 +550,6 @@ end
 function W:StartRename(wheel)
     if not wheel.id or IF.InCombat() then return end
     MW.renaming = wheel.id
-    self.renameReturn = self.zone
     self.suggestion = 0
     self.zone = "rename"
     local edit = self.box.edit
@@ -570,7 +566,7 @@ function W:FinishRename(text)
     MW.renaming = nil
     self.box.edit:ClearFocus()
     self.frame.veil:Hide()
-    if self.zone == "rename" then self.zone = self.renameReturn or "rail" end
+    if self.zone == "rename" then self.zone = nil end
     if text then MW.Rename(id, text) end
     menu.Render()
 end
@@ -620,29 +616,11 @@ function W:StepPage(step)
     self.slot = math.min(wheel.max, page * PER_PAGE + p)
 end
 
--- The right stick points at a slot of the page (top first, clockwise) and
--- aims the picker at it straight away: the next choice fills that slot.
--- A wheel that fills itself just shows the slot.
-local AIM_LENGTH = 0.5
-
-function W:OnStick(stick, x, y, len)
-    if stick ~= "Right" and stick ~= "Camera" then return end
-    if MW.renaming or (len or 0) < AIM_LENGTH then return end
-    if self.zone == "popup" then return end
+-- The slot aimed at; the picker on what it holds
+function W:SetSlot(slot)
+    self.slot = slot
     local wheel = self:Current()
-    if not wheel or wheel.new then return end
-    local angle = math.atan2(x, y) % (2 * math.pi)
-    local p = math.floor((angle + math.pi / 8) / (math.pi / 4)) % PER_PAGE + 1
-    local slot = self:PageBase() + p
-    if slot > wheel.max then return end
-    -- Pointing at a slot edits it: the picker takes the focus (a wheel
-    -- that fills itself: just the slot)
-    local zone = Editable(wheel) and "picker" or self.zone
-    if slot == self.slot and zone == self.zone then return end
-    if zone ~= self.zone then menu.Disarm() end
-    self.slot, self.zone = slot, zone
     if Editable(wheel) and self.picker.def then
-        -- On what the slot holds, if anything
         local current = wheel.slots[slot]
         self.picker.def.current = current
         local kind = current and current:match("^(%a+):")
@@ -653,12 +631,10 @@ function W:OnStick(stick, x, y, len)
             end
         end
     end
-    menu.Render()
 end
 
 function W:Press(name)
     local wheel = self:Current()
-    if self.zone == "list" or self.zone == "slots" then self.zone = "rail" end
     if self.zone == "popup" then
         if name == "A" then
             self:AnswerPopup(true)
@@ -677,47 +653,29 @@ function W:Press(name)
         end
         return true
     end
-    -- Left / right move between the wheels (left) and the picker or the
-    -- buttons (right); up / down move inside them. The wheel's slot follows
-    -- the right stick only (W:OnStick); L2 / R2 turn its page from the list
-    -- or the buttons, and switch the picker's lists there.
-    if name == "LB" or name == "RB" then return false end
-    if wheel and not wheel.new then
-        if name == "Y" then
-            self:Triangle(wheel)
-            return true
-        elseif name == "X" then
-            self:Square(wheel)
-            return true
-        end
-    end
-    if self.zone == "rail" then
-        if name == "UP" or name == "DOWN" then
-            self:Select(self.index + (name == "UP" and -1 or 1))
-        elseif name == "A" or name == "RIGHT" then
-            if wheel and wheel.new then
-                self:CreateWheel()
-            elseif wheel and Editable(wheel) then
-                self.zone = "picker"
-            end
-        elseif name == "LT" or name == "RT" then
-            self:StepPage(name == "LT" and -1 or 1)
-        else
-            -- Circle closes the panel
-            return false
-        end
+    -- (L1 / R1 the tabs, Circle closes: the panel's)
+    if name == "LB" or name == "RB" or name == "B" then return false end
+    if not wheel or wheel.new then
+        if name == "A" then self:CreateWheel() end
         menu.Render()
         return true
     end
-    if self.zone == "picker" then
-        if name == "LEFT" or name == "B" then
-            self.zone = "rail"
-        elseif name ~= "RIGHT" then
-            self.picker:Press(name)
-        end
-        menu.Render()
+    if name == "Y" then
+        if Editable(wheel) or wheel.reset or wheel.id then self:Triangle(wheel) end
         return true
+    elseif name == "X" then
+        self:Square(wheel)
+        return true
+    elseif name == "LT" or name == "RT" then
+        self:StepPage(name == "LT" and -1 or 1)
+        self:SetSlot(self.slot)
+    elseif name == "LEFT" or name == "RIGHT" then
+        -- The slot before / after (round the wheel)
+        self:SetSlot((self.slot - 1 + (name == "LEFT" and -1 or 1)) % wheel.max + 1)
+    elseif Editable(wheel) then
+        self.picker:Press(name)
     end
+    menu.Render()
     return true
 end
 
@@ -729,31 +687,23 @@ function W:Help()
     end
     if self.zone == "popup" then return { H({ "A" }, "Confirm", "A"), H({ "B" }, "Cancel", "B") } end
     -- Only what does something here: a wheel that fills itself has no slot
-    -- to edit, "New wheel" nothing to page, bind or clear
-    local hints = {}
-    local isNew = not wheel or wheel.new
-    if self.zone == "rail" then
-        hints[#hints + 1] = H({ "DPAD" }, "Pick wheel")
-        if isNew then
-            hints[#hints + 1] = H({ "A" }, "Create", "A")
-        elseif Editable(wheel) then
-            hints[#hints + 1] = H({ "RS" }, "Edit slot")
-            hints[#hints + 1] = H({ "A" }, "Edit", "A")
-        end
+    -- to fill, "New wheel" nothing to page, bind or clear
+    local hints = { H({ "LS" }, Editable(wheel) and "Wheel / List" or "Wheel") }
+    if not wheel or wheel.new then
+        hints[#hints + 1] = H({ "A" }, "Create", "A")
     else
-        hints[#hints + 1] = H({ "RS" }, "Slot")
-        hints[#hints + 1] = H({ "DPAD" }, "Move")
-        hints[#hints + 1] = H({ "A" }, "Choose", "A")
-        hints[#hints + 1] = H({ "LT", "RT" }, "List", "RT")
-    end
-    if wheel and not wheel.new then
+        hints[#hints + 1] = H({ "DPAD_LR" }, "Slot")
         if Editable(wheel) then
+            hints[#hints + 1] = H({ "DPAD_UD" }, "Move")
+            hints[#hints + 1] = H({ "A" }, "Choose", "A")
             hints[#hints + 1] = H({ "Y" }, wheel.id and "Clear (hold: rename)"
                 or (wheel.reset and "Clear (hold: reset)" or "Clear"), "Y")
         end
+        if Pages(wheel) > 1 then hints[#hints + 1] = H({ "LT", "RT" }, "Page", "RT") end
         if wheel.id then hints[#hints + 1] = H({ "X" }, "Hold: delete", "X") end
     end
-    hints[#hints + 1] = H({ "B" }, self.zone == "rail" and "Close" or "Wheels", "B")
+    hints[#hints + 1] = H({ "RS" }, "Tab")
+    hints[#hints + 1] = H({ "B" }, "Close", "B")
     return hints
 end
 
@@ -768,36 +718,12 @@ end
 function W:Render()
     local f = self.frame
     if not f then return end
-    if self.zone == "list" or self.zone == "slots" then self.zone = "rail" end
     local wheel, entries = self:Current()
 
-    -- The wheels in rows down the left, from the wheel's top edge
-    -- Only LIST_SHOWN at once, scrolled to keep the selected one in view
-    local n = #entries
-    local shown = math.min(n, LIST_SHOWN)
-    self.railTop = math.max(1, math.min(self.railTop or 1, n - shown + 1))
-    if self.index < self.railTop then self.railTop = self.index end
-    if self.index > self.railTop + shown - 1 then self.railTop = self.index - shown + 1 end
-    -- The arrows just past the first and last rows
-    local top = K.CenterTop(STAGE.mid, shown)
-    K.RingArrow(self.railUp, f, K.RowY(top, 0.25), true, STAGE.rail)
-    self.railUp:SetShown(self.railTop > 1)
-    K.RingArrow(self.railDown, f, K.RowY(top, shown + 0.75), false, STAGE.rail)
-    self.railDown:SetShown(self.railTop + shown - 1 < n)
-    for i, e in ipairs(self.railEntries) do
-        local entry = entries[i]
-        local slot = i - self.railTop + 1
-        e:SetShown(entry ~= nil and slot >= 1 and slot <= shown)
-        if entry and slot >= 1 and slot <= shown then
-            -- Down the left from the wheel's top, top first
-            e.seg:Place(f, K.RowY(top, slot), STAGE.rail)
-            -- Its name
-            local active = i == self.index
-            e.label:SetText(entry.label)
-            e.label:SetTextColor(unpack(active and KC.focus or (entry.new and KC.dimGold or KC.rail)))
-            e.seg:SetFocus(active and self.zone == "rail")
-        end
-    end
+    -- The wheels down the left
+    local lines = {}
+    for i, entry in ipairs(entries) do lines[i] = { label = entry.label } end
+    f.side:Render(IF.GlyphText("LS", 18) .. " Wheels", lines, self.index, self.zone == nil)
 
     -- "New wheel" selected: an empty wheel and what Cross does
     local isNew = wheel == nil or wheel.new
@@ -865,7 +791,7 @@ function W:Render()
             local getCount = (C_Item and C_Item.GetItemCount) or GetItemCount
             s.count:SetText(count and getCount and getCount(tonumber(count)) or "")
             s.label:SetText(name or MW.POSITIONS[p])
-            local focus = (onSlots or self.zone == "picker") and i == self.slot
+            local focus = i == self.slot
             s.label:SetTextColor(unpack(focus and KC.white or (action and KC.title or KC.grey)))
             s:SetAlpha(isNew and 0.35 or 1)
             s.empty:SetAlpha(isNew and 0.35 or 1)
@@ -880,14 +806,15 @@ function W:Render()
         f.highlight:SetPoint("CENTER", f.highlight:GetParent(), "TOPLEFT",
             CX + WEDGE_RADIUS * math.sin(a), -(CY - WEDGE_RADIUS * math.cos(a)))
         f.highlight:SetRotation(math.pi - a)
-        if self.zone == "picker" then
+        -- (cyan: the picker fills it)
+        if Editable(wheel) then
             f.highlight:SetVertexColor(KC.info[1], KC.info[2], KC.info[3])
         else
             f.highlight:SetVertexColor(1, 1, 1)
         end
     end
     local focused = slots[self.slot]
-    local showSlot = onSlots or self.zone == "picker"
+    local showSlot = onSlots
     f.hubName:SetText(showSlot and (focused and MW.ActionName(focused)
         or MW.POSITIONS[(self.slot - 1) % PER_PAGE + 1]) or "")
     f.hubName:SetTextColor(unpack(focused and KC.cream or KC.grey))
@@ -898,9 +825,7 @@ function W:Render()
         self.detail:Hide()
         if not self.picker:IsOpen() then self:OpenPicker(wheel) end
         self.picker:Show()
-        self.picker:SetAlpha(self.zone == "picker" and 1 or 0.5)
         self.picker:Render()
-        self.picker:Center(f, STAGE.picker, STAGE.mid)
     else
         self.picker:Close()
         self.detail:Show()

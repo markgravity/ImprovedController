@@ -26,7 +26,7 @@ touch.REGION_LABELS = {
     upleft = "Top left", upright = "Top right", downleft = "Bottom left", downright = "Bottom right",
 }
 
-local DEFAULTS = { upleft = "map", upright = "bags", downleft = "questlog", downright = "character" }
+local DEFAULTS = { upleft = "spellbook", upright = "bags", downleft = "questlog", downright = "character" }
 -- An earlier version had sides and a centre too: their actions move to the
 -- corners nearest them, once (top -> top left, right -> top right...)
 local FROM_SIDES = { upleft = "up", upright = "right", downleft = "left", downright = "down" }

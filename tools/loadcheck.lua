@@ -311,8 +311,20 @@ local function fire(event, ...)
 end
 
 local function run(folders, checks)
+    -- (each one's required addons with it, as the game insists on them)
     local wanted = {}
-    for _, f in ipairs(folders) do wanted[f] = true end
+    local function want(f)
+        if wanted[f] then return end
+        wanted[f] = true
+        local toc = readToc(f)
+        for _, d in ipairs(toc and toc.deps or {}) do
+            if readToc(d) then
+                want(d)
+                table.insert(folders, 1, d)
+            end
+        end
+    end
+    for _, f in ipairs({ unpack(folders) }) do want(f) end
     local loaded = {}
     for _, f in ipairs(folders) do loadAddon(f, loaded, wanted) end
     for _, f in ipairs(loaded) do fire("ADDON_LOADED", f) end

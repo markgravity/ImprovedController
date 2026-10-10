@@ -3,7 +3,7 @@
 -- MyWheels.lua's, drawn by Ring.lua.
 local IF = ImprovedForever
 
-IF.AddModule({ key = "wheel", label = "Wheels", icon = "Interface\\Icons\\INV_Misc_Orb_05", addon = ... })
+IF.AddModule({ key = "wheel", label = "Wheels", icon = IF.TEX .. "ic_mod_wheel", addon = ... })
 
 IF.RINGS = { "native", "buffs", "consumables", "emotes" }
 IF.RING_LABELS = { native = "Native (Look Here)", buffs = "Buffs", consumables = "Consumables", emotes = "Emotes" }

@@ -729,7 +729,7 @@ function IF.SettingsPage(tab, GROUPS, ITEMS, hooks)
         local hints = {}
         local item = self:Item()
         if not item then
-            return { H({ "LS" }, "Category"), H({ "LB", "RB" }, "Tab", "RB"), H({ "B" }, "Close", "B") }
+            return { H({ "LS" }, "Category"), H({ "RS" }, "Tab"), H({ "B" }, "Close", "B") }
         end
         local kind = Kind(item)
         if self.zone == "dropdown" then
@@ -747,7 +747,7 @@ function IF.SettingsPage(tab, GROUPS, ITEMS, hooks)
         if item.bindable and kind ~= "binding" then hints[#hints + 1] = H({ "X" }, "Record", "X") end
         if item.try then hints[#hints + 1] = H({ "Y" }, "Try it", "Y") end
         hints[#hints + 1] = H({ "LS" }, "Category")
-        hints[#hints + 1] = H({ "LB", "RB" }, "Tab", "RB")
+        hints[#hints + 1] = H({ "RS" }, "Tab")
         hints[#hints + 1] = H({ "B" }, "Close", "B")
         return hints
     end

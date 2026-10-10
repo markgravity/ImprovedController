@@ -5,7 +5,7 @@
 ## Version: 0.3.0
 ## X-Website: https://github.com/markgravity/ImprovedForever
 ## X-License: MIT
-## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_addon
+## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_mod_library
 ## Group: ImprovedForever
 ## Dependencies: ImprovedForever
 ## OptionalDeps: QuestieDB, ImprovedForever_Auction, ImprovedForever_Destroy, ImprovedForever_Gather, ImprovedForever_Vibration

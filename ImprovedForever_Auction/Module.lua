@@ -6,7 +6,7 @@
 -- house (AuctionTasks.lua). Set up in its tab (AuctionEditor.lua).
 local IF = ImprovedForever
 
-IF.AddModule({ key = "auction", label = "Auction", icon = "Interface\\Icons\\INV_Misc_Coin_02", addon = ... })
+IF.AddModule({ key = "auction", label = "Auction", icon = IF.TEX .. "ic_mod_auction", addon = ... })
 
 -- /if scan: scan the auction house's prices (it must be open)
 IF.AddCommand("scan", function() IF.Auction.Scan() end, ": scan the auction house's prices")

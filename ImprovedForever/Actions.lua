@@ -72,28 +72,75 @@ function IF.ActionInfo(action)
     end
 end
 
--- What a region can open: the game's own button for it (the first that
--- exists in this client). Only actions with a button here are offered.
+-- The game's windows an action can open: the game's own button for it (the
+-- first that exists in this client; only windows with one are offered).
+-- Named and drawn as Forever's own radial menu shows them (its
+-- gamepad-radial-icon-* art, the first this client has), else an icon.
+local R = "gamepad-radial-icon-"
 local WINDOWS = {
-    { key = "map", icon = "Interface\\Icons\\INV_Misc_Map_01", label = "World Map", buttons = { "WorldMapMicroButton", "MiniMapWorldMapButton", "QuestLogMicroButton" } },
-    { key = "questlog", icon = "Interface\\Icons\\INV_Misc_Book_08", label = "Quest Log", buttons = { "QuestLogMicroButton" } },
-    { key = "character", icon = "Interface\\Icons\\INV_Chest_Cloth_17", label = "Character", buttons = { "CharacterMicroButton" } },
-    { key = "bags", icon = "Interface\\Icons\\INV_Misc_Bag_08", label = "Bags", buttons = { "MainMenuBarBackpackButton", "BagsBarBackpackButton" } },
-    { key = "spellbook", icon = "Interface\\Icons\\INV_Misc_Book_09", label = "Spellbook", buttons = { "SpellbookMicroButton", "PlayerSpellsMicroButton" } },
-    { key = "talents", icon = "Interface\\Icons\\Ability_Marksmanship", label = "Talents", buttons = { "TalentMicroButton", "PlayerSpellsMicroButton" } },
-    { key = "social", icon = "Interface\\Icons\\INV_Misc_GroupLooking", label = "Social", buttons = { "SocialsMicroButton", "FriendsMicroButton" } },
-    { key = "guild", icon = "Interface\\Icons\\INV_BannerPVP_02", label = "Guild & Communities", buttons = { "GuildMicroButton", "CommunitiesMicroButton" } },
-    { key = "groupfinder", icon = "Interface\\Icons\\INV_Misc_Eye_01", label = "Group Finder", buttons = { "LFGMicroButton", "LFDMicroButton", "GroupFinderMicroButton" } },
-    { key = "pvp", icon = "Interface\\Icons\\Ability_DualWield", label = "PvP", buttons = { "PVPMicroButton", "HonorMicroButton" } },
-    { key = "collections", icon = "Interface\\Icons\\Ability_Mount_RidingHorse", label = "Collections", buttons = { "CollectionsMicroButton" } },
-    { key = "achievements", icon = "Interface\\Icons\\INV_Misc_Note_01", label = "Achievements", buttons = { "AchievementMicroButton" } },
-    { key = "gamemenu", icon = "Interface\\Icons\\INV_Misc_Gear_01", label = "Game Menu", buttons = { "MainMenuMicroButton" } },
-    { key = "nodes", icon = "Interface\\Icons\\INV_Misc_Flower_02", label = "Minimap labels", buttons = { "ImprovedForeverNodeScan" } },
+    -- (the radial's first page)
+    { key = "character", label = "Character", radial = { R .. "character" },
+        icon = "Interface\\Icons\\INV_Chest_Cloth_17", buttons = { "CharacterMicroButton" } },
+    { key = "professions", label = "Professions", radial = { R .. "professions" },
+        icon = "Interface\\Icons\\Trade_BlackSmithing", buttons = { "ProfessionMicroButton" } },
+    { key = "bags", label = "Bags", radial = { R .. "bags" },
+        icon = "Interface\\Icons\\INV_Misc_Bag_08", buttons = { "MainMenuBarBackpackButton", "BagsBarBackpackButton" } },
+    { key = "spellbook", label = "Spellbook", radial = { R .. "spellbook" },
+        icon = "Interface\\Icons\\INV_Misc_Book_09", buttons = { "SpellbookMicroButton", "PlayerSpellsMicroButton" } },
+    { key = "gamemenu", label = "Game Menu", radial = { R .. "gamemenu" },
+        icon = "Interface\\Icons\\INV_Misc_Gear_01", buttons = { "MainMenuMicroButton" } },
+    { key = "questlog", label = "Quest & Maps", radial = { R .. "quests" },
+        icon = "Interface\\Icons\\INV_Misc_Book_08", buttons = { "QuestLogMicroButton" } },
+    { key = "talents", label = "Talents", radial = { R .. "talents" },
+        icon = "Interface\\Icons\\Ability_Marksmanship", buttons = { "TalentMicroButton", "PlayerSpellsMicroButton" } },
+    -- (its second)
+    { key = "shop", label = "Shop", radial = { R .. "shop", R .. "store" },
+        icon = "Interface\\Icons\\WoW_Store", buttons = { "StoreMicroButton" } },
+    { key = "legacy", label = "Legacy", radial = { R .. "legacy" },
+        icon = "Interface\\Icons\\Achievement_General", buttons = { "LegacyMicroButton", "LegacySystemMicroButton" } },
+    { key = "groupfinder", label = "Group Finder", radial = { R .. "groupfinder", R .. "lfg", R .. "dungeonfinder" },
+        icon = "Interface\\Icons\\INV_Misc_Eye_01", buttons = { "LFGMicroButton", "LFDMicroButton", "GroupFinderMicroButton" } },
+    { key = "collections", label = "Collections", radial = { R .. "collections" },
+        icon = "Interface\\Icons\\Ability_Mount_RidingHorse", buttons = { "CollectionsMicroButton" } },
+    { key = "minimap", label = "Minimap Settings", radial = { R .. "minimap", R .. "minimapsettings", R .. "tracking" },
+        icon = "Interface\\Icons\\INV_Misc_Map_01",
+        buttons = { "MiniMapTrackingButton", "MiniMapTracking", "MinimapTrackingButton" } },
+    { key = "buffs", label = "View Buffs", radial = { R .. "buffs", R .. "viewbuffs", R .. "auras" },
+        icon = "Interface\\Icons\\Spell_Holy_WordFortitude", buttons = { "BuffFrameCollapseAndExpandButton" } },
+    { key = "social", label = "Social", radial = { R .. "social", R .. "friends" },
+        icon = "Interface\\Icons\\INV_Misc_GroupLooking", buttons = { "SocialsMicroButton", "FriendsMicroButton", "QuickJoinToastButton" } },
+    { key = "guild", label = "Communities", radial = { R .. "communities", R .. "guild" },
+        icon = "Interface\\Icons\\INV_BannerPVP_02", buttons = { "CommunitiesMicroButton", "GuildMicroButton" } },
+    -- (its third)
+    { key = "calendar", label = "Calendar", radial = { R .. "calendar" },
+        icon = "Interface\\Icons\\INV_Misc_Note_02", buttons = { "GameTimeFrame", "CalendarMicroButton" } },
+    { key = "clock", label = "Clock", radial = { R .. "clock", R .. "stopwatch" },
+        icon = "Interface\\Icons\\INV_Misc_PocketWatch_01", buttons = { "TimeManagerClockButton" } },
+    { key = "pvp", label = "PvP", radial = { R .. "pvp" },
+        icon = "Interface\\Icons\\Ability_DualWield", buttons = { "PVPMicroButton", "HonorMicroButton" } },
+    -- (ours)
+    { key = "nodes", label = "Minimap labels", ours = true, icon = IF.TEX .. "ic_mod_gather", buttons = { "ImprovedForeverNodeScan" } },
     -- (the map's own button: opened with the pad's press, closed with its
-    -- release, shown as the peek map, PeekMap.lua)
-    { key = "peekmap", icon = "Interface\\Icons\\INV_Misc_Map02", label = "Peek map", buttons = { "WorldMapMicroButton", "MiniMapWorldMapButton", "QuestLogMicroButton" } },
-    { key = "icmenu", icon = "Interface\\Icons\\INV_Misc_Gear_02", label = "Improved Forever panel", buttons = { "ImprovedForeverMenuToggle" } },
+    -- release, shown as the peek map, PeekMap.lua; the touchpad's map
+    -- corner opens it the same way)
+    { key = "peekmap", label = "Peek map", ours = true, icon = IF.TEX .. "ic_mod_map",
+        buttons = { "WorldMapMicroButton", "MiniMapWorldMapButton", "QuestLogMicroButton" } },
+    { key = "icmenu", label = "Improved Forever panel", ours = true, icon = IF.TEX .. "ic_addon", buttons = { "ImprovedForeverMenuToggle" } },
+    -- (no longer offered; kept for what holds it already)
+    { key = "map", label = "World Map", hidden = true, icon = "Interface\\Icons\\INV_Misc_Map_01",
+        buttons = { "WorldMapMicroButton", "MiniMapWorldMapButton", "QuestLogMicroButton" } },
+    { key = "achievements", label = "Achievements", hidden = true, icon = "Interface\\Icons\\INV_Misc_Note_01",
+        buttons = { "AchievementMicroButton" } },
 }
+
+-- A window's art: the radial menu's, else its icon
+local function WindowIcon(action)
+    for _, atlas in ipairs(action.radial or {}) do
+        if IF.HasAtlas(atlas) then return atlas end
+    end
+    return action.icon
+end
+
 local ACTION_BY_KEY = {}
 for _, action in ipairs(WINDOWS) do
     ACTION_BY_KEY[action.key] = action
@@ -118,7 +165,7 @@ end
 function AC.Windows()
     local list = { "none" }
     for _, action in ipairs(WINDOWS) do
-        if ActionButton(action.key) then
+        if not action.hidden and ActionButton(action.key) then
             list[#list + 1] = action.key
         end
     end
@@ -136,7 +183,7 @@ function AC.Icon(key)
         return select(2, IF.ActionInfo(key))
     end
     local action = ACTION_BY_KEY[key]
-    return action and action.icon
+    return action and WindowIcon(action)
 end
 
 -- What the secure click runs for a region's action, or nil
@@ -158,15 +205,23 @@ function AC.Macro(key)
     return name and ("/click " .. name)
 end
 
--- The interface windows a region can open, for the picker
-function AC.InterfaceEntries()
+-- The windows a press or a corner can open, for the picker: the game's
+-- (ours = false), or our own (ours = true: the minimap labels, the peek map,
+-- this panel)
+function AC.InterfaceEntries(ours)
     local entries = {}
     for _, key in ipairs(AC.Windows()) do
-        if key ~= "none" then
+        if key ~= "none" and (ACTION_BY_KEY[key].ours or false) == (ours or false) then
             entries[#entries + 1] = { action = key, name = AC.Label(key), icon = AC.Icon(key) }
         end
     end
     return entries
+end
+
+-- One of ours (its own list in the picker)
+function AC.IsOurs(key)
+    local action = ACTION_BY_KEY[key]
+    return action ~= nil and action.ours == true
 end
 
 function AC.Label(key)
@@ -317,4 +372,18 @@ local ITEMS = { key = "items", label = "Items", entries = ItemEntries }
 local MACROS = { key = "macros", label = "Macros", entries = MacroEntries }
 local EMOTES = { key = "emotes", label = "Emotes", entries = EmoteEntries }
 AC.CATALOG = { SPELLS, ITEMS, MACROS, EMOTES }
+
+-- /if windows: each window an action can open, the button it would click
+-- and the art it shows (the radial menu's, or not found in this client)
+IF.AddCommand("windows", function()
+    for _, action in ipairs(WINDOWS) do
+        local art
+        for _, atlas in ipairs(action.radial or {}) do
+            if IF.HasAtlas(atlas) then art = atlas break end
+        end
+        IF.Print(action.label .. ": " .. (ActionButton(action.key) or "|cffff7a5cno button|r")
+            .. (action.radial and ("  art: " .. (art or "|cffff7a5cnone|r")) or "")
+            .. (action.hidden and "  (not offered)" or ""))
+    end
+end, ": the windows an action can open, in this client")
 

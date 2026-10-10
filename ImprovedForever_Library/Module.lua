@@ -3,7 +3,7 @@
 -- use it, its quests and auction prices; set up in its tab (LibraryEditor.lua).
 local IF = ImprovedForever
 
-IF.AddModule({ key = "library", label = "Library", icon = "Interface\\Icons\\INV_Misc_Book_09", addon = ... })
+IF.AddModule({ key = "library", label = "Library", icon = IF.TEX .. "ic_mod_library", addon = ... })
 
 -- /if library <item id or link>: an item's Library page
 IF.AddCommand("library", function(args, msg)

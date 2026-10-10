@@ -3,4 +3,4 @@
 -- answer, on a drawing of the controller (BindEditor.lua).
 local IF = ImprovedForever
 
-IF.AddModule({ key = "controller", label = "Controller", icon = "Interface\\Icons\\INV_Misc_Gear_02", addon = ... })
+IF.AddModule({ key = "controller", label = "Controller", icon = IF.TEX .. "ic_mod_controller", addon = ... })

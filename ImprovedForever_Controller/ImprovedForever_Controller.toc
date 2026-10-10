@@ -5,10 +5,10 @@
 ## Version: 0.3.0
 ## X-Website: https://github.com/markgravity/ImprovedForever
 ## X-License: MIT
-## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_addon
+## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_mod_controller
 ## Group: ImprovedForever
 ## Dependencies: ImprovedForever
-## OptionalDeps: ImprovedForever_Wheel, ImprovedForever_Map
+## OptionalDeps: ImprovedForever_Map
 
 Module.lua
 Bags.lua

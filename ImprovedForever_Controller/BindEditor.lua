@@ -219,12 +219,7 @@ local function Entries(spec, wheels)
         end
         local sub
         local here = B.Has(def, spec)
-        local there = def.specs()[1]
-        if not here and there then
-            sub = "on " .. B.Text(there)
-        elseif def.context == "bags" then
-            sub = "bags open"
-        end
+        if def.context == "bags" then sub = "bags open" end
         entries[#entries + 1] = { action = def.id, name = def.label, icon = def.icon, sub = sub, here = here,
             def = def }
     end
@@ -232,19 +227,25 @@ local function Entries(spec, wheels)
 end
 
 -- What a press or a corner can run: as the wheels' picker (Spells, Items,
--- Macros, Emotes; a corner: no emotes), and Interface (the game's windows)
-local function ActionLists(emotes)
+-- Macros, Emotes; a corner: no emotes), Interface (the game's windows), and
+-- (with ours = true) Misc: our own windows (the minimap labels, the peek
+-- map, this panel)
+local function ActionLists(emotes, ours)
     local lists = {}
     for _, list in ipairs(IF.Actions.CATALOG) do
         if emotes or list.key ~= "emotes" then lists[#lists + 1] = list end
     end
-    lists[#lists + 1] = { key = "interface", label = "Interface", entries = touch.InterfaceEntries }
+    lists[#lists + 1] = { key = "interface", label = "Interface", entries = function() return touch.InterfaceEntries() end }
+    if ours then
+        lists[#lists + 1] = { key = "misc", label = "Misc", entries = function() return touch.InterfaceEntries(true) end }
+    end
     return lists
 end
 
 -- The list an action is in (or fallback)
 local function ListOf(lists, action, fallback)
-    local kind = touch.IsBound(action) and (action:match("^(%a+):") or "interface")
+    local kind = touch.IsBound(action) and (action:match("^(%a+):")
+        or (IF.Actions.IsOurs(action) and "misc" or "interface"))
     for i, list in ipairs(lists) do
         if kind and (list.key == kind or list.key == kind .. "s") then return i end
     end
@@ -262,16 +263,17 @@ function P:SyncPicker(force)
     self.pickerFor = want
     local region = Region()
     if region then
-        local lists = ActionLists(false)
+        local lists = ActionLists(false, true)
         self.picker:Open({
             lists = lists, list = self.variant[self.key] or ListOf(lists, touch.GetSettings().regions[region]),
             rows = PICKER_ROWS, chooseVerb = "Bind",
             current = function() return touch.GetSettings().regions[region] end,
-            marked = function(e)
-                for _, action in pairs(touch.GetSettings().regions) do
-                    if action == e.action then return true end
-                end
-                return false
+            -- (only what this corner holds)
+            marked = function(e) return e.action == touch.GetSettings().regions[region] end,
+            status = function()
+                local action = touch.GetSettings().regions[region]
+                return touch.REGION_LABELS[region] .. ":  "
+                    .. (touch.IsBound(action) and ("|cffffffff" .. touch.ActionLabel(action) .. "|r") or "Empty")
             end,
             onChoose = function(e) P:BindCorner(region, e) end,
         })
@@ -285,11 +287,24 @@ function P:SyncPicker(force)
     if #Ours(spec, true) > 0 then
         lists[#lists + 1] = { key = "wheels", label = "Wheels", entries = function() return Entries(spec, true) end }
     end
-    lists[#lists + 1] = { key = "misc", label = "Misc", entries = function() return Entries(spec, false) end }
-    local misc = #lists
-    if B.ActionFits(spec) then
+    local fits = B.ActionFits(spec)
+    if fits then
         for _, list in ipairs(ActionLists(true)) do lists[#lists + 1] = list end
     end
+    -- Last, Misc: our other bindings that can go on it, and (where an action
+    -- can) our windows not already among them
+    lists[#lists + 1] = { key = "misc", label = "Misc", entries = function()
+        local entries = Entries(spec, false)
+        if fits then
+            local named = {}
+            for _, e in ipairs(entries) do if e.name then named[e.name] = true end end
+            for _, e in ipairs(touch.InterfaceEntries(true)) do
+                if not named[e.name] then entries[#entries + 1] = e end
+            end
+        end
+        return entries
+    end }
+    local misc = #lists
     local start = misc
     local bound = B.Bound(spec)[1]
     if B.ActionOn(spec) then
@@ -302,6 +317,9 @@ function P:SyncPicker(force)
         rows = PICKER_ROWS, chooseVerb = "Bind",
         current = function(list)
             if list.key ~= "wheels" and list.key ~= "misc" then return B.ActionOn(spec) end
+            if list.key == "misc" and B.ActionOn(spec) and IF.Actions.IsOurs(B.ActionOn(spec)) then
+                return B.ActionOn(spec)
+            end
             for _, def in ipairs(B.Bound(spec)) do
                 if def.kind ~= "action" and (def.group == "Wheels") == (list.key == "wheels") then return def.id end
             end
@@ -310,6 +328,13 @@ function P:SyncPicker(force)
         marked = function(e)
             if e.def or e.action == "none" then return e.here end
             return e.action == B.ActionOn(spec)
+        end,
+        -- The press, what it runs now
+        status = function()
+            local names = {}
+            for _, def in ipairs(B.Bound(spec)) do names[#names + 1] = def.label end
+            return B.Text(spec, 14) .. ":  " .. (#names > 0 and ("|cffffffff" .. table.concat(names, ", ") .. "|r")
+                or NoneName(spec))
         end,
         onChoose = function(e)
             if e.def or e.action == "none" then P:Choose(e) else P:ChooseAction(spec, e) end
@@ -392,7 +417,7 @@ function P:Build(parent)
 
     -- (its lists in a bar along its top, as the auction window's
     -- categories; their choices as its item cards, two a row)
-    self.picker = UI.CardPicker(f.mid, 2, 46, menu.Render)
+    self.picker = UI.CardPicker(f.mid, 2, 46, menu.Render, "LS")
     self.picker:SetPoint("TOPLEFT", f.mid, "TOPLEFT", 0, -(ART_H * SCALE + 14))
     self.picker:SetPoint("BOTTOMRIGHT", f.mid, "BOTTOMRIGHT", 0, 0)
 end
@@ -603,7 +628,7 @@ function P:Help()
     else
         hints[#hints + 1] = H({ "X" }, "Find press", "X")
     end
-    hints[#hints + 1] = H({ "LB", "RB" }, "Tab", "RB")
+    hints[#hints + 1] = H({ "RS" }, "Tab")
     hints[#hints + 1] = H({ "B" }, "Close", "B")
     return hints
 end
@@ -666,17 +691,6 @@ function P:Render()
     local held = B.Parse(spec)
     local region = Region()
 
-    -- Where the picker's focused choice is bound now (its other press)
-    local preview = {}
-    local e = self.key and self.picker.entries and self.picker.entries[self.picker.index or 0]
-    if e and e.def and not e.here then
-        for _, s in ipairs(e.def.specs()) do
-            local h, p = B.Parse(s)
-            preview[p] = true
-            if h then preview[h] = true end
-        end
-    end
-
     -- The buttons: the one picked lit, marks for what is on each
     for _, s in ipairs(SPOTS) do
         local key, b = s.key, f.spots[s.key]
@@ -696,7 +710,7 @@ function P:Render()
             local picked = key == self.key
             b.glow:SetShown(picked)
             Tint(b.glow, KC.focus, 0.9)
-            local ring = picked or (not region and key == held) or preview[key]
+            local ring = picked or (not region and key == held)
             b.ring:SetShown(ring and true or false)
             if picked then
                 Tint(b.ring, KC.focus)
@@ -707,7 +721,7 @@ function P:Render()
             end
             b.dot:SetShown(any)
             Tint(b.dot, clash and KC.danger or KC.slot)
-            b.glyph:SetAlpha((picked or any or preview[key]) and 1 or 0.7)
+            b.glyph:SetAlpha((picked or any) and 1 or 0.7)
         end
     end
     if HasTouchpad() then RenderCorners(f) end
