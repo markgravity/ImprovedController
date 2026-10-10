@@ -119,7 +119,18 @@ local DECODE = {
         return { name = Text(f[1]), zoneID = tonumber(f[2]), spawns = Spawns(f[3]) }
     end,
     quests = function(f)
-        return { name = Text(f[1]), questLevel = tonumber(f[2]), zoneOrSort = tonumber(f[3]) }
+        local objectives
+        for line in (f[12] or ""):gmatch("[^~]+") do
+            line = line:match("^%s*(.-)%s*$")
+            if line ~= "" then
+                objectives = objectives or {}
+                objectives[#objectives + 1] = line
+            end
+        end
+        return { name = Text(f[1]), questLevel = tonumber(f[2]), zoneOrSort = tonumber(f[3]),
+            requiredLevel = tonumber(f[4]), startedBy = { Ids(f[5] or ""), Ids(f[6] or ""), Ids(f[7] or "") },
+            finishedBy = { Ids(f[8] or ""), Ids(f[9] or "") }, preQuestSingle = Ids(f[10] or ""),
+            nextQuestInChain = tonumber(f[11]), objectivesText = objectives }
     end,
 }
 
@@ -429,10 +440,10 @@ end
 -- What creatures drop and sell, what chests and nodes hold, what container
 -- items hold: built once from the bundled data (items' npcDrops, objectDrops,
 -- itemDrops and vendors read backwards)
-local loot, holds, contents, wares
+local loot, holds, contents, wares, rewards
 local function Backwards()
     if loot then return end
-    loot, holds, contents, wares = {}, {}, {}, {}
+    loot, holds, contents, wares, rewards = {}, {}, {}, {}, {}
     local function add(map, ids, item)
         for id in (ids or ""):gmatch("%d+") do
             id = tonumber(id)
@@ -441,7 +452,8 @@ local function Backwards()
         end
     end
     for item, row in pairs(IF.LibraryData and IF.LibraryData.items or {}) do
-        local drops, objects, inside, sells = row:match("^([^|]*)|([^|]*)|([^|]*)|([^|]*)")
+        local drops, objects, inside, sells, given = row:match("^([^|]*)|([^|]*)|([^|]*)|([^|]*)|([^|]*)")
+        add(rewards, given, item)
         add(loot, drops, item)
         add(holds, objects, item)
         add(contents, inside, item)
@@ -643,6 +655,61 @@ function LB.People(itemID)
     return ByZone(entries)
 end
 
+-- A quest as a list line: its name, "Level 11 · Reward · Loch Modan" (role:
+-- the item's part in it, a word for it, or nil)
+local function QuestEntry(Q, id, role)
+    local q = Fields(Q.Quest, id, { "name", "questLevel", "zoneOrSort" })
+    if not q or not q.name then return nil end
+    local zone = q.zoneOrSort and q.zoneOrSort > 0 and ZoneName(q.zoneOrSort) or nil
+    return { kind = "quest", id = id, icon = ICONS.quest, quality = 1, name = q.name, role = role,
+        line = Join({ q.questLevel and q.questLevel > 0 and ("Level " .. q.questLevel), ROLES[role] or role, zone }) }
+end
+
+-- A chest's, a node's line (an object that gives or takes a quest too)
+local function ObjectEntry(Q, id)
+    local o = Fields(Q.Object, id, { "name", "zoneID", "spawns" })
+    if not (o and o.name) then return nil end
+    local spot = NearestSpawn(o.spawns, PlayerArea())
+    local how = Gathered(o.name)
+    return { kind = "object", how = how, id = id, quality = 1, name = o.name, plain = o.name, spawns = o.spawns,
+        zone = o.zoneID or (spot and spot.area), spot = spot, icon = how and GATHER[how].icon or ICONS.object,
+        line = Join({ how and GATHER[how].line, (o.zoneID or (spot and spot.area)) and ZoneName(o.zoneID or spot.area) }) }
+end
+
+-- A quest's page: -> { id, name, level, required, zone, objectives = { text },
+-- givers, enders (creatures, objects, items), before, after (quests),
+-- rewards (items) } or nil
+function LB.Quest(questID)
+    local Q = LB.Q()
+    local q = Q and Fields(Q.Quest, questID, { "name", "questLevel", "requiredLevel", "zoneOrSort", "startedBy",
+        "finishedBy", "objectivesText", "preQuestSingle", "preQuestGroup", "nextQuestInChain" })
+    if not (q and q.name) then return nil end
+    local function who(by)
+        local lines = {}
+        for _, id in ipairs(by and by[1] or {}) do
+            local e = NpcEntry(Q, id, ICONS.npc)
+            if e then lines[#lines + 1] = LB.Faction(e) end
+        end
+        for _, id in ipairs(by and by[2] or {}) do lines[#lines + 1] = ObjectEntry(Q, id) end
+        for _, id in ipairs(by and by[3] or {}) do
+            lines[#lines + 1] = { kind = "item", item = id, tip = id, icon = ItemIcon(id), line = "Starts the quest" }
+        end
+        return lines
+    end
+    local before = {}
+    for _, list in ipairs({ q.preQuestSingle or {}, q.preQuestGroup or {} }) do
+        for _, id in ipairs(list) do before[#before + 1] = QuestEntry(Q, id, "Before it") end
+    end
+    Backwards()
+    return {
+        id = questID, name = q.name, level = q.questLevel, required = q.requiredLevel,
+        zone = q.zoneOrSort and q.zoneOrSort > 0 and q.zoneOrSort or nil,
+        objectives = q.objectivesText or {}, givers = who(q.startedBy), enders = who(q.finishedBy),
+        before = before, after = q.nextQuestInChain and { QuestEntry(Q, q.nextQuestInChain, "After it") } or {},
+        rewards = ItemLines(rewards[questID]),
+    }
+end
+
 function LB.Quests(itemID)
     local Q = LB.Q()
     if not Q then return nil end
@@ -650,11 +717,7 @@ function LB.Quests(itemID)
     local function add(id, role)
         if not id or seen[id] then return end
         seen[id] = true
-        local q = Fields(Q.Quest, id, { "name", "questLevel", "requiredLevel", "zoneOrSort" })
-        if not q or not q.name then return end
-        local zone = q.zoneOrSort and q.zoneOrSort > 0 and ZoneName(q.zoneOrSort) or nil
-        lines[#lines + 1] = { kind = "quest", id = id, icon = ICONS.quest, quality = 1, name = q.name, role = role,
-            line = Join({ q.questLevel and q.questLevel > 0 and ("Level " .. q.questLevel), ROLES[role], zone }) }
+        lines[#lines + 1] = QuestEntry(Q, id, role)
     end
     add(Field(Q.Item, itemID, "startQuest"), "starts")
     for _, id in ipairs(Field(Q.Item, itemID, "questRewards") or {}) do add(id, "reward") end

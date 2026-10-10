@@ -13,7 +13,9 @@ Row formats (fields split by "|", lists by ","):
     items[id]   = "npcDrops|objectDrops|itemDrops|vendors|questRewards|startQuest|relatedQuests"
     npcs[id]    = "name|minLevel|maxLevel|rank|zoneID|subName|friendlyToFaction|spawns"
     objects[id] = "name|zoneID|spawns"
-    quests[id]  = "name|questLevel|zoneOrSort"
+    quests[id]  = "name|questLevel|zoneOrSort|requiredLevel|startNpcs|startObjects|startItems|
+                   endNpcs|endObjects|preQuests|nextQuest|objectives"   (objectives: lines
+                   split by "~"; the quests before and after it in a chain kept too)
     spawns      = "zone:x,y,x,y;zone:x,y"   (at most SPAWNS_PER_ZONE points a zone)
     displays[npcID] = displayID              (the creature's look, for its portrait)
     trainerSets[n]  = "npcID,npcID,..."      (trainers, a list shared by recipes)
@@ -58,7 +60,8 @@ ITEM = {"npcDrops": 2, "objectDrops": 3, "itemDrops": 4, "startQuest": 5, "quest
 NPC = {"name": 1, "minLevel": 4, "maxLevel": 5, "rank": 6, "spawns": 7, "zoneID": 9,
        "friendlyToFaction": 13, "subName": 14}
 OBJECT = {"name": 1, "spawns": 4, "zoneID": 5}
-QUEST = {"name": 1, "questLevel": 5, "zoneOrSort": 17}
+QUEST = {"name": 1, "startedBy": 2, "finishedBy": 3, "requiredLevel": 4, "questLevel": 5, "objectivesText": 8,
+         "preQuestGroup": 12, "preQuestSingle": 13, "zoneOrSort": 17, "nextQuestInChain": 22}
 
 
 # ---------------------------------------------------------------------------
@@ -332,6 +335,24 @@ def main():
         if f["startQuest"]:
             want_quest.add(f["startQuest"])
 
+    # (a quest's chain: the quests before and after it, theirs too)
+    todo = list(want_quest)
+    while todo:
+        row = quests.get(todo.pop())
+        if not row:
+            continue
+        for q in as_list(row.get(QUEST["preQuestSingle"])) + as_list(row.get(QUEST["preQuestGroup"])) \
+                + as_list(row.get(QUEST["nextQuestInChain"])):
+            if q and q not in want_quest:
+                want_quest.add(q)
+                todo.append(q)
+    # (who gives and takes them)
+    for qid in want_quest:
+        row = quests.get(qid) or {}
+        start, finish = row.get(QUEST["startedBy"]) or {}, row.get(QUEST["finishedBy"]) or {}
+        want_npc.update(as_list(start.get(1)) + as_list(finish.get(1)))
+        want_obj.update(as_list(start.get(2)) + as_list(finish.get(2)))
+
     creatures, columns, own, shared = cmangos()
     by_recipe, by_skill, ranks, levels = trainers(creatures, columns, own, shared)
     starter_spells = {int(r["Spell"]) for r in wago_table("SkillLineAbility") if r["AcquireMethod"] == "1"}
@@ -356,8 +377,15 @@ def main():
     for qid in want_quest:
         row = quests.get(qid)
         if row:
+            start, finish = row.get(QUEST["startedBy"]) or {}, row.get(QUEST["finishedBy"]) or {}
+            objectives = " ~ ".join(text(t) for t in as_list(row.get(QUEST["objectivesText"])) if t)
             quest_rows[qid] = "|".join([text(row.get(QUEST["name"])), num(row.get(QUEST["questLevel"])),
-                                        num(row.get(QUEST["zoneOrSort"]))])
+                                        num(row.get(QUEST["zoneOrSort"])), num(row.get(QUEST["requiredLevel"])),
+                                        ids(start.get(1)), ids(start.get(2)), ids(start.get(3)),
+                                        ids(finish.get(1)), ids(finish.get(2)),
+                                        ",".join(str(q) for q in as_list(row.get(QUEST["preQuestSingle"]))
+                                                 + as_list(row.get(QUEST["preQuestGroup"]))),
+                                        num(row.get(QUEST["nextQuestInChain"])), objectives.replace("~ ~", "~")])
 
     # Zones: area id -> UiMap id (the base table, Forever's overrides on top)
     zones_file = QDB / "support" / "Forever" / "Zones" / "areaIdToUiMapId.lua"

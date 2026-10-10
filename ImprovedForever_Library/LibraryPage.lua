@@ -949,7 +949,7 @@ local ABOUT = {
     people = { "people" }, profession = { "profession" }, quests = { "quests" }, trainers = { "trainers" },
 }
 local function About(p, key)
-    if p.creature then return nil end           -- (a creature's, a chest's page: no lists)
+    if p.creature or p.questInfo then return nil end   -- (a creature's, a chest's, a quest's page: no lists)
     local said = Said(p)
     local keys = { unpack(ABOUT[key] or {}) }
     -- (where to look, with the subject it's in)
@@ -968,7 +968,7 @@ local function CreatureLines(p)
         lines[#lines + 1] = { header = title, info = count or #list }
         for _, l in ipairs(list) do lines[#lines + 1] = l end
     end
-    section("Found In", p.creature and p.creature.places or {})
+    section("Locate", p.creature and p.creature.places or {})
     -- (by class, an entry each; a trainer's teachings: every item)
     for _, what in ipairs(LOOTS[p.npc and "npc" or "object"]) do
         local items = p.tabs[what[1]] or {}
@@ -977,7 +977,62 @@ local function CreatureLines(p)
     return lines
 end
 
+-- A quest's page: who gives it and takes it back, what it rewards, the
+-- quests before and after it
+local function BuildQuest(p)
+    p.questInfo = LB.Quest(p.quest)
+    p.tabs, p.views = {}, {}
+end
+
+-- Its notes: what the quest asks, in its own words, then who and what
+local function QuestNotes(p)
+    local q, out = p.questInfo, {}
+    if #q.objectives > 0 then out[#out + 1] = "“" .. table.concat(q.objectives, " ") .. "”" end
+    local said = {}
+    local giver, ender = q.givers[1], q.enders[1]
+    if giver then
+        local name = giver.plain or LB.ItemInfo(giver.item) or "an item"
+        said[#said + 1] = (giver.kind == "item" and ("Reading " .. Name(name) .. " begins it")
+            or (Name(name) .. (giver.zone and giver.zone > 0 and (" in " .. LB.ZoneName(giver.zone)) or "") .. " gives it"))
+            .. (ender and ender.plain and ender.plain ~= giver.plain and ("; " .. Name(ender.plain) .. " takes it back") or "") .. "."
+    elseif ender and ender.plain then
+        said[#said + 1] = Name(ender.plain) .. " takes it back."
+    end
+    if #q.rewards > 0 then
+        local names = {}
+        for i = 1, math.min(2, #q.rewards) do names[i] = ItemName(q.rewards[i].item) end
+        said[#said + 1] = "Completing it rewards " .. (#q.rewards == 1 and names[1]
+            or (Plural(#q.rewards, "item", "items") .. ", " .. Names(names) .. " among them")) .. "."
+    end
+    if q.before[1] then said[#said + 1] = "It follows " .. Name("“" .. q.before[1].name .. "”") .. "." end
+    if q.after[1] then said[#said + 1] = Name("“" .. q.after[1].name .. "”") .. " comes next." end
+    if #said > 0 then out[#out + 1] = table.concat(said, " ") end
+    if #out == 0 then out[1] = "Little is written of it yet. Perhaps a traveller will add to these pages one day." end
+    return out
+end
+
+-- Its sections: where it begins, rewards, the chain (Cross: their pages;
+-- Square: a giver on the map)
+local function QuestLines(p)
+    local q, lines = p.questInfo, {}
+    local function section(title, list)
+        if #list == 0 then return end
+        lines[#lines + 1] = { header = title, info = #list }
+        for _, l in ipairs(list) do lines[#lines + 1] = l end
+    end
+    -- (where it begins: who gives it, the item that starts it; who takes it
+    -- back is in the notes)
+    section("Giver", q.givers)
+    section("Rewards", q.rewards)
+    local chain = {}
+    for _, l in ipairs(q.before) do chain[#chain + 1] = l end
+    for _, l in ipairs(q.after) do chain[#chain + 1] = l end
+    section("Chain", chain)
+    return lines
+end
+
 local function Build(p)
+    if p.quest then return BuildQuest(p) end
     if p.npc or p.object then return BuildCreature(p) end
     local id = p.id
     p.recipes = Sections(LB.Recipes(id))
@@ -1100,6 +1155,7 @@ end
 -- entries (under "See Also" after those)
 local function NotesLayout(p)
     if p.creature then return PageLayout(CreatureNotes(p), true, CreatureLines(p)) end
+    if p.questInfo then return PageLayout(QuestNotes(p), true, QuestLines(p)) end
     local lines = Recipe(p)
     -- (a container item: what it holds, an entry a class)
     local contents = GroupEntries(p, "contents")
@@ -1209,6 +1265,7 @@ function LB.Activate()
     if line.go then return LB.OpenList(line.go) end
     if line.item then return LB.Push(line.item) end
     if line.kind == "npc" or line.kind == "object" then return LB.PushCreature(line.kind, line.id) end
+    if line.kind == "quest" then return LB.PushQuest(line.id) end
     if line.kind == "place" then return LB.ShowOnMap(line) end
 end
 
@@ -1219,6 +1276,16 @@ local function MapPicked()
     local view = p and View(p)
     local c = view and view.cells[view.sel]
     if c and c.line and c.line.spot then LB.ShowOnMap(c.line) end
+end
+
+function LB.PushQuest(questID)
+    if not questID then return end
+    local p = { quest = questID, tab = "notes" }
+    Build(p)
+    if not p.questInfo then return end
+    LB.stack[#LB.stack + 1] = p
+    Sound("IG_ABILITY_PAGE_TURN")
+    LB.Render()
 end
 
 -- kind: "npc" (a creature, a person) or "object" (a chest, a node)
@@ -1278,7 +1345,18 @@ local function RenderCreatureTitle(p)
     chapter:SetText(LISTS[p.tab] or p.titles and p.titles[p.tab] or "Field Notes")
 end
 
+local function RenderQuestTitle(p)
+    local q = p.questInfo
+    head:Set(LB.ICONS.quest, true)
+    title:SetText(q.name)
+    kind:SetText(LB.Join({ q.level and q.level > 0 and ("Level " .. q.level .. " Quest") or "Quest",
+        q.required and q.required > 1 and ("Requires Level " .. q.required) }))
+    owned:SetText(q.zone and LB.ZoneName(q.zone) or "")
+    chapter:SetText("Field Notes")
+end
+
 local function RenderTitle(p)
+    if p.questInfo then return RenderQuestTitle(p) end
     if p.creature then return RenderCreatureTitle(p) end
     local name, link, quality, level, need, itemType, subType, _, _, _, sell = LB.ItemInfo(p.id)
     p.link = p.link or link
@@ -1331,7 +1409,8 @@ local function Hints(p, view, line)
     if view and #view.pages > 1 then
         defs[#defs + 1] = { { "PADLTRIGGER", "PADRTRIGGER" }, { "LT", "RT" }, "Turn Page" }
     end
-    local verb = line and (line.go and "Read" or (line.item or line.kind == "npc" or line.kind == "object") and "Open"
+    local verb = line and (line.go and "Read"
+        or (line.item or line.kind == "npc" or line.kind == "object" or line.kind == "quest") and "Open"
         or line.kind == "place" and "Show on Map")
     if verb then defs[#defs + 1] = { "PAD1", "A", verb } end
     if line and (line.kind == "npc" or line.kind == "object") and line.spot then
