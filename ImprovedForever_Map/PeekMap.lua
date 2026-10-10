@@ -8,7 +8,7 @@
 -- so the hotkey is an override binding on a secure button that runs
 -- "/click <the map's micro button>" (press: opens, release: closes; on
 -- Forever the quest log's, which toggles the Map & Quest Log), in combat
--- too. Set in the General tab (Binds.lua); IF.db.peekMapKey. A
+-- too. Set in the Controller tab (Binds.lua); IF.db.peekMapKey. A
 -- touchpad corner can hold it too (Touchpad.lua: its Interface list): it
 -- clicks the map's button itself, then PeekMap.Opened.
 -- While open, the map has the gamepad (its own buttons and sticks), as
@@ -272,7 +272,7 @@ events:SetScript("OnEvent", function()
     if pending then PeekMap.Apply() end
 end)
 
--- Its binding, on the General tab (Binds.lua)
+-- Its binding, on the Controller tab (Binds.lua)
 local B = IF.Binds
 B.Add({
     id = "peekmap", label = "Peek map", group = "Other", tab = "controller",

@@ -409,7 +409,7 @@ function Gather.Command(option, value)
     IF.Print("Minimap nodes: step " .. N.step)
 end
 
--- Its binding, on the General tab (Binds.lua) and the Gather tab
+-- Its binding, on the Controller tab (Binds.lua) and the Gather tab
 local B = IF.Binds
 B.Add({
     id = "gather", label = "Minimap labels", group = "Other", tab = "gather",

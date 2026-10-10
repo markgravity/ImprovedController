@@ -3,7 +3,7 @@
 -- the peek map, the touchpad click, the actions put on presses (Override.lua) and the
 -- menu's double press.
 -- Each feature keeps its own setting; this file reads and writes them
--- through one shape, so the General tab (BindEditor.lua) can show them all
+-- through one shape, so the Controller tab (BindEditor.lua) can show them all
 -- on the controller and every tab can tell what a new binding replaces.
 --
 -- A press is a spec: "PADRSTICK" (pressed), "PADLSHOULDER+PADRSTICK" (one
@@ -171,7 +171,7 @@ function B.Overridable(spec)
 end
 
 -- A module's bindings: B.Add(def) one, B.AddSource(fn) a list that changes
--- (fn() -> defs: the wheels). order: where the General tab lists it.
+-- (fn() -> defs: the wheels). order: where the Controller tab lists it.
 local fixed, sources = {}, {}
 
 function B.Add(def)
@@ -304,7 +304,7 @@ focus:SetScript("OnUpdate", function(_, elapsed)
     end
 end)
 
--- Every binding, in the order the General tab lists them
+-- Every binding, in the order the Controller tab lists them
 function B.All()
     local list = {}
     -- (the lists first: the wheels)

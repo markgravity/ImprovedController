@@ -31,7 +31,9 @@ local STEP_DELAY, STEP_EVERY = 0.35, 0.2
 -- Show(), Hide(), Render(), Press(name) -> handled (LB / RB unhandled: the
 -- tabs; Circle unhandled: the panel closes), Help() -> { K.H... }, and
 -- optionally OnStick(stick, x, y, len) (it takes both sticks), StickStep(dir)
--- (the left stick up / down: -1 up, 1 down), OnTouch() (the touchpad clicked).
+-- (the left stick up / down: -1 up, 1 down, repeating while held),
+-- StickSide(dir) (the left stick left / right: once a tilt), OnTouch() (the
+-- touchpad clicked).
 ---------------------------------------------------------------------------
 menu.TABS = {}
 
@@ -327,7 +329,7 @@ end
 -- The sticks, as the auction window reads them: the right one tilted up /
 -- down steps through the tabs (once a tilt), the left one up / down the
 -- page's list (repeating while held)
-local rightHeld, leftNext = false, nil
+local rightHeld, leftNext, sideHeld = false, nil, false
 local function Sticks(now)
     local page = CurrentPage()
     local ry = menu.rightY or 0
@@ -338,8 +340,19 @@ local function Sticks(now)
     elseif rightHeld and math.abs(ry) < STICK_OFF then
         rightHeld = false
     end
-    if not (page and page.StickStep) then return end
     local lx, ly = menu.leftX or 0, menu.leftY or 0
+    if page and page.StickSide then
+        local side = lx > STICK_ON and 1 or lx < -STICK_ON and -1 or 0
+        if side ~= 0 and not sideHeld and math.abs(lx) > math.abs(ly) then
+            sideHeld = true
+            menu.Disarm()
+            page:StickSide(side)
+            menu.Render()
+        elseif math.abs(lx) < STICK_OFF then
+            sideHeld = false
+        end
+    end
+    if not (page and page.StickStep) then return end
     local dir = math.abs(ly) < math.abs(lx) and 0 or ly > STICK_ON and -1 or ly < -STICK_ON and 1 or 0
     if dir == 0 then
         if math.abs(ly) < STICK_OFF then leftNext = nil end
@@ -445,7 +458,7 @@ IF.OnPadStyleChanged(function() menu.Render() end)
 -- The controller's Menu / Options button pressed twice quickly opens this
 -- panel (once still opens the game's own menu wheel: the button is only
 -- watched, never taken). The game's wheel, opened by the first press, is
--- closed. Out of combat; off with IF.db.menuDouble = false (General tab).
+-- closed. Out of combat; off with IF.db.menuDouble = false (Controller tab).
 local DOUBLE = 0.35
 local menuKey = CreateFrame("Frame")
 local wasDown, lastPress = false, 0

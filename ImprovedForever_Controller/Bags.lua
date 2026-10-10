@@ -1,5 +1,5 @@
 -- A button (L3, the left stick click, unless bound to another in the
--- General tab: IF.db.bagSortKey) cleans up bags while any bag frame is open.
+-- Controller tab: IF.db.bagSortKey) cleans up bags while any bag frame is open.
 -- Unbound there: IF.db.bagSort = false.
 local IF = ImprovedForever
 
@@ -82,7 +82,7 @@ end
 
 IF.UpdateBagBinding = UpdateBinding
 
--- Another button for it (nil: back to L3); out of combat (the General tab)
+-- Another button for it (nil: back to L3); out of combat (the Controller tab)
 function IF.SetBagSortKey(key)
     IF.db.bagSortKey = key ~= DEFAULT_KEY and key or nil
     if bound and not IF.InCombat() then
@@ -104,7 +104,7 @@ owner:SetScript("OnEvent", function()
     end
 end)
 
--- Its binding, on the General tab (Binds.lua)
+-- Its binding, on the Controller tab (Binds.lua)
 local B = IF.Binds
 B.Add({
     id = "bagsort", label = "Bag clean-up", group = "Bags", tab = "controller",

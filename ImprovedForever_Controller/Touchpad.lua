@@ -299,7 +299,7 @@ end)
 -- Another controller in hand: the touchpad click only on a PlayStation pad
 IF.OnPadStyleChanged(function() touch.Apply() end)
 
--- Its binding, on the General tab (Binds.lua)
+-- Its binding, on the Controller tab (Binds.lua)
 local B = IF.Binds
 B.Add({
     id = "touch", label = "Touchpad corners", group = "Other", tab = "controller",

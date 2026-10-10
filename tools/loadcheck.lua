@@ -362,6 +362,7 @@ local CHECKS = {
             end
             local page = tab.page
             if page.StickStep then page:StickStep(1) M.Render() end
+            if page.StickSide then page:StickSide(1) M.Render() end
         end
         M.Close()
     end },

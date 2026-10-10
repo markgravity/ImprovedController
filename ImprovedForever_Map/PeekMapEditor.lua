@@ -1,7 +1,7 @@
 -- The Map tab, a tab of settings (IF.SettingsPage, SettingsPage.lua): how
 -- the peek map looks (opacity, size, place on the screen and an offset
 -- from it: a slider each way); seen the next time it opens. Its hotkey and
--- touchpad corner are set in the General tab (Binds.lua). PeekMap.lua does
+-- touchpad corner are set in the Controller tab (Binds.lua). PeekMap.lua does
 -- the work.
 local IF = ImprovedForever
 

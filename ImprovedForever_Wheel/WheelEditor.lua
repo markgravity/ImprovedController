@@ -2,7 +2,7 @@
 -- (moust4ki, MIT License, see LICENSE-EasyController.md). On the
 -- left a rail of every wheel (the built-in ones, the player's own, "New
 -- wheel"); beside it the selected wheel's editor: its slots around it (8 a
--- page), what opens it (bound in the General tab), Rename / Delete (or
+-- page), what opens it (bound in the Controller tab), Rename / Delete (or
 -- Reset), and
 -- the spells / items / macros / emotes picker on the right: a choice fills
 -- the slot aimed at and moves on to the next one.
@@ -490,7 +490,7 @@ function W:Triangle(wheel)
 end
 
 -- Square held: deletes a wheel of yours (once confirmed). Binding a wheel
--- to a press is the General tab's.
+-- to a press is the Controller tab's.
 function W:Square(wheel)
     if not wheel.id then return end
     self:PressOrHold("PAD3", function() menu.Toast(IF.PadText("Hold {X} to delete " .. wheel.label)) end, function()
@@ -910,7 +910,7 @@ function W:Render()
         else
             self.detail:Set({ title = wheel.label, tag = "Fills itself", tagColor = KC.slot, body = wheel.info,
                 extra = "Bound to: " .. (MW.HotkeyText(wheel.key) or "nothing")
-                    .. ". Bind it to a press in the General tab." })
+                    .. ". Bind it to a press in the Controller tab." })
         end
     end
     -- The box over the wheel: naming

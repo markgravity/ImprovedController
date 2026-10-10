@@ -180,87 +180,15 @@ end
 -- The second and third levels, along the top: a bar each, its bumper /
 -- trigger glyphs at the ends, the chosen one lit and kept in view
 ---------------------------------------------------------------------------
-local function TopBar(y, leftKey, rightKey)
-    local bar = Panel(buyPage, 0.4)
+local function TopBar(y, leftKey, rightKey, onClick)
+    local bar = IF.UI.ChipBar(buyPage, leftKey, rightKey, onClick)
     bar:SetPoint("TOPLEFT", MAIN_X, y)
-    bar:SetSize(MAIN_W, 34)
-    bar.left = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    bar.left:SetPoint("LEFT", 8, 0)
-    bar.right = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    bar.right:SetPoint("RIGHT", -8, 0)
-    bar.keys = { leftKey, rightKey }
-    bar.clip = K.NewFrame("Frame", nil, bar)
-    bar.clip:SetPoint("TOPLEFT", 44, 0)
-    bar.clip:SetPoint("BOTTOMRIGHT", -44, 0)
-    bar.clip:SetClipsChildren(true)
-    bar.chips = {}
+    bar:SetWidth(MAIN_W)
     return bar
 end
 
-local bar2 = TopBar(-30, "LB", "RB")
-local bar3 = TopBar(-68, "LT", "RT")
-
-local function Chip(bar, i)
-    local c = bar.chips[i]
-    if c then return c end
-    c = K.NewFrame("Button", nil, bar.clip)
-    c:SetHeight(26)
-    c.bg = c:CreateTexture(nil, "BACKGROUND")
-    c.bg:SetAllPoints()
-    c.text = c:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    c.text:SetPoint("CENTER")
-    c:SetScript("OnClick", function(self)
-        if bar == bar2 then BY.SetSub(self.index) else BY.SetSubSub(self.index) end
-    end)
-    bar.chips[i] = c
-    return c
-end
-
--- names: the chips' names; selected: which (1-based); off: a bar with nothing to pick
-local function LayoutBar(bar, names, selected)
-    local enabled = #names > 1
-    bar.left:SetText(Glyph(bar.keys[1]))
-    bar.right:SetText(Glyph(bar.keys[2]))
-    bar.left:SetAlpha(enabled and 1 or 0.3)
-    bar.right:SetAlpha(enabled and 1 or 0.3)
-    local widths, total = {}, 0
-    for i, name in ipairs(names) do
-        local c = Chip(bar, i)
-        c.text:SetText(name)
-        widths[i] = c.text:GetStringWidth() + 24
-        total = total + widths[i] + 6
-    end
-    for i = #names + 1, #bar.chips do bar.chips[i]:Hide() end
-    -- Scrolled to keep the chosen chip in the middle when they don't all fit
-    local clipW = bar.clip:GetWidth()
-    if not clipW or clipW <= 0 then clipW = MAIN_W - 88 end
-    local x, at = 0, 0
-    for i = 1, #names do
-        if i == selected then at = x + widths[i] / 2 end
-        x = x + widths[i] + 6
-    end
-    local shift = 0
-    if total > clipW then shift = math.max(0, math.min(total - clipW, at - clipW / 2)) end
-    x = -shift
-    local fr, fg, fb = FocusColor()
-    for i = 1, #names do
-        local c = bar.chips[i]
-        c.index = i
-        c:ClearAllPoints()
-        c:SetPoint("LEFT", bar.clip, "LEFT", x, 0)
-        c:SetWidth(widths[i])
-        c:Show()
-        local on = i == selected
-        if on then
-            c.bg:SetColorTexture(fr * 0.45, fg * 0.38, fb * 0.2, 0.9)
-            c.text:SetTextColor(1, 0.95, 0.8)
-        else
-            c.bg:SetColorTexture(0, 0, 0, 0.35)
-            c.text:SetTextColor(0.8, 0.74, 0.6)
-        end
-        x = x + widths[i] + 6
-    end
-end
+local bar2 = TopBar(-30, "LB", "RB", function(i) BY.SetSub(i) end)
+local bar3 = TopBar(-68, "LT", "RT", function(i) BY.SetSubSub(i) end)
 
 ---------------------------------------------------------------------------
 -- The status line, the content (the list), the legend
@@ -1699,10 +1627,10 @@ function BY.Render()
     titleText:SetText("Auction House  ·  Buy")
     RenderSide()
     local main, sub = Chosen()
-    LayoutBar(bar2, Names(main), BY.sub)
+    bar2:Render(Names(main), BY.sub)
     local names3 = Names(sub)
     if not sub then names3 = { "—" } end
-    LayoutBar(bar3, names3, sub and BY.subsub or 1)
+    bar3:Render(names3, sub and BY.subsub or 1)
     RenderResults()
     PlaceDetail()
     if D then RenderDetail() end

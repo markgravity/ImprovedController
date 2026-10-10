@@ -1,11 +1,15 @@
--- The General tab: every press the addon answers, on a drawing of the
--- controller (each button marked when something of ours is on it, red when
--- two things clash there). A press is picked by making it: Square ("Find
--- press", Recorder.lua) and press the button (or hold one and press
--- another, or press one twice). The drawing lights it, under it what each
--- way of pressing that button does, and on the right, as the other tabs'
--- pickers, what the press can do, on what it does now: Cross binds. A
--- choice taking a press from something else asks first (Cross again).
+-- The Controller tab: down the left every binding of ours (the wheels, the
+-- bags', the others, the actions put on presses, the touchpad's corners)
+-- with its press; beside it a drawing of the controller (each button marked
+-- when something of ours is on it, red when two things clash there), the
+-- picked binding's press lit, and under it what the press can do, on what
+-- it does now: Cross binds. A choice taking a press from
+-- something else asks first (Cross again). The left stick: up / down the
+-- bindings, left / right the choices' lists (L2 / R2 too); the D-pad the
+-- choices. A press can be picked by making it too:
+-- Square ("Find press", Recorder.lua) and press the button (or hold one and
+-- press another, or press one twice); a binding on no press: Square records
+-- one for it.
 -- The other tabs still bind their own things, through Binds.lua, so they
 -- warn the same way.
 -- On a PlayStation controller the touchpad shows its four corners: each
@@ -21,17 +25,13 @@ local menu = IF.Menu
 local B = IF.Binds
 local touch = IF.Touch
 
-local TEX = "Interface\\AddOns\\ImprovedForever\\textures\\"
-local PANEL_W, PICKER_ROWS = 340, 7
+local UI = IF.UI
 
--- The drawing (tools/make_controller.py) at SCALE, its centre from the
--- screen's; the list on its right as the Wheels tab's, round the same
--- middle
-local ART_W, ART_H, SCALE = 512, 256, 1.2
-local ART_AT = { 0, 60 }
--- The Stage layout (ConfigKit): the drawing in the middle, its body 230
--- from its centre, the list on its right, centred on it up and down
-local STAGE = K.Stage(230, ART_AT[2])
+local TEX = "Interface\\AddOns\\ImprovedForever\\textures\\"
+local SIDE_W, PICKER_ROWS = 230, 4
+
+-- The drawing (tools/make_controller.py) at SCALE, over the choices
+local ART_W, ART_H, SCALE = 512, 256, 1.1
 
 -- Its buttons: where they sit on the drawing (its pixels, y down), their
 -- glyph's size; the touchpad's corners (region) in its recess
@@ -53,10 +53,9 @@ local SPOTS = {
 local SPOT = {}
 for _, s in ipairs(SPOTS) do SPOT[s.key] = s end
 
-local LINES = 6
 -- key: the button picked (or a touchpad corner), nil until one is found;
--- spec: the press on it
-local P = { variant = {} }
+-- spec: the press on it; sel: the binding picked in the list
+local P = { variant = {}, sel = 1 }
 B.Editor = P
 
 -- A touchpad (its corners) only on a PlayStation controller; elsewhere the
@@ -107,8 +106,85 @@ local function NoneName(spec)
     return "Nothing"
 end
 
-local function DefText(def)
-    return def.label .. (def.context == "bags" and " |cff9d917a(bags open)|r" or "")
+
+---------------------------------------------------------------------------
+-- The list down the left: every binding by group, each with its press (its
+-- glyphs), then the touchpad's corners
+---------------------------------------------------------------------------
+local function Glyphs(spec)
+    local keys = spec and B.Glyphs(spec)
+    if not keys then return "|cff6f6452none|r" end
+    local parts = {}
+    for _, key in ipairs(keys) do
+        parts[#parts + 1] = key == "+" and "+" or IF.GlyphText(key, 16)
+    end
+    local _, _, double = B.Parse(spec)
+    return table.concat(parts, "") .. (double and " ×2" or "")
+end
+
+-- { label, def, spec } or { label, region } or { header }
+local function Lines()
+    local lines, group = {}, nil
+    for _, def in ipairs(B.All()) do
+        if def.id ~= "touch" then
+            local name = def.kind == "action" and "Actions" or def.group
+            if name ~= group then
+                group = name
+                lines[#lines + 1] = { header = name }
+            end
+            local spec = def.specs()[1]
+            lines[#lines + 1] = { label = def.label .. "  " .. Glyphs(spec), def = def, spec = spec }
+        end
+    end
+    if HasTouchpad() then
+        lines[#lines + 1] = { header = "Touchpad" }
+        for _, region in ipairs(touch.REGIONS) do
+            local action = touch.GetSettings().regions[region]
+            lines[#lines + 1] = { label = touch.REGION_LABELS[region] .. "  |cff9d917a"
+                .. (touch.IsBound(action) and touch.ActionLabel(action) or "Empty") .. "|r", region = region }
+        end
+    end
+    return lines
+end
+
+-- The line picked: its press on the drawing, its choices on the right
+function P:Pick(i)
+    local lines = Lines()
+    local step = i < (self.sel or 1) and -1 or 1
+    while lines[i] and lines[i].header do i = i + step end
+    if not lines[i] then
+        i = self.sel or 1
+        while lines[i] and lines[i].header do i = i + 1 end
+    end
+    local line = lines[i]
+    if not line then return end
+    self.sel = i
+    self.pickerFor = nil
+    menu.Disarm()
+    if line.region then
+        self.key, self.spec = "TOUCH:" .. line.region, nil
+    elseif line.spec then
+        local _, pressed = B.Parse(line.spec)
+        self.key, self.spec = pressed, line.spec
+    else
+        self.key, self.spec = nil, nil
+    end
+end
+
+-- The list back on the binding a found press runs (if any)
+function P:SyncList()
+    local lines = Lines()
+    local region = self.key and SPOT[self.key] and SPOT[self.key].region
+    for i, line in ipairs(lines) do
+        if (region and line.region == region) or (not region and line.spec and line.spec == self:Spec()) then
+            self.sel = i
+            return
+        end
+    end
+end
+
+function P:Line()
+    return Lines()[self.sel or 1]
 end
 
 ---------------------------------------------------------------------------
@@ -289,10 +365,24 @@ function P:Build(parent)
     f:Hide()
     self.frame = f
 
-    -- The middle: the controller and its buttons
-    local art = K.NewFrame("Frame", nil, f)
+    -- Left: the bindings
+    f.side = UI.SideList(f, SIDE_W, 17, function(i)
+        P:Pick(i)
+        menu.Render()
+    end)
+    f.side:SetPoint("TOPLEFT", 8, -8)
+    f.side:SetPoint("BOTTOMLEFT", 8, 8)
+
+    -- Beside it: the controller and its buttons, what the press can do
+    -- under them
+    f.mid = K.NewFrame("Frame", nil, f)
+    f.mid:SetPoint("TOPLEFT", f.side, "TOPRIGHT", 10, 0)
+    f.mid:SetPoint("BOTTOMRIGHT", -8, 8)
+    local art = K.NewFrame("Frame", nil, f.mid)
     art:SetSize(ART_W, ART_H)
     art:SetScale(SCALE)
+    -- (a scaled frame's offsets are in its own units)
+    art:SetPoint("TOP", f.mid, "TOP", 0, -6 / SCALE)
     art.tex = art:CreateTexture(nil, "BACKGROUND")
     art.tex:SetTexture(TEX .. "ic_controller")
     art.tex:SetAllPoints()
@@ -300,35 +390,27 @@ function P:Build(parent)
     f.spots = {}
     for _, s in ipairs(SPOTS) do f.spots[s.key] = NewSpot(art, s) end
 
-    -- Under it: the button picked, what each way of pressing it does, a note
-    f.title = K.Text(f, 16, KC.title)
-    f.title:SetPoint("TOP", art, "BOTTOM", 0, -10)
-    f.title:SetJustifyH("CENTER")
-    f.lines = {}
-    for i = 1, LINES do
-        local l = K.ChatText(f, 13, KC.cream)
-        l:SetPoint("TOP", f.title, "BOTTOM", 0, -10 - (i - 1) * 20)
-        l:SetWidth(470)
-        l:SetJustifyH("CENTER")
-        l:SetWordWrap(false)
-        f.lines[i] = l
-    end
-    f.note = K.Text(f, 12, KC.help)
-    f.note:SetWidth(440)
-    f.note:SetJustifyH("CENTER")
-    f.note:SetWordWrap(true)
-
-    -- Right: what the press can do
-    self.picker = K.Picker(f, PANEL_W, menu.Render, {
-        bare = true, rowHeight = 38, tabs = true,
-    })
-    self.picker:Center(f, STAGE.picker, STAGE.mid)
-    self.picker:SetHeight(400)
+    -- (its lists in a bar along its top, as the auction window's
+    -- categories; their choices as its item cards, two a row)
+    self.picker = UI.CardPicker(f.mid, 2, 46, menu.Render)
+    self.picker:SetPoint("TOPLEFT", f.mid, "TOPLEFT", 0, -(ART_H * SCALE + 14))
+    self.picker:SetPoint("BOTTOMRIGHT", f.mid, "BOTTOMRIGHT", 0, 0)
 end
 
 function P:Show()
     self.pickerFor = nil
+    if not self.key then self:Pick(self.sel or 1) end
     self.frame:Show()
+end
+
+-- The left stick (Menu.lua): up / down the bindings, left / right the
+-- choices' lists
+function P:StickStep(dir)
+    self:Pick((self.sel or 1) + dir)
+end
+
+function P:StickSide(dir)
+    if self.key and self.picker.def then self.picker:Press(dir < 0 and "LT" or "RT") end
 end
 
 function P:Hide()
@@ -340,6 +422,7 @@ end
 ---------------------------------------------------------------------------
 -- After a change: the list back on what the press does now
 local function Done(text, warn)
+    P:SyncList()
     menu.Toast(text, warn)
     P.picker:LoadList()
     menu.Render()
@@ -419,12 +502,30 @@ function P:Find()
                     return menu.Toast("Click the touchpad in the corner you want", true)
                 end
                 P.key, P.spec = "TOUCH:" .. region, nil
+                P:SyncList()
                 return
             end
             if not (SPOT[pressed] and Visible(SPOT[pressed])) then
                 return menu.Toast(B.Text(spec) .. " isn't on the drawing", true)
             end
             P.key, P.spec = pressed, spec
+            P:SyncList()
+        end,
+    })
+end
+
+-- Square on a binding on no press: a press recorded for it
+function P:Record(def)
+    if IF.InCombat() then return end
+    IF.Recorder.Start({
+        title = "Bind " .. def.label, chord = true, double = true,
+        accept = def.accepts, reject = def.label .. " can't go on that press",
+        onDone = function(spec)
+            local _, pressed = B.Parse(spec)
+            P.key, P.spec = pressed, spec
+            P.pickerFor = nil
+            P:Choose({ action = def.id })
+            P:SyncList()
         end,
     })
 end
@@ -466,18 +567,12 @@ end
 -- The pad: the picker; Square finds another press
 ---------------------------------------------------------------------------
 function P:Press(name)
+    -- (L1 / R1 the tabs, Circle closes: the panel's)
+    if name == "LB" or name == "RB" or name == "B" then return false end
+    local line = self:Line()
     if name == "X" then
-        self:Find()
-        return true
-    end
-    if name == "LB" or name == "RB" then return false end
-    -- Circle: a press picked lets it go (back to finding one); else the
-    -- panel closes
-    if name == "B" then
-        if not self.key then return false end
-        self.key, self.spec, self.pickerFor = nil, nil, nil
-        menu.Disarm()
-        menu.Render()
+        -- (a binding on no press: record one for it; else find a press)
+        if line and line.def and not line.spec and not self.key then self:Record(line.def) else self:Find() end
         return true
     end
     if not self.key then return true end
@@ -496,22 +591,20 @@ end
 
 function P:Help()
     local H = K.H
-    local hints = { H({ "X" }, "Find press", "X") }
-    if not self.key then
-        hints[#hints + 1] = H({ "LB", "RB" }, "Tab", "RB")
-        hints[#hints + 1] = H({ "B" }, "Close", "B")
-        return hints
+    local hints = { H({ "LS" }, "Binding / List") }
+    local line = self:Line()
+    if self.key then
+        hints[#hints + 1] = H({ "DPAD" }, "Move")
+        hints[#hints + 1] = H({ "A" }, "Bind", "A")
+        hints[#hints + 1] = H({ "Y" }, Region() and "Clear (hold: off)" or "Unbind", "Y")
     end
-    hints[#hints + 1] = H({ "DPAD" }, "Move")
-    hints[#hints + 1] = H({ "A" }, "Bind", "A")
-    if self.picker.def and #self.picker.def.lists > 1 then hints[#hints + 1] = H({ "LT", "RT" }, "List", "RT") end
-    if Region() then
-        hints[#hints + 1] = H({ "Y" }, "Clear (hold: off)", "Y")
+    if line and line.def and not line.spec and not self.key then
+        hints[#hints + 1] = H({ "X" }, "Record press", "X")
     else
-        hints[#hints + 1] = H({ "Y" }, "Unbind", "Y")
+        hints[#hints + 1] = H({ "X" }, "Find press", "X")
     end
     hints[#hints + 1] = H({ "LB", "RB" }, "Tab", "RB")
-    hints[#hints + 1] = H({ "B" }, "Back", "B")
+    hints[#hints + 1] = H({ "B" }, "Close", "B")
     return hints
 end
 
@@ -560,10 +653,14 @@ function P:Render()
     end
     self:SyncPicker()
     if Region() then self.variant[self.key] = self.picker.list end
-    -- (a scaled frame's offsets are in its own units)
-    local at = ART_AT
-    f.art:ClearAllPoints()
-    f.art:SetPoint("CENTER", f, "CENTER", at[1] / SCALE, at[2] / SCALE)
+    -- The bindings down the left
+    local lines = Lines()
+    if (self.sel or 1) > #lines then self.sel = 1 end
+    local entries = {}
+    for i, line in ipairs(lines) do
+        entries[i] = line.header and { header = line.header } or { label = line.label }
+    end
+    f.side:Render(IF.GlyphText("LS", 18) .. " Bindings", entries, self.sel or 1, true)
     local spec = self:Spec()
     local bySpec = Snapshot()
     local held = B.Parse(spec)
@@ -615,133 +712,20 @@ function P:Render()
     end
     if HasTouchpad() then RenderCorners(f) end
 
-    if not self.key then
-        -- Nothing picked yet: how to pick
-        f.title:SetText("No press picked")
-        for i = 1, LINES do f.lines[i]:Hide() end
-        f.note:SetText(IF.PadText("{X} finds a press: press the button, hold one and press another, or press one"
-            .. " twice. What it can do then shows on the right. A gold dot: something is on that button; red: two"
-            .. " things clash."))
-    elseif region then
-        -- Under it: the four corners, the one picked lit
-        local settings = touch.GetSettings()
-        f.title:SetText(IF.GlyphText("TOUCHPAD", 20) .. " Touchpad · " .. touch.REGION_LABELS[region])
-        for i, r in ipairs(touch.REGIONS) do
-            local l = f.lines[i]
-            local action = settings.regions[r]
-            local what = touch.IsOff(r) and "|cffff7a5cOff|r"
-                or (touch.IsBound(action) and touch.ActionLabel(action) or "|cff9d917aEmpty|r")
-            l:SetText(touch.REGION_LABELS[r] .. "   " .. what)
-            l:SetTextColor(unpack(r == region and KC.focusText or KC.cream2))
-            l:SetAlpha(r == region and 1 or 0.8)
-            l:Show()
-        end
-        for i = #touch.REGIONS + 1, LINES do f.lines[i]:Hide() end
-        local note
-        if settings.enabled == false then
-            note = "|cffff7a5cThe touchpad click is off: binding a corner turns it on.|r"
-        else
-            note = IF.PadText("Clicking the touchpad in this corner runs it, in combat too. {A} picks what;"
-                .. " {Y} clears it, held turns it off (its sides take its area).")
-        end
-        f.note:SetText(note)
-    else
-        -- Under it: each way of pressing the button picked
-        f.title:SetText(IF.GlyphText(self.key, 20) .. " " .. IF.ButtonName(self.key))
-        local n = 0
-        local variants = B.Variants(self.key)
-        local listed = false
-        for _, s in ipairs(variants) do listed = listed or s == spec end
-        -- (a press the list doesn't have: one held that isn't a shoulder or trigger)
-        if not listed then table.insert(variants, 2, spec) end
-        for i, s in ipairs(variants) do
-            local list = { spec = s }
-            local defs = bySpec[s]
-            local current = s == spec
-            -- (each one bound, and the one picked)
-            if defs or current or i == 1 then
-                n = n + 1
-                local l = f.lines[n]
-                if not l then break end
-                local what
-                if defs then
-                    local names = {}
-                    for _, def in ipairs(defs) do names[#names + 1] = DefText(def) end
-                    what = table.concat(names, ", ")
-                    if Clashes(defs, list.spec) then what = "|cffff7a5c" .. what .. " (clash)|r" end
-                    -- A double-click alone: watched, so out of combat only (Override.lua)
-                    if IF.Override.OutOfCombatOnly(list.spec) then
-                        what = what .. " |cfff0a090(out of combat only)|r"
-                    end
-                else
-                    what = "|cff9d917a" .. NoneName(list.spec) .. "|r"
-                end
-                l:SetText(B.Text(list.spec, 16) .. "   " .. what)
-                l:SetTextColor(unpack(current and KC.focusText or KC.cream2))
-                l:SetAlpha(current and 1 or 0.8)
-                l:Show()
-            end
-        end
-        for i = n + 1, LINES do f.lines[i]:Hide() end
-
-        -- The note: the focused choice explained, else what to do here
-        local note
-        if e and e.def then
-            note = e.def.tip
-            local gone = not e.here and B.Conflicts(e.def.id, spec) or {}
-            if #gone > 0 then
-                note = "|cffff7a5cReplaces " .. B.Names(gone) .. " on " .. B.Text(spec) .. ".|r " .. (note or "")
-            end
-        elseif e and e.action and e.action ~= "none" then
-            -- A spell, item... for the press
-            note = "Runs it on " .. B.Text(spec) .. ", in combat too."
-            local gone = B.ActionOn(spec) ~= e.action and B.Conflicts("action:" .. spec, spec) or {}
-            if #gone > 0 then note = "|cffff7a5cReplaces " .. B.Names(gone) .. ".|r " .. note end
-        else
-            note = IF.PadText("Takes off whatever of ours is on " .. B.Text(spec) .. ". {X} finds another press:"
-                .. " a gold dot, something is on that button; red, two things clash.")
-        end
-        local held, pressed, double = B.Parse(spec)
-        if double and not IF.Override.Get(B.Spec(held, pressed)) then
-            -- (watched: the first press stays the game's, Override.lua)
-            note = note .. " |cfff0a090A double-click on its own works out of combat only: " .. B.Text(B.Spec(held, pressed))
-                .. " pressed once still does the game's own, and WoW won't change bindings in combat.|r"
-        end
-        if IF.Native.SlotOf(spec) then
-            -- (the game's crossbar: the same slot as its own editor's)
-            note = note .. " |cff9fd8e2This is the game's crossbar slot (the page shown): it changes there"
-                .. " too, and changes made there show here.|r"
-        elseif not B.ActionFits(spec) then
-            note = note .. " |cff9d917aSpells and items can't go on this press (" .. IF.ButtonName("RS")
-                .. ": the wheels'; a held button: only the game's crossbar modifiers with the D-pad or face"
-                .. " buttons, or one the game makes Shift / Ctrl / Alt).|r"
-        end
-        f.note:SetText(note or "")
-    end
-
-    -- The note just under the last line shown
-    local last = f.title
-    for i = 1, LINES do
-        if f.lines[i]:IsShown() then last = f.lines[i] end
-    end
-    f.note:ClearAllPoints()
-    f.note:SetPoint("TOP", last, "BOTTOM", 0, -12)
-
     if self.key then
         self.picker:Show()
         self.picker:Render()
-        self.picker:Center(self.frame, STAGE.picker, STAGE.mid)
     end
 end
 
 ---------------------------------------------------------------------------
--- The General tab, the first
+-- The Controller tab, the first
 ---------------------------------------------------------------------------
-menu.AddTab({ key = "controller", label = "General", module = "controller", order = 10, page = P })
+menu.AddTab({ key = "controller", label = "Controller", module = "controller", order = 10, page = P })
 
 -- The panel kept the touchpad click while it was open; give it back
 hooksecurefunc(menu, "Close", function()
-    -- Next time: nothing picked
+    -- Next time: the list's binding again
     P.key, P.spec = nil, nil
     if not IF.InCombat() then touch.Apply() end
 end)

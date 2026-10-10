@@ -246,3 +246,297 @@ function UI.Legend(win)
     end
     return legend
 end
+
+---------------------------------------------------------------------------
+-- A bar of chips, as the Buy page's categories along its top: the
+-- bumper / trigger glyphs at its ends (they move through the chips), the
+-- chosen one lit and kept in view. bar:Render(names, selected); onClick(i)
+-- as a chip is clicked.
+---------------------------------------------------------------------------
+function UI.ChipBar(parent, leftKey, rightKey, onClick)
+    local bar = UI.Panel(parent, 0.4)
+    bar:SetHeight(34)
+    bar.left = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    bar.left:SetPoint("LEFT", 8, 0)
+    bar.right = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    bar.right:SetPoint("RIGHT", -8, 0)
+    bar.clip = K.NewFrame("Frame", nil, bar)
+    bar.clip:SetPoint("TOPLEFT", 44, 0)
+    bar.clip:SetPoint("BOTTOMRIGHT", -44, 0)
+    bar.clip:SetClipsChildren(true)
+    bar.chips = {}
+
+    local function Chip(i)
+        local c = bar.chips[i]
+        if c then return c end
+        c = K.NewFrame("Button", nil, bar.clip)
+        c:SetHeight(26)
+        c.bg = c:CreateTexture(nil, "BACKGROUND")
+        c.bg:SetAllPoints()
+        c.text = c:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        c.text:SetPoint("CENTER")
+        c:SetScript("OnClick", function(self) onClick(self.index) end)
+        bar.chips[i] = c
+        return c
+    end
+
+    -- names: the chips' names; selected: which (1-based); one name: nothing to pick
+    function bar:Render(names, selected)
+        local enabled = #names > 1
+        self.left:SetText(IF.GlyphText(leftKey, 22))
+        self.right:SetText(IF.GlyphText(rightKey, 22))
+        self.left:SetAlpha(enabled and 1 or 0.3)
+        self.right:SetAlpha(enabled and 1 or 0.3)
+        local widths, total = {}, 0
+        for i, name in ipairs(names) do
+            local c = Chip(i)
+            c.text:SetText(name)
+            widths[i] = c.text:GetStringWidth() + 24
+            total = total + widths[i] + 6
+        end
+        for i = #names + 1, #self.chips do self.chips[i]:Hide() end
+        -- Scrolled to keep the chosen chip in the middle when they don't all fit
+        local clipW = self.clip:GetWidth()
+        if not clipW or clipW <= 0 then clipW = self:GetWidth() - 88 end
+        local x, at = 0, 0
+        for i = 1, #names do
+            if i == selected then at = x + widths[i] / 2 end
+            x = x + widths[i] + 6
+        end
+        local shift = 0
+        if total > clipW then shift = math.max(0, math.min(total - clipW, at - clipW / 2)) end
+        x = -shift
+        local fr, fg, fb = UI.FocusColor()
+        for i = 1, #names do
+            local c = self.chips[i]
+            c.index = i
+            c:ClearAllPoints()
+            c:SetPoint("LEFT", self.clip, "LEFT", x, 0)
+            c:SetWidth(widths[i])
+            c:Show()
+            if i == selected then
+                c.bg:SetColorTexture(fr * 0.45, fg * 0.38, fb * 0.2, 0.9)
+                c.text:SetTextColor(1, 0.95, 0.8)
+            else
+                c.bg:SetColorTexture(0, 0, 0, 0.35)
+                c.text:SetTextColor(0.8, 0.74, 0.6)
+            end
+            x = x + widths[i] + 6
+        end
+    end
+    return bar
+end
+
+---------------------------------------------------------------------------
+-- A card, as the Buy page's items: the card's art, its icon in a border,
+-- its name, a line under it, the focus stroke; a tick on the right when it
+-- is what's chosen. card:Fill{ icon, name, line, ticked }
+---------------------------------------------------------------------------
+function UI.CardRow(parent, width, height)
+    local r = K.NewFrame("Button", nil, parent)
+    r:SetSize(width, height)
+    r.bg = r:CreateTexture(nil, "BACKGROUND")
+    r.bg:SetAllPoints()
+    if IF.HasAtlas("Looting_ItemCard_BG") then
+        r.bg:SetAtlas("Looting_ItemCard_BG")
+    else
+        r.bg:SetColorTexture(0.1, 0.1, 0.1, 0.8)
+    end
+    r.focus = UI.FocusStroke(r)
+    r.icon = r:CreateTexture(nil, "ARTWORK")
+    r.icon:SetSize(height - 16, height - 16)
+    r.icon:SetPoint("LEFT", 6, 0)
+    r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    r.border = r:CreateTexture(nil, "OVERLAY")
+    r.border:SetPoint("TOPLEFT", r.icon, -1, 1)
+    r.border:SetPoint("BOTTOMRIGHT", r.icon, 1, -1)
+    r.border:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+    r.border:SetBlendMode("ADD")
+    r.border:SetTexCoord(0.2, 0.8, 0.2, 0.8)
+    r.border:SetVertexColor(0.6, 0.6, 0.6, 0.9)
+    r.name = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    r.name:SetPoint("TOPLEFT", r.icon, "TOPRIGHT", 10, -1)
+    r.name:SetPoint("RIGHT", r, "RIGHT", -28, 0)
+    r.name:SetJustifyH("LEFT")
+    r.name:SetWordWrap(false)
+    r.line = K.ChatText(r, 11, KC.help)
+    r.line:SetPoint("BOTTOMLEFT", r.icon, "BOTTOMRIGHT", 10, 1)
+    r.line:SetPoint("RIGHT", r, "RIGHT", -28, 0)
+    r.line:SetJustifyH("LEFT")
+    r.line:SetWordWrap(false)
+    r.tick = r:CreateTexture(nil, "OVERLAY")
+    r.tick:SetSize(16, 16)
+    r.tick:SetPoint("RIGHT", -10, 0)
+    if IF.HasAtlas("common-dropdown-icon-checkmark-yellow") then
+        r.tick:SetAtlas("common-dropdown-icon-checkmark-yellow")
+    else
+        r.tick:SetTexture(IF.TEX .. "ic_emote_yes")
+    end
+    function r:Fill(o)
+        K.SetIcon(self.icon, o.icon or 134400)
+        self.name:SetText(o.name or "")
+        self.line:SetText(o.line or "")
+        -- (no line: the name in the middle)
+        self.name:ClearAllPoints()
+        if o.line and o.line ~= "" then
+            self.name:SetPoint("TOPLEFT", self.icon, "TOPRIGHT", 10, -1)
+        else
+            self.name:SetPoint("LEFT", self.icon, "RIGHT", 10, 0)
+        end
+        self.name:SetPoint("RIGHT", self, "RIGHT", -28, 0)
+        self.tick:SetShown(o.ticked and true or false)
+    end
+    return r
+end
+
+---------------------------------------------------------------------------
+-- A picker of cards: its lists in a chip bar along its top (L2 / R2), the
+-- list's entries as cards in columns under it; the D-pad moves, Cross
+-- picks. The shape of ConfigKit's K.Picker: picker:Open{ lists = { { key,
+-- label, entries() -> { { action, name, icon, sub } or { header } } } },
+-- list, rows (rows of cards), current(list) -> action, marked(entry) -> the
+-- one it holds, onChoose(entry), onBack() }; picker.entries / .index / .list
+---------------------------------------------------------------------------
+function UI.CardPicker(parent, cols, cardH, onRender)
+    local p = K.NewFrame("Frame", nil, parent)
+    p.cols, p.cards = cols, {}
+    p.bar = UI.ChipBar(p, "LT", "RT", function(i)
+        p:SetList(i)
+        onRender()
+    end)
+    p.bar:SetPoint("TOPLEFT", 0, 0)
+    p.bar:SetPoint("TOPRIGHT", 0, 0)
+    -- (under the bar, as the Buy page's: the list's name and how many)
+    p.status = K.ChatText(p, 11, KC.help)
+    p.status:SetPoint("TOPLEFT", p.bar, "BOTTOMLEFT", 4, -6)
+    p.status:SetJustifyH("LEFT")
+    p.grid = K.NewFrame("Frame", nil, p)
+    p.grid:SetPoint("TOPLEFT", p.bar, "BOTTOMLEFT", 0, -24)
+    p.grid:SetPoint("BOTTOMRIGHT", 0, 0)
+    p.moreUp, p.moreDown = K.MoreArrows(p)
+    p.moreUp:SetPoint("BOTTOM", p.grid, "TOP", 0, 2)
+    p.moreDown:SetPoint("TOP", p.grid, "BOTTOM", 0, 2)
+    p:Hide()
+
+    function p:Open(def)
+        self.def = def
+        self.list = def.list or 1
+        self:LoadList()
+        self:Show()
+    end
+
+    function p:Close()
+        self.def = nil
+        self:Hide()
+    end
+
+    function p:IsOpen() return self.def ~= nil end
+
+    -- (the list's entries without its section titles: the cards)
+    function p:LoadList()
+        local list = self.def.lists[self.list]
+        local entries = {}
+        for _, e in ipairs(list and list.entries() or {}) do
+            if not e.header then entries[#entries + 1] = e end
+        end
+        self.entries, self.index, self.top = entries, nil, 1
+        local current = self.def.current
+        if type(current) == "function" then current = current(list) end
+        for i, e in ipairs(entries) do
+            if not self.index or e.action == current then
+                self.index = i
+                if e.action == current then break end
+            end
+        end
+        self:Move(0)
+    end
+
+    function p:SetList(i)
+        local n = #self.def.lists
+        self.list = (i - 1) % n + 1
+        self:LoadList()
+    end
+
+    -- How many rows of cards fit
+    function p:Rows()
+        local h = self.grid:GetHeight()
+        if not h or h <= 0 then return self.def and self.def.rows or 4 end
+        return math.max(1, math.floor((h + 6) / (cardH + 6)))
+    end
+
+    -- step: ± one card (left / right) or a row (up / down); kept in view
+    function p:Move(step)
+        local n = #(self.entries or {})
+        if n == 0 or not self.index then return end
+        local i = self.index + step
+        if i >= 1 and i <= n then self.index = i end
+        local row, rows = math.ceil(self.index / self.cols), self:Rows()
+        if row < self.top then self.top = row end
+        if row > self.top + rows - 1 then self.top = row - rows + 1 end
+    end
+
+    function p:Choose()
+        local e = self.def and self.index and self.entries[self.index]
+        if e and self.def.onChoose then self.def.onChoose(e) end
+    end
+
+    function p:Press(name)
+        if not self.def then return true end
+        if name == "UP" or name == "DOWN" then
+            self:Move(name == "UP" and -self.cols or self.cols)
+        elseif name == "LEFT" or name == "RIGHT" then
+            self:Move(name == "LEFT" and -1 or 1)
+        elseif name == "LT" or name == "RT" then
+            if #self.def.lists > 1 then self:SetList(self.list + (name == "LT" and -1 or 1)) end
+        elseif name == "A" then
+            self:Choose()
+        elseif name == "B" then
+            if self.def.onBack then self.def.onBack() end
+        end
+        return true
+    end
+
+    function p:Render()
+        local def = self.def
+        if not def then return end
+        local names = {}
+        for i, list in ipairs(def.lists) do names[i] = list.label end
+        self.bar:Render(names, self.list)
+        local n = #(self.entries or {})
+        self.status:SetText(def.lists[self.list].label .. "  ·  " .. n .. (n == 1 and " choice" or " choices"))
+        local gw = self.grid:GetWidth()
+        if not gw or gw <= 0 then gw = 700 end
+        local cardW = (gw - (self.cols - 1) * 8) / self.cols
+        local rows = self:Rows()
+        local entries = self.entries or {}
+        local first = (self.top - 1) * self.cols
+        for slot = 1, math.max(rows * self.cols, #self.cards) do
+            local c = self.cards[slot]
+            local e = slot <= rows * self.cols and entries[first + slot]
+            if e and not c then
+                c = UI.CardRow(self.grid, cardW, cardH)
+                self.cards[slot] = c
+            end
+            if c then
+                c:SetShown(e and true or false)
+                if e then
+                    c:SetWidth(cardW)
+                    c:ClearAllPoints()
+                    local col, row = (slot - 1) % self.cols, math.floor((slot - 1) / self.cols)
+                    c:SetPoint("TOPLEFT", self.grid, "TOPLEFT", col * (cardW + 8), -row * (cardH + 6))
+                    c:Fill({ icon = e.icon, name = e.name, line = e.sub,
+                        ticked = def.marked and def.marked(e) })
+                    c.focus:Light(first + slot == self.index)
+                    c:SetScript("OnClick", function()
+                        p.index = first + slot
+                        p:Choose()
+                        onRender()
+                    end)
+                end
+            end
+        end
+        self.moreUp:SetShown(self.top > 1)
+        self.moreDown:SetShown(first + rows * self.cols < #entries)
+    end
+    return p
+end

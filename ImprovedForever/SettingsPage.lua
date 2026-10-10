@@ -760,7 +760,7 @@ function IF.SettingsPage(tab, GROUPS, ITEMS, hooks)
     function G:Line(item)
         if item.bindable then
             local clashes = B.ClashesOf(item.bindId)
-            if #clashes > 0 then return "|cffff7a5cClashes with " .. B.Names(clashes) .. " (General tab)|r" end
+            if #clashes > 0 then return "|cffff7a5cClashes with " .. B.Names(clashes) .. " (Controller tab)|r" end
         end
         local note = Resolve(item.note)
         if note then return note end

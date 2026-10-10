@@ -3,7 +3,7 @@
 -- Shift / Ctrl / Alt is held) runs a spell, an item, a macro, an emote or
 -- opens a window instead of its own game action. Each is an override
 -- binding to a secure button running a macro, so it works in combat (it can
--- only change out of it). Set in the General tab (BindEditor.lua);
+-- only change out of it). Set in the Controller tab (BindEditor.lua);
 -- IF.db.overrides = { [spec] = action }, actions as the touchpad's
 -- (Touchpad.lua). Not on R3 (the wheels') nor a PlayStation touchpad (its
 -- corners').

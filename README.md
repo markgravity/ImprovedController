@@ -9,7 +9,7 @@ the core, **Improved Forever**:
 | Addon | What it does |
 |---|---|
 | `ImprovedForever` | The core: button glyphs, bindings, the configuration panel. Required. |
-| `ImprovedForever_Controller` | Bag clean-up, touchpad corners, the General tab: every press on one drawing of the controller. |
+| `ImprovedForever_Controller` | Bag clean-up, touchpad corners, the Controller tab: every press on one drawing of the controller. |
 | `ImprovedForever_Wheel` | Wheels on R3 combos, the recent action slot. |
 | `ImprovedForever_Vibration` | Vibration on game events and spell casts. |
 | `ImprovedForever_Gather` | Names beside the minimap's gathering dots, alerts. |

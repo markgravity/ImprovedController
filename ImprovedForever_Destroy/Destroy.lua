@@ -1,5 +1,5 @@
 -- Destroy: with the bags open, R2 + R3 (or the button(s) bound in the
--- General tab) opens a panel listing what is safe to throw away; so does
+-- Controller tab) opens a panel listing what is safe to throw away; so does
 -- Triangle in the loot window once the bags are full, where Cross swaps:
 -- the junk goes, the loot that didn't fit comes in its place. What it lists: junk (grey items, white
 -- "junk") and cheap white gear; with no junk, every white item that can
@@ -1098,7 +1098,7 @@ lootEvents:SetScript("OnEvent", function(_, event, ...)
     end
 end)
 
--- Its binding, on the General tab (Binds.lua)
+-- Its binding, on the Controller tab (Binds.lua)
 local B = IF.Binds
 B.Add({
     id = "destroy", label = "Destroy", group = "Bags", tab = "controller",
