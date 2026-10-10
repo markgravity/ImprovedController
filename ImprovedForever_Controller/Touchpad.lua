@@ -226,6 +226,33 @@ local function GetCVarSafe(name)
     return ok and value or nil
 end
 
+local function SetCVarSafe(name, value)
+    local setter = (C_CVar and C_CVar.SetCVar) or SetCVar
+    pcall(setter, name, value)
+end
+
+-- A finger sliding on the pad moves the mouse cursor (the game's touch
+-- cursor) and shows it, which a click on a corner starts with: off while
+-- the click is ours, the player's own setting back when it isn't (kept in
+-- the settings in case the game closes before it's given back)
+local CURSOR_CVAR = "GamePadTouchCursorEnable"
+
+local function BlockTouchCursor(block)
+    local settings = touch.GetSettings()
+    local current = GetCVarSafe(CURSOR_CVAR)
+    if current == nil then return end
+    if block then
+        if current ~= "0" then
+            settings.touchCursor = current
+            SetCVarSafe(CURSOR_CVAR, "0")
+        end
+    elseif settings.touchCursor ~= nil then
+        local saved = settings.touchCursor
+        settings.touchCursor = nil
+        if current ~= saved then SetCVarSafe(CURSOR_CVAR, saved) end
+    end
+end
+
 function touch.Apply()
     if IF.InCombat() then
         pending = true
@@ -259,11 +286,14 @@ function touch.Apply()
     -- pad's release closes it)
     local free = not WindowsShown() or UnitAffectingCombat("player")
     local inGame = (IF.Binds.InGame() and free) or (IF.PeekMap and IF.PeekMap.IsPeeking())
-    if settings.enabled ~= false and not panelOpen and IF.PadStyle() == "Shapes" and inGame then
+    local ours = settings.enabled ~= false and IF.PadStyle() == "Shapes"
+    if ours and not panelOpen and inGame then
         for _, modifier in ipairs(MODIFIERS) do
             SetOverrideBindingClick(click, true, modifier .. KEY, click:GetName(), "LeftButton")
         end
     end
+    -- (the panel picks the corner under the finger too)
+    BlockTouchCursor(ours and (inGame or panelOpen) and true or false)
 end
 
 function touch.CycleAction(region, step)
@@ -298,9 +328,14 @@ end)
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("CVAR_UPDATE")
+events:RegisterEvent("PLAYER_LOGOUT")
 events:SetScript("OnEvent", function(_, event)
     if not IF.db then
         return
+    end
+    -- (the touch cursor saved as the player had it; blocked again at login)
+    if event == "PLAYER_LOGOUT" then
+        return BlockTouchCursor(false)
     end
     if pending or event == "CVAR_UPDATE" then
         touch.Apply()
