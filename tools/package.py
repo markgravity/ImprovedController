@@ -1,11 +1,13 @@
-"""Build the release zip: dist/ImprovedForever-<version>.zip
+"""Build the release zips, one per addon (each its own CurseForge project):
+    dist/ImprovedForever-<version>.zip           the core
+    dist/ImprovedForever_<Module>-<version>.zip  each module
+    dist/ImprovedForever-All-<version>.zip       every addon, for a manual install
 
-The zip holds every addon folder of the repo (ImprovedForever/, the core, and
-each module, ImprovedForever_Wheel/...), each with what the game loads: its
-TOC and the files it lists, its Bindings.xml; the core also the TGA textures,
-the licences, README and CHANGELOG. Tools, icon sources and tpl.lua (a dev
-reference) are left out. The version is the core TOC's; every module's must
-match it.
+Each addon folder holds what the game loads: its TOC and the files it lists,
+its Bindings.xml, the licence; the core also the TGA textures (every module's
+too), the EasyController licence, README and CHANGELOG. Tools, icon sources
+and tpl.lua (a dev reference) are left out. The version is the core TOC's;
+every module's must match it.
 
 Usage:
     python tools/package.py
@@ -17,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CORE = "ImprovedForever"
-CORE_EXTRA = ["LICENSE", "LICENSE-EasyController.md", "README.md", "CHANGELOG.md"]
+CORE_EXTRA = ["LICENSE-EasyController.md", "README.md", "CHANGELOG.md"]
 
 
 def toc_of(folder):
@@ -33,7 +35,7 @@ def main():
         sys.exit(f"No {CORE}/{CORE}.toc")
     version = toc_of(CORE)[0]
 
-    entries = []      # (source, path in the zip)
+    entries = {}      # folder: [(source, path in the zip)]
     code = ""
     for folder in folders:
         ver, listed = toc_of(folder)
@@ -47,25 +49,29 @@ def main():
         missing = [f for f in files if not (ROOT / folder / f).is_file()]
         if missing:
             sys.exit(f"{folder}: missing files: " + ", ".join(missing))
-        entries += [(ROOT / folder / f, f"{folder}/{f}") for f in files]
+        entries[folder] = [(ROOT / folder / f, f"{folder}/{f}") for f in files] + [(ROOT / "LICENSE", f"{folder}/LICENSE")]
         code += "".join((ROOT / folder / f).read_text(encoding="utf-8") for f in listed if f.endswith(".lua"))
-    entries += [(ROOT / f, f"{CORE}/{f}") for f in CORE_EXTRA]
+    entries[CORE] += [(ROOT / f, f"{CORE}/{f}") for f in CORE_EXTRA]
 
     # Every texture the code names in full must be packaged (they're the core's)
     names = set(re.findall(r'"(ic_[a-z0-9_]+)"', code))
-    packaged = {Path(path).stem for _, path in entries if "/textures/" in path}
+    packaged = {Path(path).stem for _, path in entries[CORE] if "/textures/" in path}
     absent = sorted(n for n in names if n not in packaged and not n.endswith("_"))
     if absent:
         sys.exit("Textures used but not packaged: " + ", ".join(absent))
 
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
-    out = dist / f"{CORE}-{version}.zip"
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-        for source, path in entries:
-            z.write(source, path)
-    size = out.stat().st_size / 1024
-    print(f"{out.relative_to(ROOT)}: {len(folders)} addons, {len(entries)} files, {size:.0f} KB")
+    for old in dist.glob(f"{CORE}*.zip"):
+        old.unlink()
+    zips = dict(entries)
+    zips[f"{CORE}-All"] = [e for files in entries.values() for e in files]
+    for name, files in zips.items():
+        out = dist / f"{name}-{version}.zip"
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+            for source, path in files:
+                z.write(source, path)
+        print(f"{out.relative_to(ROOT)}: {len(files)} files, {out.stat().st_size / 1024:.0f} KB")
 
 
 if __name__ == "__main__":

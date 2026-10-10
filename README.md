@@ -39,9 +39,10 @@ settings in the middle (left / right change one, Cross picks from its list on th
 
 ## Install
 
-- **CurseForge app**: search *Improved Forever*.
-- **Manual**: download `ImprovedForever-<version>.zip` from
-  [Releases](https://github.com/markgravity/ImprovedForever/releases) and unzip it into
+- **CurseForge app**: search *Improved Forever* and install the modules you want (*Improved
+  Forever: Wheel*, *Improved Forever: Auction*...); each brings the core along.
+- **Manual**: download `ImprovedForever-All-<version>.zip` (or the core's and each module's own
+  zip) from [Releases](https://github.com/markgravity/ImprovedForever/releases) and unzip it into
   `World of Warcraft/_forever_/Interface/AddOns/` so you get `AddOns/ImprovedForever/`,
   `AddOns/ImprovedForever_Wheel/`... (remove an old `AddOns/ImprovedController/`).
 
@@ -65,7 +66,8 @@ Library shows from it into `ImprovedForever_Library/LibraryData.lua`, which ship
 
 - `tools/make_*.py` regenerate the TGA textures.
 - `python tools/make_library.py` regenerates `ImprovedForever_Library/LibraryRecipes.lua` from the game's recipe tables (wago.tools).
-- `python tools/package.py` builds `dist/ImprovedForever-<version>.zip` (every addon folder).
+- `python tools/package.py` builds a zip per addon in `dist/` and `ImprovedForever-All-<version>.zip` with every addon.
+- `python tools/make_module_icons.py --logos` also writes each module's CurseForge logo to `dist/logos/`.
 
 ### Releasing
 
@@ -74,8 +76,8 @@ Library shows from it into `ImprovedForever_Library/LibraryData.lua`, which ship
 3. Commit, then `git tag v<version> && git push origin main v<version>`.
 
 The [release workflow](.github/workflows/release.yml) checks the tag matches the TOC, builds the
-zip, creates the GitHub release with the changelog section, and uploads to CurseForge when
-`CF_API_KEY` is set. A tag with a suffix (`v0.3.0-beta1`) makes a pre-release / beta.
+zips, creates the GitHub release with the changelog section, and uploads each addon's zip to its
+own CurseForge project (`## X-Curse-Project-ID` in its TOC) when `CF_API_KEY` is set. A tag with a suffix (`v0.3.0-beta1`) makes a pre-release / beta.
 
 ## Support
 

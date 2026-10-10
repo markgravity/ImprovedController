@@ -2,9 +2,10 @@
 ## Title: Improved Forever: Destroy
 ## Notes: Destroy junk from the controller, from the bags or the loot window.
 ## Author: markg
-## Version: 0.3.0
+## Version: 0.3.1
 ## X-Website: https://github.com/markgravity/ImprovedForever
 ## X-License: MIT
+## X-Curse-Project-ID: 1736877
 ## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_mod_destroy
 ## Group: ImprovedForever
 ## Dependencies: ImprovedForever

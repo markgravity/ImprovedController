@@ -12,6 +12,9 @@ shapes, green accents, holes cut; shapes drawn with radial_icon's helpers):
   ic_mod_quests       a quest list (its "!" and lines cut), green sort arrows
 
 Run: python3 tools/make_module_icons.py   (needs Pillow)
+     python3 tools/make_module_icons.py --logos   also each module's
+     CurseForge logo, 400 x 400 on the addon logo's dark rounded square, as
+     dist/logos/<module>.png
 """
 import math
 import os
@@ -25,12 +28,35 @@ from line_icon import render_solid  # noqa: E402
 OUT = os.path.join(os.path.dirname(__file__), "..", "ImprovedForever", "textures")
 icon = Icon()
 ALL = []
+LOGOS = os.path.join(os.path.dirname(__file__), "..", "dist", "logos")
+LOGO_NAMES = {"ic_mod_quests": "QuestTracker"}   # (else the icon's name, capitalised)
+
+
+def logo(name, layers, size=400, inset=38, radius=69):
+    """The icon on the addon logo's background (make_addon_icon.py), bigger"""
+    from PIL import Image, ImageDraw
+    os.makedirs(LOGOS, exist_ok=True)
+    module = LOGO_NAMES.get(name) or name[len("ic_mod_"):].capitalize()
+    path = os.path.join(LOGOS, module + ".png")
+    render_solid(path, layers, out_size=size)
+    art = Image.open(path).convert("RGBA")
+    out = Image.new("RGBA", (size * 4, size * 4), (0, 0, 0, 0))
+    ImageDraw.Draw(out).rounded_rectangle((0, 0, size * 4 - 1, size * 4 - 1), radius=radius * 4,
+                                          fill=(70, 70, 70, 255))
+    out = out.resize((size, size), Image.LANCZOS)
+    art = art.crop(art.getbbox())
+    k = (size - 2 * inset) / max(art.size)
+    art = art.resize((round(art.width * k), round(art.height * k)), Image.LANCZOS)
+    out.alpha_composite(art, ((size - art.width) // 2, (size - art.height) // 2))
+    out.save(path)
 
 
 def save(name, layers):
     path = os.path.join(OUT, name + ".tga")
     render_solid(path, layers)
     ALL.append(path)
+    if "--logos" in sys.argv:
+        logo(name, layers)
 
 
 def new():

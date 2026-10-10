@@ -3,13 +3,16 @@ on every version tag (v0.2.0, v0.3.0-beta1...). Python standard library only.
 
     python tools/release.py check v1.0.0   the tag matches the TOC's version
     python tools/release.py notes          this version's CHANGELOG section
-    python tools/release.py curseforge     upload the zip to CurseForge
+    python tools/release.py curseforge     upload each addon's zip to CurseForge
 
 The version is the core's TOC's (ImprovedForever/ImprovedForever.toc); every
 module's TOC must say the same. CurseForge needs CF_API_KEY: a GitHub secret
-in CI, or a line in the local .env (git-ignored) when run by hand. The
-project ID comes from the core's TOC (## X-Curse-Project-ID), the game version from
-CF_GAME_VERSION (default 1.60.1, WoW Forever) or CF_GAME_VERSION_ID.
+in CI, or a line in the local .env (git-ignored) when run by hand. Each addon
+is its own CurseForge project: its ID from its TOC (## X-Curse-Project-ID; an
+addon without one isn't uploaded), its slug from its folder (slug() below),
+its TOC's Dependencies / OptionalDeps on our addons sent as the file's
+relations. The game version comes from CF_GAME_VERSION (default 1.60.1, WoW
+Forever) or CF_GAME_VERSION_ID.
 """
 import json
 import os
@@ -22,7 +25,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ADDON = "ImprovedForever"
-TITLE = "Improved Forever"
 API = "https://wow.curseforge.com/api"
 
 
@@ -40,9 +42,9 @@ def load_env():
 load_env()
 
 
-def toc_field(name):
-    toc = (ROOT / ADDON / f"{ADDON}.toc").read_text(encoding="utf-8")
-    match = re.search(rf"^## {re.escape(name)}:\s*(\S+)", toc, re.M)
+def toc_field(name, folder=ADDON):
+    toc = (ROOT / folder / f"{folder}.toc").read_text(encoding="utf-8")
+    match = re.search(rf"^## {re.escape(name)}:\s*(.+?)\s*$", toc, re.M)
     return match and match.group(1)
 
 
@@ -77,13 +79,21 @@ def release_type(ver):
     return "release"
 
 
-def request(url, token, data=None, headers=None):
+class RequestError(Exception):
+    pass
+
+
+def request(url, token, data=None, headers=None, fail=True):
+    """The JSON response; on an HTTP error, exit (or raise RequestError if fail is False)"""
     req = urllib.request.Request(url, data=data, headers={"X-Api-Token": token, **(headers or {})})
     try:
         with urllib.request.urlopen(req) as response:
             return json.loads(response.read().decode("utf-8") or "null")
     except urllib.error.HTTPError as error:
-        sys.exit(f"{url}: HTTP {error.code} {error.read().decode('utf-8', 'replace')}")
+        message = f"{url}: HTTP {error.code} {error.read().decode('utf-8', 'replace')}"
+        if fail:
+            sys.exit(message)
+        raise RequestError(message)
 
 
 def game_version_id(token):
@@ -101,37 +111,76 @@ def game_version_id(token):
     return found[-1]["id"]
 
 
-def curseforge():
-    token = os.environ.get("CF_API_KEY")
-    if not token:
-        sys.exit("CF_API_KEY is not set (GitHub: Settings > Secrets and variables > Actions)")
-    project = toc_field("X-Curse-Project-ID")
-    if not project:
-        sys.exit("The TOC has no '## X-Curse-Project-ID'")
+def slug(folder):
+    """The CurseForge slug of an addon of ours: improved-forever,
+    improved-forever-quest-tracker..."""
+    module = folder[len(ADDON):].lstrip("_")
+    words = re.findall(r"[A-Z][a-z]*", module)
+    return "-".join(["improved", "forever"] + [w.lower() for w in words])
+
+
+def relations(folder):
+    """The file's relations: the TOC's Dependencies / OptionalDeps on our own addons"""
+    found = []
+    for field, kind in (("Dependencies", "requiredDependency"), ("OptionalDeps", "optionalDependency")):
+        for dep in (toc_field(field, folder) or "").split(","):
+            dep = dep.strip()
+            if dep.startswith(ADDON) and (ROOT / dep / f"{dep}.toc").is_file():
+                found.append({"slug": slug(dep), "type": kind})
+    return found
+
+
+def upload(folder, token, game_version):
     ver = version()
-    zip_path = ROOT / "dist" / f"{ADDON}-{ver}.zip"
+    project = toc_field("X-Curse-Project-ID", folder)
+    if not project:
+        print(f"CurseForge: {folder} has no '## X-Curse-Project-ID', not uploaded")
+        return
+    zip_path = ROOT / "dist" / f"{folder}-{ver}.zip"
     if not zip_path.is_file():
         sys.exit(f"{zip_path} is missing: run tools/package.py first")
 
     metadata = {
         "changelog": notes(ver),
         "changelogType": "markdown",
-        "displayName": f"{TITLE} {ver}",
+        "displayName": f"{toc_field('Title', folder)} {ver}",
         "releaseType": release_type(ver),
-        "gameVersions": [game_version_id(token)],
+        "gameVersions": [game_version],
     }
-    boundary = uuid.uuid4().hex
-    body = b"".join([
-        f"--{boundary}\r\nContent-Disposition: form-data; name=\"metadata\"\r\n\r\n".encode(),
-        json.dumps(metadata).encode("utf-8"),
-        f"\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{zip_path.name}\"\r\n"
-        "Content-Type: application/zip\r\n\r\n".encode(),
-        zip_path.read_bytes(),
-        f"\r\n--{boundary}--\r\n".encode(),
-    ])
-    result = request(f"{API}/projects/{project}/upload-file", token, body,
-                     {"Content-Type": f"multipart/form-data; boundary={boundary}"})
+    if relations(folder):
+        metadata["relations"] = {"projects": relations(folder)}
+
+    def send(metadata, fail):
+        boundary = uuid.uuid4().hex
+        body = b"".join([
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"metadata\"\r\n\r\n".encode(),
+            json.dumps(metadata).encode("utf-8"),
+            f"\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{zip_path.name}\"\r\n"
+            "Content-Type: application/zip\r\n\r\n".encode(),
+            zip_path.read_bytes(),
+            f"\r\n--{boundary}--\r\n".encode(),
+        ])
+        return request(f"{API}/projects/{project}/upload-file", token, body,
+                       {"Content-Type": f"multipart/form-data; boundary={boundary}"}, fail)
+
+    try:
+        result = send(metadata, fail="relations" not in metadata)
+    except RequestError as error:
+        # (a related project CurseForge doesn't know yet, e.g. not approved: upload without)
+        print(f"CurseForge: {folder} refused with its relations ({error}), uploading without them")
+        del metadata["relations"]
+        result = send(metadata, fail=True)
     print(f"CurseForge: {zip_path.name} uploaded ({metadata['releaseType']}), file id {result and result.get('id')}")
+
+
+def curseforge():
+    token = os.environ.get("CF_API_KEY")
+    if not token:
+        sys.exit("CF_API_KEY is not set (GitHub: Settings > Secrets and variables > Actions)")
+    game_version = game_version_id(token)
+    # (the core first: the modules' files name it as a relation)
+    for folder in sorted(module_versions(), key=lambda f: f != ADDON):
+        upload(folder, token, game_version)
 
 
 def main():

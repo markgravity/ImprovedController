@@ -2,9 +2,10 @@
 ## Title: Improved Forever: Controller
 ## Notes: Bag clean-up, touchpad corners and every press on one drawing of the controller.
 ## Author: markg
-## Version: 0.3.0
+## Version: 0.3.1
 ## X-Website: https://github.com/markgravity/ImprovedForever
 ## X-License: MIT
+## X-Curse-Project-ID: 1736837
 ## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_mod_controller
 ## Group: ImprovedForever
 ## Dependencies: ImprovedForever

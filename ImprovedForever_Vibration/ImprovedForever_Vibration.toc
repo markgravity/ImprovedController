@@ -2,9 +2,10 @@
 ## Title: Improved Forever: Vibration
 ## Notes: Controller vibration on game events and spell casts.
 ## Author: markg
-## Version: 0.3.0
+## Version: 0.3.1
 ## X-Website: https://github.com/markgravity/ImprovedForever
 ## X-License: MIT
+## X-Curse-Project-ID: 1736853
 ## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_mod_vibration
 ## Group: ImprovedForever
 ## Dependencies: ImprovedForever

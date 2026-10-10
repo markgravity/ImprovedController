@@ -2,9 +2,10 @@
 ## Title: Improved Forever: Quest Tracker
 ## Notes: Sort options for the quest tracker (zone, level, title, distance, completed) and an objective complete sound.
 ## Author: markg
-## Version: 0.3.0
+## Version: 0.3.1
 ## X-Website: https://github.com/markgravity/ImprovedForever
 ## X-License: MIT
+## X-Curse-Project-ID: 1736883
 ## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_mod_quests
 ## Group: ImprovedForever
 ## Dependencies: ImprovedForever

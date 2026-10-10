@@ -2,9 +2,10 @@
 ## Title: Improved Forever: Gather
 ## Notes: Names beside the minimap's gathering dots.
 ## Author: markg
-## Version: 0.3.0
+## Version: 0.3.1
 ## X-Website: https://github.com/markgravity/ImprovedForever
 ## X-License: MIT
+## X-Curse-Project-ID: 1736863
 ## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_mod_gather
 ## Group: ImprovedForever
 ## Dependencies: ImprovedForever

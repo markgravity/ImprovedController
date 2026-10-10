@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.1
+
+Each module is now its own CurseForge project, so you can install only the ones you want. The
+CurseForge app installs the core, **Improved Forever**, along with any module (and Controller with
+Wheel).
+
+- **Improved Forever** on CurseForge is now the core only. If you installed 0.3.0 there, add the
+  modules you use: Improved Forever: Controller, Wheel, Vibration, Gather, Map, Auction, Destroy,
+  Library and Quest Tracker.
+- **Quest Tracker** replaces the old Improved Quest Tracker project, which is no longer on CurseForge.
+- GitHub releases attach a zip per addon, plus `ImprovedForever-All-<version>.zip` with all of them.
+
 ## 0.3.0
 
 Improved Controller is now **Improved Forever**, split into modules: each feature is its own addon,
