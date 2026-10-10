@@ -60,6 +60,12 @@ SlashCmdList.IMPROVEDCONTROLLER = function(msg)
         IC.StartProbe()
         return
     end
+    if command == "library" then
+        -- An item's Library page (an id or a link), without anything focused
+        local id = tonumber(combo) or tonumber((msg or ""):match("item:(%d+)"))
+        if id then IC.Library.Open(id) else IC.Print("/ic library <item id or link>") end
+        return
+    end
     if command == "glyphs" then
         -- The controller style in use, and each style's glyphs this client
         -- has (a missing one shows our own, or the button's name)

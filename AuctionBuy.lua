@@ -1691,7 +1691,8 @@ end
 
 -- The legend: a page's buttons, then the right stick for the tabs
 local function SetHints(text)
-    hints:SetText(text .. "   " .. Glyph("RS") .. " Tabs (tilt) / " .. (BY.TipsOff() and "Tooltip (click)" or "No tooltip (click)"))
+    hints:SetText(text .. "   " .. Glyph("RS") .. " Tabs (tilt) / " .. (BY.TipsOff() and "Tooltip (click)" or "No tooltip (click)")
+        .. ((IC.Library and IC.Library.Settings().enabled) and " / Library (hold)" or ""))
     legend:SetWidth(math.max(500, hints:GetStringWidth() + 28))
 end
 
@@ -1779,6 +1780,18 @@ end
 
 function BY.DetailRender()
     if D then RenderDetail() end
+end
+
+-- The item in front (R3 held: its Library page, Library.lua): a page's own
+-- (its FocusedItem), else the item's screen open, else the picked result
+function BY.FocusedItem()
+    local page = CurrentPage()
+    local item = page and page.FocusedItem and page.FocusedItem()
+    if item then return item end
+    local id = BY.DetailItemID()
+    if id or page then return id end
+    local result = BY.results[BY.index]
+    return result and result.itemKey and result.itemKey.itemID
 end
 
 BY.DetailHints = DetailHints
@@ -1999,17 +2012,56 @@ local function Stick(now)
     BY.SetMain(BY.main + dir)
 end
 
+-- R3: a click turns the tooltip over (on its release), held the item in
+-- front opens the Library (Library.lua)
+local rsHold                   -- { start, item, done }
+local libraryPress = {}        -- buttons pressed while the Library was up
+local function LibraryHold(now)
+    if not rsHold or rsHold.done then return end
+    local p = IC.Library.HoldProgress(rsHold.start)
+    if not p then return end
+    if p < 1 then return IC.Library.HoldShow(p, win) end
+    rsHold.done = true
+    IC.Library.HoldHide(true)
+    IC.Library.Open(rsHold.item, "auction")
+end
+
 if catcher.EnableGamePadButton then
     catcher:SetScript("OnGamePadButtonDown", function(_, button)
         local name = KEYS[button]
+        -- (the Library over the window: the pad is its, the release too)
+        if IC.Library and IC.Library.IsShown() then
+            libraryPress[button] = true
+            return
+        end
         -- Circle on its release: on the press the release reaches the game's
         -- own window, which closes
         if not name or name == "B" then return end
+        if name == "RS" and IC.Library and IC.Library.Settings().enabled and not IC.AuctionConfirm.IsShown() then
+            local item = BY.FocusedItem()
+            rsHold = { start = GetTime(), item = item, done = item == nil }
+            if item then return end
+        end
         BY.Press(name)
         if REPEATS[name] then BY.held = { name = name, at = GetTime(), next = GetTime() + REPEAT_DELAY } end
     end)
     catcher:SetScript("OnGamePadButtonUp", function(_, button)
         local name = KEYS[button]
+        if name == "RS" and rsHold then
+            -- (let go before the Library: the click's)
+            local short = not rsHold.done
+            rsHold = nil
+            if short then
+                IC.Library.HoldHide()
+                BY.Press("RS")
+            end
+            return
+        end
+        -- (a press the Library had: its release too, though it has closed)
+        if libraryPress[button] or (IC.Library and IC.Library.IsShown()) then
+            libraryPress[button] = nil
+            return
+        end
         if name == "B" then return BY.Press("B") end
         if BY.held and BY.held.name == name then BY.held = nil end
         -- (a hold let go: the item's screen's, or a page's)
@@ -2031,6 +2083,9 @@ end
 
 win:SetScript("OnUpdate", function()
     local now = GetTime()
+    LibraryHold(now)
+    -- (the Library over the window: its sticks too)
+    if IC.Library and IC.Library.IsShown() then return end
     if not rightHeld and math.abs(rightY) > STICK_ON then
         rightHeld = true
         BY.StepTab(rightY > 0 and -1 or 1)

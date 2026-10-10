@@ -215,6 +215,12 @@ function OW.RenderHold()
     end
 end
 
+-- The picked auction's item (R3 held: its Library page)
+function OW.FocusedItem()
+    local a = auctions[sel]
+    return a and (a.itemLink or (a.itemKey and a.itemKey.itemID))
+end
+
 -- A hold under way (the window rumbles with it; nil: none)
 function OW.HoldProgress()
     if f and f:IsShown() and holding then return BY.HoldProgress(holding.start) end

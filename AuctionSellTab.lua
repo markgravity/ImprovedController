@@ -387,6 +387,12 @@ local function Search()
     end)
 end
 
+-- The picked item (R3 held: its Library page)
+function ST.FocusedItem()
+    local e = P and P.entry
+    return e and (e.link or e.itemID)
+end
+
 -- A new item picked: its sale set up (looked up after a moment's rest)
 function ST.Pick()
     local e = Entry()

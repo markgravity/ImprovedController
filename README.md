@@ -12,6 +12,10 @@ from the controller: no keyboard step needed.
 - **Button overrides** for L3 click and double-click.
 - **Vibration** on game events and spell casts, with per-action patterns.
 - **Destroy** to destroy junk from the controller (with no junk, white items too: gear, food and trade goods, unusable, low level and cheapest first); from the loot window when the bags are full, it destroys junk and loots in its place.
+- **Library**: hold R3 on an item (bags, loot window, auction house) for everything about it: what drops
+  it, who sells it, the recipes that make or use it, its quests and auction prices. Drops, vendors and
+  quests come from [QuestieDB](https://github.com/Questie/QuestieDB)'s data: the addon when installed, else
+  a copy that ships with this one.
 
 Double-tap **Menu** to open the configuration.
 
@@ -26,7 +30,12 @@ Double-tap **Menu** to open the configuration.
 
 Clone the repo straight into the `AddOns` folder (or symlink it) and `/reload` in game.
 
+`vendor/QuestieDB` is a git submodule of [QuestieDB](https://github.com/Questie/QuestieDB), for its API
+types and data (`git submodule update --init`). `python tools/make_library_data.py` copies what the
+Library shows from it into `LibraryData.lua`, which ships; the submodule itself isn't packaged.
+
 - `tools/make_*.py` regenerate the TGA textures.
+- `python tools/make_library.py` regenerates `LibraryRecipes.lua` from the game's recipe tables (wago.tools).
 - `python tools/package.py` builds `dist/ImprovedController-<version>.zip`.
 
 ### Releasing
@@ -48,6 +57,10 @@ say thanks, you can buy me a coffee:
 - [PayPal](https://paypal.me/markgravity)
 
 ## Credits
+
+The Library's drop, vendor and quest data comes from [QuestieDB](https://github.com/Questie/QuestieDB)
+by the Questie team; creatures' display ids (their portraits) from
+[cMaNGOS classic-db](https://github.com/cmangos/classic-db) (GPL-3.0).
 
 Parts of the code are adapted from
 [Easy Controller - Forever](https://github.com/moust4ki/EasyControllerWowForever) by moust4ki

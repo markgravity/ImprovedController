@@ -7,6 +7,7 @@
 ## X-Curse-Project-ID: 1731245
 ## IconTexture: Interface\AddOns\ImprovedController\textures\ic_addon
 ## Version: 0.2.0
+## OptionalDeps: QuestieDB
 ## SavedVariables: ImprovedControllerDB, ImprovedControllerAuctionDB
 ## SavedVariablesPerCharacter: ImprovedControllerCharDB
 
@@ -47,5 +48,10 @@ AuctionTasks.lua
 TaskCraft.lua
 VendorTasks.lua
 AuctionEditor.lua
+LibraryRecipes.lua
+LibraryData.lua
+Library.lua
+LibraryPage.lua
+LibraryEditor.lua
 Destroy.lua
 Options.lua
