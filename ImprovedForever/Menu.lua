@@ -132,8 +132,9 @@ local function Build()
     -- Above every other window (chat, the gamepad bars...), so nothing
     -- shows through the panel's text
     f:SetFrameStrata("FULLSCREEN_DIALOG")
-    f:ClearAllPoints()
-    f:SetPoint("CENTER", UIParent, "CENTER", 0, 22)
+    -- Where it sits: as the game's own panels (and the Library), along the
+    -- top beside the open windows, again as they come and go (Focus.lua)
+    IF.Focus.Dock(f)
     -- (its own focus glow, as the game's windows: it has the pad while up)
     IF.Focus.Glow(f, true)
     frame = f

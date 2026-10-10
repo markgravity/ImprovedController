@@ -78,8 +78,8 @@ focus the way Forever's native windows do. The shared code is
   times a second while shown.
 - Don't hand placement to the game's panel manager: an addon panel there
   taints it.
-- Center only modal windows (the config window, confirmations), the way the
-  game centres its dialogs.
+- This includes the Improved Forever config window. Center only
+  confirmations, the way the game centres its dialogs.
 
 ## Checks
 - `luajit -bl <file>` for syntax.
