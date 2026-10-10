@@ -1,0 +1,18 @@
+## Interface: 16001, 16002, 16003, 16100, 16101, 16200
+## Title: Improved Forever: Library
+## Notes: Everything about an item: drops, vendors, recipes, quests and prices.
+## Author: markg
+## Version: 0.3.0
+## X-Website: https://github.com/markgravity/ImprovedForever
+## X-License: MIT
+## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_addon
+## Group: ImprovedForever
+## Dependencies: ImprovedForever
+## OptionalDeps: QuestieDB, ImprovedForever_Auction, ImprovedForever_Destroy, ImprovedForever_Gather, ImprovedForever_Vibration
+
+Module.lua
+LibraryRecipes.lua
+LibraryData.lua
+Library.lua
+LibraryPage.lua
+LibraryEditor.lua

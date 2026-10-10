@@ -1,4 +1,16 @@
-package-as: ImprovedController
+package-as: ImprovedForever
+
+# One repo, one addon folder per module: each moves to the top of the zip
+move-folders:
+  ImprovedForever/ImprovedForever: ImprovedForever
+  ImprovedForever/ImprovedForever_Controller: ImprovedForever_Controller
+  ImprovedForever/ImprovedForever_Wheel: ImprovedForever_Wheel
+  ImprovedForever/ImprovedForever_Vibration: ImprovedForever_Vibration
+  ImprovedForever/ImprovedForever_Gather: ImprovedForever_Gather
+  ImprovedForever/ImprovedForever_Map: ImprovedForever_Map
+  ImprovedForever/ImprovedForever_Auction: ImprovedForever_Auction
+  ImprovedForever/ImprovedForever_Destroy: ImprovedForever_Destroy
+  ImprovedForever/ImprovedForever_Library: ImprovedForever_Library
 
 manual-changelog:
   filename: CHANGELOG.md

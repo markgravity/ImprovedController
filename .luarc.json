@@ -1,5 +1,6 @@
 {
   "runtime.version": "Lua 5.1",
   "workspace.library": ["vendor/QuestieDB/src/types"],
-  "workspace.ignoreDir": ["vendor", "dist", "tools"]
+  "workspace.ignoreDir": ["vendor", "dist", "tools"],
+  "diagnostics.globals": ["ImprovedForever"]
 }

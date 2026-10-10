@@ -11,7 +11,7 @@ import os
 
 from PIL import Image, ImageDraw
 
-OUT = os.path.join(os.path.dirname(__file__), "..", "textures")
+OUT = os.path.join(os.path.dirname(__file__), "..", "ImprovedForever", "textures")
 SIZE, SCALE = 32, 4
 S = SIZE * SCALE
 WHITE = (255, 255, 255, 255)

@@ -10,7 +10,7 @@ from PIL import Image
 
 HERE = os.path.dirname(__file__)
 SRC = os.path.join(HERE, "addon_logo.png")
-OUT = os.path.join(HERE, "..", "textures", "ic_addon.tga")
+OUT = os.path.join(HERE, "..", "ImprovedForever", "textures", "ic_addon.tga")
 
 if __name__ == "__main__":
     Image.open(SRC).convert("RGBA").resize((128, 128), Image.LANCZOS).save(OUT)

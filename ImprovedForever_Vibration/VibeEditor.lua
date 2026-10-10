@@ -1,0 +1,147 @@
+-- The Vibration tab, a tab of settings (IF.SettingsPage, SettingsPage.lua):
+-- under Settings, vibration on / off and its strength; then the events by
+-- category (Combat; Casting: spell, gathering, crafting; Wheel; Progress),
+-- each a dropdown of patterns (a kind of cast: of ready-made sets for its
+-- four moments: casting, interrupted, cancelled, pushed back). Choosing
+-- one sets it and plays it; Triangle plays it again.
+local IF = ImprovedForever
+
+local menu = IF.Menu
+local V = IF.Vibe
+local Item, OnOff = IF.SettingsItem, IF.SettingsOnOff
+
+local GROUPS = { { key = "settings", label = "Settings" } }
+for _, g in ipairs(V.GROUPS) do GROUPS[#GROUPS + 1] = g end
+
+local function Enabled()
+    if V.Settings().enabled then return true end
+    menu.Toast("Vibration is off (Settings)", true)
+    return false
+end
+
+-- An event's patterns: Off, then each (the actions' own patterns only come
+-- with a cast's "Match the action")
+local function Patterns()
+    local entries = { { action = "off", name = "Off" } }
+    for _, p in ipairs(V.PATTERNS) do
+        if not p.action then entries[#entries + 1] = { action = p.key, name = p.label } end
+    end
+    return entries
+end
+
+local ITEMS = {
+    Item({
+        key = "enabled", group = "settings", label = "Vibration",
+        tip = "The controller vibrates on the events in the other categories. Off: none of them does.",
+    }, OnOff(function() return V.Settings().enabled end, function(on)
+        V.Settings().enabled = on
+        if on then V.Play("pulse") else V.Stop() end
+    end, "Vibration")),
+    {
+        key = "intensity", group = "settings", label = "Strength",
+        tip = "How strong every vibration is. Each change plays a pulse so you can feel it.",
+        slider = {
+            min = 1, max = 10, step = 1,
+            get = function() return math.floor(V.Settings().intensity * 10 + 0.5) end,
+            set = function(n)
+                V.Settings().intensity = n / 10
+                V.Play("pulse")
+            end,
+            format = function(n) return (n * 10) .. "%" end,
+        },
+        try = function() if Enabled() then V.Play("pulse") end end,
+    },
+}
+
+for _, rail in ipairs(V.RAIL) do
+    if rail.castKind then
+        -- A kind of cast: one of the ready-made sets
+        local kind = rail.castKind
+        ITEMS[#ITEMS + 1] = {
+            key = rail.key, group = rail.group, label = rail.label, tip = rail.tip,
+            value = function() return V.CastPreset(kind) end,
+            text = function()
+                local preset = V.Preset(V.CastPreset(kind))
+                if not preset or preset.key == "off" then return "|cffff7a5cOff|r" end
+                if preset.auto then return preset.label .. "|n|cffb9ab8cEach action its own feel|r" end
+                local parts = {}
+                for _, phase in ipairs(V.CAST_PHASES) do
+                    local pattern = V.Pattern(preset[phase])
+                    local label = phase == "cast" and "Casting" or phase == "pushback" and "Pushed back"
+                        or (phase:sub(1, 1):upper() .. phase:sub(2))
+                    parts[#parts + 1] = label .. ": " .. (pattern and pattern.label or "—")
+                end
+                return preset.label .. "|n|cffb9ab8c" .. table.concat(parts, " · ") .. "|r"
+            end,
+            options = function()
+                -- Off, Match the action, then the general sets (each action's
+                -- own set only comes with Match the action)
+                local entries = {}
+                for _, p in ipairs(V.CAST_PRESETS) do
+                    if not p.action then
+                        entries[#entries + 1] = { action = p.key, name = p.label }
+                    end
+                end
+                return entries
+            end,
+            -- (felt as a cast would go with it: each moment where it would come)
+            try = function()
+                if not Enabled() then return end
+                if V.CastPreset(kind) == "off" then return menu.Toast(rail.label .. " is off", true) end
+                V.SimulateCast(function(label)
+                    if label then menu.Toast(rail.label .. ": " .. label) end
+                end, kind)
+            end,
+        }
+        local item = ITEMS[#ITEMS]
+        item.choose = function(action)
+            V.SetCastPreset(kind, action)
+            local preset = V.Preset(action)
+            menu.Toast(rail.label .. ": " .. (preset and preset.label or action))
+            if action ~= "off" then item.try() end
+        end
+    else
+        -- An event: its pattern
+        local event = rail.subs[1]
+        ITEMS[#ITEMS + 1] = {
+            key = rail.key, group = rail.group, label = rail.label, tip = event.tip,
+            value = function() return V.EventPattern(event.key) or "off" end,
+            text = function()
+                local pattern = V.Pattern(V.EventPattern(event.key))
+                return pattern and pattern.label or "|cffff7a5cOff|r"
+            end,
+            options = Patterns,
+            choose = function(action)
+                V.SetEventPattern(event.key, action)
+                if action ~= "off" and V.Settings().enabled then V.Play(action) end
+                local pattern = V.Pattern(action)
+                menu.Toast(event.label .. ": " .. (pattern and pattern.label or "Off"))
+            end,
+            -- (a state that lasts plays on; a critical hit: a run of them)
+            try = function()
+                if not Enabled() then return end
+                local pattern = V.EventPattern(event.key)
+                if not pattern then
+                    menu.Toast(event.label .. " is off", true)
+                elseif event.loop then
+                    if V.SimulateLoop(event.key, 6) then
+                        menu.Toast(event.label .. ": playing (" .. IF.ButtonName("Y") .. " stops)")
+                    else
+                        menu.Toast(event.label .. ": stopped")
+                    end
+                elseif event.combo then
+                    V.SimulateCombo(event.key, function(n)
+                        menu.Toast(event.label .. (n > 1 and " x" .. n or ""))
+                    end)
+                else
+                    V.Play(pattern)
+                end
+            end,
+        }
+    end
+end
+
+V.Editor = IF.SettingsPage({ key = "vibration", label = "Vibration", module = "vibration", order = 30 }, GROUPS, ITEMS,
+    { hide = function() V.StopSimulation() end })
+
+hooksecurefunc(menu, "Close", function() V.StopSimulation() end)

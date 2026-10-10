@@ -1,0 +1,1117 @@
+-- Destroy: with the bags open, R2 + R3 (or the button(s) bound in the
+-- General tab) opens a panel listing what is safe to throw away; so does
+-- Triangle in the loot window once the bags are full, where Cross swaps:
+-- the junk goes, the loot that didn't fit comes in its place. What it lists: junk (grey items, white
+-- "junk") and cheap white gear; with no junk, every white item that can
+-- go (gear, food, trade goods), the least useful first. With auction
+-- prices scanned (Auction.lua), what sells better there than to a vendor
+-- is left out, and each card shows its auction worth; an upgrade for the
+-- character (Upgrades.lua) is never offered. Laid out as
+-- Forever's loot window: a list of item cards, the picked one's tooltip
+-- beside it. Cross
+-- destroys the picked item (press twice: once to arm), holding Square and
+-- letting go destroys them all, Circle closes, R3 shows / hides the
+-- tooltip. From the loot window Cross swaps and Triangle destroys only;
+-- at a vendor Triangle sells.
+-- Never in combat.
+local IF = ImprovedForever
+
+local K = IF.ConfigKit
+local KC = K.C
+
+local DS = {}
+IF.Destroy = DS
+
+local HOLD_ALL = 1.2          -- Square held this long, then let go: destroy all
+local DEFAULT_KEY = "PADRTRIGGER+PADRSTICK"   -- one button, or "held+pressed"
+
+---------------------------------------------------------------------------
+-- Finding what to throw away
+---------------------------------------------------------------------------
+-- Item classes never offered: containers, reagents, projectiles,
+-- quivers, recipes, quest items, keys
+local KEEP_CLASS = { [1] = true, [5] = true, [6] = true, [9] = true, [11] = true, [12] = true, [13] = true }
+-- Offered only with no junk at all: consumables (food, potions...) and
+-- trade goods (cloth, leather, herbs...), the things kept for later
+local SPARE_CLASS = { [0] = true, [7] = true }
+
+local function ItemInfo(id)
+    if C_Item and C_Item.GetItemInfo then return C_Item.GetItemInfo(id) end
+    return GetItemInfo(id)
+end
+
+local function SlotInfo(bag, slot)
+    if C_Container and C_Container.GetContainerItemInfo then
+        return C_Container.GetContainerItemInfo(bag, slot)
+    end
+end
+
+local function NumSlots(bag)
+    if C_Container and C_Container.GetContainerNumSlots then return C_Container.GetContainerNumSlots(bag) end
+    return GetContainerNumSlots and GetContainerNumSlots(bag) or 0
+end
+
+-- Both scale with the player's level: white gear sells for about its
+-- level squared in copper, and a few levels matter more early on
+local function PlayerLevel()
+    return math.max(1, UnitLevel("player") or 1)
+end
+
+-- A stack worth less than this (copper) is "Cheap": 1 silver at level 10,
+-- 9 at 30, 36 at 60 (never under 20 copper)
+local function Cheap()
+    local level = PlayerLevel()
+    return math.max(20, level * level)
+end
+
+-- At or under this item level is "Low level": a quarter of the player's
+-- level under it (at least 3): 7 at level 10, 23 at 30, 45 at 60
+local function LowLevel()
+    local level = PlayerLevel()
+    return level - math.max(3, math.ceil(level / 4))
+end
+
+-- "Requires Level %d": the one red tooltip line that only means "later"
+local MIN_LEVEL = ITEM_MIN_LEVEL and ("^" .. ITEM_MIN_LEVEL:gsub("%%d", "%%d+") .. "$")
+
+-- A red line on its tooltip (a class, an armour or weapon type the player
+-- can't use), its level apart
+local function Unusable(bag, slot)
+    local tips = C_TooltipInfo
+    if not (tips and tips.GetBagItem) then return false end
+    local ok, data = pcall(tips.GetBagItem, bag, slot)
+    if not ok or not data or not data.lines then return false end
+    for _, line in ipairs(data.lines) do
+        local c, text = line.leftColor, line.leftText
+        if c and c.r and c.r > 0.9 and c.g < 0.2 and c.b < 0.2 and text and text ~= ""
+            and not (MIN_LEVEL and text:match(MIN_LEVEL)) then
+            return true
+        end
+    end
+    return false
+end
+
+-- Why an item can go, its rank (lower goes first) and whether it is a
+-- spare (consumable, trade good), or nil.
+-- Junk: greys, white "junk". White gear and odds and ends (sellable, no
+-- Use; never the classes kept) and spares: "Unusable", "Low level",
+-- "Cheap" (a stack worth less than Cheap()), or just "Common"
+local function Reason(info, bag, slot)
+    local _, _, quality, itemLevel, minLevel, _, _, _, _, _, sellPrice, classID, subclassID = ItemInfo(info.itemID)
+    -- (not cached yet: its class is known at once all the same)
+    if not classID and C_Item and C_Item.GetItemInfoInstant then
+        classID, subclassID = select(6, C_Item.GetItemInfoInstant(info.itemID))
+    end
+    quality = quality or info.quality
+    if quality == nil then return nil end
+    if quality == 0 then return "Junk", 0 end
+    if quality ~= 1 or not classID or KEEP_CLASS[classID] then return nil end
+    sellPrice = sellPrice or 0
+    local spare = SPARE_CLASS[classID] or false
+    -- Never something that can't be sold (quest-like, special), nor gear or
+    -- odds and ends with a Use (Hearthstone...): a spare's Use is what it is
+    local getSpell = (C_Item and C_Item.GetItemSpell) or GetItemSpell
+    if info.hasNoValue or sellPrice == 0 or (not spare and getSpell and getSpell(info.itemID)) then return nil end
+    if classID == 15 and subclassID == 0 then return "Junk", 0 end
+    if not spare and classID ~= 2 and classID ~= 4 and classID ~= 15 then return nil end
+    if classID == 2 or classID == 4 then
+        if Unusable(bag, slot) then return "Unusable", 1, spare end
+    end
+    if classID ~= 15 then
+        -- (trade goods have an item level but no use level: theirs alone isn't "low")
+        local level = (minLevel and minLevel > 1) and minLevel or (classID ~= 7 and itemLevel)
+        if level and level > 0 and level <= LowLevel() then return "Low level", 2, spare end
+    end
+    if sellPrice * (info.stackCount or 1) < Cheap() then return "Cheap", 3, spare end
+    return "Common", 4, spare
+end
+
+-- What a stack brings at the auction house after its cut, at its usual
+-- price there (Auction.lua's scans; nil: unknown, or not wanted)
+local function AuctionWorth(itemID, count)
+    local A = IF.Auction
+    if not (A and A.Settings().buy and A.Settings().destroy) then return nil end
+    local unit = A.UnitNet(itemID)
+    return unit and math.floor(unit * count) or nil
+end
+
+-- Junk, and the white gear worth least; with no junk at all, every white
+-- item that can go, food and trade goods too: the unusable first, then
+-- the low level, the cheapest first in each
+function DS.Scan()
+    local list, junk = {}, false
+    local last = NUM_BAG_SLOTS or 4
+    for bag = 0, last do
+        for slot = 1, NumSlots(bag) do
+            local info = SlotInfo(bag, slot)
+            if info and info.itemID and not info.isLocked then
+                local reason, rank, spare = Reason(info, bag, slot)
+                -- (better than what is worn: kept, Upgrades.lua)
+                if reason and IF.Upgrades and IF.Upgrades.IsBagUpgrade(bag, slot) then reason = nil end
+                local sellPrice = reason and select(11, ItemInfo(info.itemID)) or 0
+                local count = info.stackCount or 1
+                local ah = reason and AuctionWorth(info.itemID, count)
+                -- Worth more at the auction house than to a vendor (and not
+                -- next to nothing there either): kept, for selling there
+                if ah and ah > sellPrice * count and ah >= Cheap() then reason = nil end
+                if reason then
+                    junk = junk or rank == 0
+                    list[#list + 1] = {
+                        bag = bag, slot = slot, itemID = info.itemID, link = info.hyperlink,
+                        icon = info.iconFileID, count = count, quality = info.quality or 0,
+                        value = sellPrice * count, ah = ah, reason = reason, rank = rank, spare = spare,
+                        sellable = sellPrice > 0 and not info.hasNoValue,
+                    }
+                end
+            end
+        end
+    end
+    if junk then
+        -- With junk to throw away, only the white gear worth next to nothing
+        local kept = {}
+        for _, e in ipairs(list) do
+            if e.rank == 0 or (not e.spare and e.value < Cheap()) then kept[#kept + 1] = e end
+        end
+        list = kept
+    end
+    table.sort(list, function(a, b)
+        if a.rank ~= b.rank then return a.rank < b.rank end
+        return a.value < b.value
+    end)
+    return list
+end
+
+---------------------------------------------------------------------------
+-- Destroying (from a button press; never in combat)
+---------------------------------------------------------------------------
+local blocked = false
+
+local function DestroyOne(entry)
+    local info = SlotInfo(entry.bag, entry.slot)
+    if not info or info.itemID ~= entry.itemID or info.isLocked then return false end
+    ClearCursor()
+    C_Container.PickupContainerItem(entry.bag, entry.slot)
+    if not CursorHasItem() then return false end
+    blocked = false
+    DeleteCursorItem()
+    if CursorHasItem() then ClearCursor() end
+    return not blocked
+end
+
+local watch = CreateFrame("Frame")
+watch:RegisterEvent("ADDON_ACTION_BLOCKED")
+watch:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+watch:SetScript("OnEvent", function(_, _, addon, fn)
+    if addon == IF.name and (tostring(fn):find("DeleteCursorItem") or tostring(fn):find("UseContainerItem")) then
+        blocked = true
+    end
+end)
+
+---------------------------------------------------------------------------
+-- The panel: Forever's loot window (its flat panel, item cards, rarity
+-- tag, the gamepad focus glow and arrow) with a button legend under it
+---------------------------------------------------------------------------
+local ROWS, ROW_H, PANEL_W = 6, 48, 262
+
+local function Atlas(tex, name)
+    if IF.HasAtlas(name) then
+        tex:SetAtlas(name)
+        return true
+    end
+end
+
+local ok, panel = pcall(K.NewFrame, "Frame", "ImprovedForeverDestroy", UIParent, "DefaultPanelFlatTemplate")
+if not ok then
+    panel = K.NewFrame("Frame", "ImprovedForeverDestroy", UIParent, "BackdropTemplate")
+    panel:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 24,
+        insets = { left = 6, right = 6, top = 6, bottom = 6 },
+    })
+end
+panel:SetSize(PANEL_W, 52 + ROWS * ROW_H)
+panel:SetFrameStrata("DIALOG")
+panel:SetPoint("CENTER")
+panel:EnableMouse(true)
+panel:SetClampedToScreen(true)
+panel:Hide()
+DS.panel = panel
+
+-- The game's focus look (FocusEffects.lua): the metal frame glow round a
+-- focused panel, in the focus colour and opacity set in the game's
+-- controller options (GamepadFocusStateColor: gold, black, blue)
+local function FocusColor()
+    local get = C_CVar and C_CVar.GetCVar or GetCVar
+    local value = tonumber(get and get("GamepadFocusStateColor") or 1) or 1
+    local alpha = tonumber(get and get("GamepadFocusStateOpacity") or 1) or 1
+    if value == 2 then return 0, 0, 0, alpha end
+    if value == 3 then return 0.3, 0.5, 1, alpha end
+    return 1, 0.9, 0.4, alpha
+end
+
+local glowHolder = K.NewFrame("Frame", nil, panel)
+local glowRoot = panel.NineSlice or panel
+glowHolder:SetPoint("TOPLEFT", glowRoot, "TOPLEFT", -10, 14)
+glowHolder:SetPoint("BOTTOMRIGHT", glowRoot, "BOTTOMRIGHT", 14, -14)
+glowHolder:SetFrameLevel(panel:GetFrameLevel() + 20)
+local glow = glowHolder:CreateTexture(nil, "OVERLAY")
+glow:SetAllPoints()
+glow:SetShown(Atlas(glow, "gamepad-uiframemetal-focus") or false)
+
+local titleText = panel.TitleContainer and panel.TitleContainer.TitleText
+if not titleText then
+    titleText = K.Text(panel, 13, KC.title)
+    titleText:SetPoint("TOP", 0, -8)
+end
+
+-- The count and worth, along the panel's bottom
+local summary = K.ChatText(panel, 11, KC.help)
+summary:SetPoint("BOTTOM", panel, "BOTTOM", 0, 9)
+summary:SetJustifyH("CENTER")
+
+local more = { up = panel:CreateTexture(nil, "OVERLAY"), down = panel:CreateTexture(nil, "OVERLAY") }
+-- (the game's scroll bar arrows, drawn the right way up)
+for key, t in pairs(more) do
+    t:SetSize(17, 11)
+    if not Atlas(t, key == "up" and "minimal-scrollbar-arrow-top" or "minimal-scrollbar-arrow-bottom") then
+        t:SetSize(20, 20)
+        t:SetTexture("Interface\\AddOns\\ImprovedForever\\textures\\ic_tri")
+        if key == "up" then t:SetTexCoord(0, 1, 1, 0) end
+    end
+    t:SetPoint(key == "up" and "TOP" or "BOTTOM", panel, key == "up" and "TOP" or "BOTTOM", 0, key == "up" and -26 or 24)
+end
+
+-- The rows: an item card each
+local rows = {}
+for i = 1, ROWS do
+    local r = K.NewFrame("Button", nil, panel)
+    r:SetSize(PANEL_W - 22, ROW_H - 4)
+    r:SetPoint("TOPLEFT", 11, -26 - (i - 1) * ROW_H)
+    r.bg = r:CreateTexture(nil, "BACKGROUND")
+    r.bg:SetAllPoints()
+    if not Atlas(r.bg, "Looting_ItemCard_BG") then r.bg:SetColorTexture(0.1, 0.1, 0.1, 0.8) end
+    r.stroke = r:CreateTexture(nil, "BORDER")
+    r.stroke:SetAllPoints()
+    Atlas(r.stroke, "Looting_ItemCard_Stroke_Normal")
+    -- Focused: the card's bright stroke, in the focus colour (as a bag slot's)
+    r.focus = r:CreateTexture(nil, "OVERLAY")
+    r.focus:SetAllPoints()
+    if not Atlas(r.focus, "Looting_ItemCard_Stroke_ClickState") then r.focus:SetColorTexture(1, 0.8, 0.2, 0.25) end
+    r.focusGlow = r:CreateTexture(nil, "OVERLAY", nil, 1)
+    r.focusGlow:SetAllPoints()
+    r.focusGlow:SetBlendMode("ADD")
+    Atlas(r.focusGlow, "Looting_ItemCard_HighlightState")
+    r.icon = r:CreateTexture(nil, "ARTWORK")
+    r.icon:SetSize(36, 36)
+    r.icon:SetPoint("LEFT", 4, 0)
+    r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    r.iconBorder = r:CreateTexture(nil, "OVERLAY")
+    r.iconBorder:SetPoint("TOPLEFT", r.icon, -1, 1)
+    r.iconBorder:SetPoint("BOTTOMRIGHT", r.icon, 1, -1)
+    r.iconBorder:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+    r.iconBorder:SetBlendMode("ADD")
+    r.iconBorder:SetTexCoord(0.2, 0.8, 0.2, 0.8)
+    r.count = r:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    r.count:SetPoint("BOTTOMRIGHT", r.icon, "BOTTOMRIGHT", -1, 1)
+    r.tag = r:CreateTexture(nil, "BORDER", nil, 1)
+    r.tag:SetSize(90, 12)
+    r.tag:SetPoint("TOPRIGHT", 0, 0)
+    Atlas(r.tag, "Looting_RarityTag_Frame")
+    r.tagText = r:CreateFontString(nil, "OVERLAY", "GameFontWhiteTiny2")
+    r.tagText:SetPoint("TOPRIGHT", -4, -1)
+    r.name = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    r.name:SetPoint("TOPLEFT", r.icon, "TOPRIGHT", 8, -4)
+    r.name:SetPoint("RIGHT", -6, 0)
+    r.name:SetJustifyH("LEFT")
+    r.name:SetWordWrap(false)
+    r.value = K.ChatText(r, 11, KC.help)
+    r.value:SetPoint("BOTTOMLEFT", r.icon, "BOTTOMRIGHT", 8, 3)
+    -- The game's own focus cursor (SmartNavigation's pointer): its large
+    -- arrow at 80 %, in the cursor colour, bobbing at the row's left edge
+    local pointer = K.NewFrame("Frame", nil, r)
+    pointer:SetSize(10, 10)
+    pointer:SetPoint("RIGHT", r, "LEFT", 4, 0)
+    pointer:SetFrameLevel(r:GetFrameLevel() + 5)
+    r.arrow = pointer:CreateTexture(nil, "ARTWORK", nil, 2)
+    r.arrow:SetSize(42 * 0.8, 70 * 0.8)
+    r.arrow:SetPoint("RIGHT", pointer, "RIGHT", 0, 0)
+    if not Atlas(r.arrow, "gamepad-largecursor-white") then
+        r.arrow:SetSize(22, 22)
+        r.arrow:SetTexture("Interface\\AddOns\\ImprovedForever\\textures\\ic_tri")
+        r.arrow:SetRotation(math.pi / 2)
+    end
+    local bob = r.arrow:CreateAnimationGroup()
+    bob:SetLooping("REPEAT")
+    local out = bob:CreateAnimation("Translation")
+    out:SetOffset(4, 0)
+    out:SetDuration(1)
+    out:SetSmoothing("IN_OUT")
+    out:SetOrder(1)
+    local back = bob:CreateAnimation("Translation")
+    back:SetOffset(-4, 0)
+    back:SetDuration(1)
+    back:SetSmoothing("IN_OUT")
+    back:SetOrder(2)
+    bob:Play()
+    r:SetScript("OnClick", function()
+        DS.index = DS.top + i - 1
+        DS.armed = nil
+        DS.Render()
+    end)
+    rows[i] = r
+end
+
+-- The button legend under the panel, as the game's own panels have; it
+-- grows leftwards, clear of the bag window's own legend on the right
+local legend = K.NewFrame("Frame", nil, panel, "BackdropTemplate")
+legend:SetPoint("TOPRIGHT", panel, "BOTTOMRIGHT", 0, -6)
+legend:SetHeight(36)
+legend:SetBackdrop({
+    bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 },
+})
+legend:SetBackdropColor(0.05, 0.04, 0.03, 0.92)
+legend:SetBackdropBorderColor(0.45, 0.38, 0.25, 1)
+local hints = legend:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+hints:SetPoint("CENTER")
+
+local holdBar = legend:CreateTexture(nil, "OVERLAY")
+holdBar:SetHeight(3)
+holdBar:SetPoint("BOTTOMLEFT", 5, 4)
+holdBar:Hide()
+
+DS.items, DS.index, DS.top = {}, 1, 1
+
+-- 10350 -> "1 [gold] 3 [silver] 50 [copper]", with the game's coin icons
+local COINS = {
+    { 10000, "Interface\\MoneyFrame\\UI-GoldIcon" },
+    { 100, "Interface\\MoneyFrame\\UI-SilverIcon" },
+    { 1, "Interface\\MoneyFrame\\UI-CopperIcon" },
+}
+local function Money(copper)
+    copper = math.floor(copper or 0)
+    local parts = {}
+    for _, coin in ipairs(COINS) do
+        local n = math.floor(copper / coin[1])
+        copper = copper - n * coin[1]
+        if n > 0 then parts[#parts + 1] = n .. " |T" .. coin[2] .. ":0:0:2:0|t" end
+    end
+    return #parts > 0 and table.concat(parts, " ") or ("0 |T" .. COINS[3][2] .. ":0:0:2:0|t")
+end
+
+local function Glyph(key)
+    return IF.GlyphText(key, 24)
+end
+
+-- The tooltip shows as the bag window's does: the game's own setting
+-- (CVar GamepadDisableTooltips), which R3 turns on and off in both
+local function TipsOff()
+    local get = C_CVar and C_CVar.GetCVarBool or GetCVarBool
+    return get and get("GamepadDisableTooltips") or false
+end
+
+function DS.SetTipsOff(off)
+    local set = C_CVar and C_CVar.SetCVar or SetCVar
+    if set then set("GamepadDisableTooltips", off and "1" or "0") end
+end
+
+function DS.Render()
+    local items = DS.items
+    local n = #items
+    DS.index = math.max(1, math.min(DS.index, math.max(1, n)))
+    if DS.index < DS.top then DS.top = DS.index end
+    if DS.index > DS.top + ROWS - 1 then DS.top = DS.index - ROWS + 1 end
+    DS.top = math.max(1, math.min(DS.top, math.max(1, n - ROWS + 1)))
+    local total = 0
+    for _, e in ipairs(items) do total = total + e.value end
+    -- From the loot window a destroy loots in the junk's place: a swap
+    local swap = DS.origin == "loot"
+    titleText:SetText("Destroy")
+    local focused = DS.focus ~= "bags"
+    glow:SetVertexColor(FocusColor())
+    glow:SetShown(focused and IF.HasAtlas("gamepad-uiframemetal-focus"))
+    summary:SetText(n == 0 and "Nothing to throw away" or
+        (n .. (n == 1 and " item" or " items") .. " · worth " .. Money(total)))
+    more.up:SetShown(DS.top > 1)
+    more.down:SetShown(DS.top + ROWS - 1 < n)
+    for i, r in ipairs(rows) do
+        local index = DS.top + i - 1
+        local e = items[index]
+        r:SetShown(e ~= nil)
+        if e then
+            local c = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[e.quality]
+            local selected = index == DS.index and focused
+            r.icon:SetTexture(e.icon or 134400)
+            r.iconBorder:SetVertexColor(c and c.r or 0.6, c and c.g or 0.6, c and c.b or 0.6, 0.9)
+            r.count:SetText(e.count > 1 and e.count or "")
+            local name = e.link and e.link:match("%[(.-)%]") or ("item " .. e.itemID)
+            r.name:SetText(name)
+            r.name:SetTextColor(c and c.r or 1, c and c.g or 1, c and c.b or 1)
+            r.value:SetText((e.value > 0 and Money(e.value) or "no value")
+                .. (e.ah and ("  |cff9d917a·  AH " .. Money(e.ah) .. "|r") or ""))
+            r.tagText:SetText(e.reason)
+            r.focus:SetShown(selected)
+            r.focusGlow:SetShown(selected)
+            r.arrow:SetShown(selected)
+            if selected then
+                local fr, fg, fb = FocusColor()
+                r.focus:SetVertexColor(fr, fg, fb)
+                r.focusGlow:SetVertexColor(fr, fg, fb, 0.35)
+                local cursor = GAMEPAD_SMARTNAV_CURSOR_COLOR
+                if cursor and cursor.GetRGBA then
+                    r.arrow:SetVertexColor(cursor:GetRGBA())
+                else
+                    r.arrow:SetVertexColor(fr, fg, fb)
+                end
+            end
+            r.stroke:SetAlpha(selected and 0 or 1)
+        end
+    end
+    local e = focused and not TipsOff() and items[DS.index]
+    if e then
+        -- Over the bag side (the panel sits left of the bags, with little room
+        -- further left); no "equipped" comparison beside it
+        GameTooltip:SetOwner(panel, "ANCHOR_NONE")
+        GameTooltip:ClearAllPoints()
+        GameTooltip:SetPoint("TOPLEFT", panel, "TOPRIGHT", 26, 0)
+        GameTooltip:SetBagItem(e.bag, e.slot)
+        GameTooltip:Show()
+        for _, tip in ipairs({ _G.ShoppingTooltip1, _G.ShoppingTooltip2 }) do tip:Hide() end
+    elseif GameTooltip:GetOwner() == panel then
+        GameTooltip:Hide()
+    end
+    local function Armed(by, word, again)
+        return (DS.armed and DS.armedBy == by) and ("|cffff5c3cAgain to " .. again .. "|r") or word
+    end
+    -- From the loot window: Cross swaps, Triangle destroys only
+    local press = Glyph("A") .. " " .. (swap and Armed("A", "Swap", "swap") or Armed("A", "Destroy", "destroy"))
+    -- Triangle: at a vendor it sells what can be sold; from the loot window
+    -- it destroys only
+    local picked = items[DS.index]
+    if DS.AtVendor() then
+        if picked and picked.sellable then press = press .. "   " .. Glyph("Y") .. " Sell" end
+    elseif swap then
+        press = press .. "   " .. Glyph("Y") .. " " .. Armed("Y", "Destroy", "destroy")
+    end
+    local all = swap and " Swap All (hold)   " or " Destroy All (hold)   "
+    if not focused then
+        hints:SetText(Glyph("LT") .. " / " .. Glyph("RT") .. " Destroy")
+    else
+        -- (L2 / R2 hand the pad to the window it was opened from)
+        local back = DS.origin == "loot" and " Loot   " or " Bags   "
+        hints:SetText((n > 0 and (press .. "   " .. Glyph("X") .. all) or "")
+            .. Glyph("LT") .. " / " .. Glyph("RT") .. back .. Glyph("B") .. " Close")
+    end
+    legend:SetWidth(math.max(PANEL_W, hints:GetStringWidth() + 28))
+end
+
+function DS.Refresh()
+    if not panel:IsShown() then return end
+    local current = DS.items[DS.index]
+    DS.items = DS.Scan()
+    -- Stay near the same place in the list
+    if current then
+        for i, e in ipairs(DS.items) do
+            if e.bag == current.bag and e.slot == current.slot then DS.index = i end
+        end
+    end
+    DS.Render()
+end
+
+---------------------------------------------------------------------------
+-- The pad, while the panel is up (priority bindings; out of combat)
+---------------------------------------------------------------------------
+local KEYS = {
+    PADDUP = "UP", PADDDOWN = "DOWN", PADDLEFT = "LEFT", PADDRIGHT = "RIGHT",
+    PAD1 = "A", PAD2 = "B", PAD3 = "X", PAD4 = "Y", ESCAPE = "B",
+    PADLTRIGGER = "SWITCH", PADRTRIGGER = "SWITCH", PADRSTICK = "TIP",
+}
+-- Kept while the bags have the focus: the way back
+local SWITCH_KEYS = { PADLTRIGGER = true, PADRTRIGGER = true }
+local PREFIXES = { "", "SHIFT-", "CTRL-", "ALT-", "CTRL-SHIFT-", "ALT-SHIFT-", "ALT-CTRL-", "ALT-CTRL-SHIFT-" }
+
+local function Move(step)
+    local n = #DS.items
+    if n == 0 then return end
+    local i = DS.index + step
+    if i >= 1 and i <= n then DS.index = i end
+    DS.armed = nil
+    DS.Render()
+end
+
+function DS.Press(name, down)
+    -- L2 / R2 (L2 is the game's Shift: a quick tap): the focus over to the bag window and back
+    if name == "SWITCH" then
+        if down then DS.SetFocus(DS.focus == "bags" and "panel" or "bags") end
+        return
+    end
+    if DS.focus == "bags" then return end
+    -- R3: the tooltip shown or not, as in the bag window
+    if name == "TIP" then
+        if down then
+            DS.SetTipsOff(not TipsOff())
+            DS.Render()
+        end
+        return
+    end
+    if name == "X" then
+        -- Hold, then let go: all of them
+        if down then
+            DS.holdStart = GetTime()
+            holdBar:Show()
+        elseif DS.holdStart then
+            local held = GetTime() - DS.holdStart
+            DS.holdStart = nil
+            holdBar:Hide()
+            if held >= HOLD_ALL then DS.DestroyAll() end
+        end
+        return
+    end
+    -- Circle on its release: closing on the press would hand the release to
+    -- the bag window, which closes the bags
+    if name == "B" then
+        if not down then DS.Close() end
+        return
+    end
+    if not down then return end
+    if name == "UP" then Move(-1)
+    elseif name == "DOWN" then Move(1)
+    elseif name == "LEFT" then Move(-ROWS)
+    elseif name == "RIGHT" then Move(ROWS)
+    elseif name == "Y" and DS.AtVendor() then
+        -- At a vendor Triangle sells (bought back from it if need be: no arming)
+        local e = DS.items[DS.index]
+        if e and e.sellable then
+            DS.armed = nil
+            DS.Sell(e)
+        end
+    elseif name == "A" or (name == "Y" and DS.origin == "loot") then
+        -- From the loot window Cross swaps, Triangle only destroys
+        local e = DS.items[DS.index]
+        if not e then return end
+        if DS.armed ~= e or DS.armedBy ~= name then
+            DS.armed, DS.armedBy = e, name
+            return DS.Render()
+        end
+        DS.armed = nil
+        DS.Destroy(e, name == "Y")
+    end
+end
+
+local buttons = {}
+for key, name in pairs(KEYS) do
+    local b = K.NewFrame("Button", "ImprovedForeverDestroyPad" .. key)
+    b:RegisterForClicks("AnyDown", "AnyUp")
+    b:SetScript("OnClick", function(_, _, down) DS.Press(name, down ~= false) end)
+    buttons[key] = b
+end
+
+-- Only Escape is bound: the pad's buttons are taken by the panel's catcher
+-- (below) while it has the focus, and L2 / R2 watched while the bags have
+-- it. Override bindings on the pad (Cross above all) carry our taint into
+-- the game's gamepad navigation (ADDON_ACTION_FORBIDDEN). (No catcher on
+-- this client: the pad bound as before.)
+local function Bind()
+    if IF.InCombat() then return end
+    ClearOverrideBindings(panel)
+    local catcherPad = panel.EnableGamePadButton ~= nil
+    for key in pairs(KEYS) do
+        local name = buttons[key]:GetName()
+        if DS.focus == "bags" and not (SWITCH_KEYS[key] and not catcherPad) then
+            -- (the bag window's own navigation has it; L2 / R2 watched)
+        elseif key == "ESCAPE" then
+            SetOverrideBindingClick(panel, true, key, name)
+        elseif not catcherPad then
+            for _, prefix in ipairs(PREFIXES) do SetOverrideBindingClick(panel, true, prefix .. key, name) end
+        end
+    end
+end
+
+-- L2 / R2 while the bags have the focus (the catcher is off then): watched,
+-- a fresh press bringing the focus back (one held from the switch waits
+-- for its release)
+local switchHeld = false
+local function SwitchDown()
+    return IsKeyDown and (IsKeyDown("PADLTRIGGER") or IsKeyDown("PADRTRIGGER")) or false
+end
+
+-- Which has the pad: the panel (ours, the game's focus hidden) or the bag
+-- window (the game's own navigation, ours dimmed; L2 / R2 come back)
+function DS.SetFocus(focus)
+    DS.focus = focus
+    switchHeld = SwitchDown()
+    DS.armed, DS.holdStart = nil, nil
+    holdBar:Hide()
+    Bind()
+    DS.TakePad(focus == "panel")
+    DS.HideNativeFocus(focus == "panel")
+    DS.Render()
+end
+
+panel:SetScript("OnUpdate", function()
+    if DS.focus == "bags" and panel.EnableGamePadButton then
+        local down = SwitchDown()
+        if down and not switchHeld and not IF.InCombat() then DS.SetFocus("panel") end
+        switchHeld = down
+    end
+    if DS.holdStart then
+        local p = math.min(1, (GetTime() - DS.holdStart) / HOLD_ALL)
+        holdBar:SetWidth(math.max(1, (legend:GetWidth() - 10) * p))
+        holdBar:SetColorTexture(p >= 1 and 1 or 0.85, p >= 1 and 0.35 or 0.2, 0.1, 0.9)
+    end
+end)
+
+-- A vendor's window is open: what can be sold is sold to it
+function DS.AtVendor()
+    local merchant = _G.MerchantFrame
+    return merchant and merchant:IsShown() or false
+end
+
+local function SellOne(e)
+    local info = SlotInfo(e.bag, e.slot)
+    if not info or info.itemID ~= e.itemID or info.isLocked then return false end
+    ClearCursor()
+    blocked = false
+    local use = (C_Container and C_Container.UseContainerItem) or UseContainerItem
+    if not use then return false end
+    use(e.bag, e.slot)
+    return not blocked
+end
+
+function DS.Sell(e)
+    if IF.InCombat() or not DS.AtVendor() then return end
+    if SellOne(e) then
+        IF.Print("sold " .. (e.link or "item") .. (e.count > 1 and (" x" .. e.count) or "") .. " for " .. Money(e.value))
+    elseif blocked then
+        IF.Print("the game doesn't let addons sell items here.")
+    end
+    C_Timer.After(0.2, DS.Refresh)
+end
+
+-- noLoot: from the loot window, destroy only (no swap)
+function DS.Destroy(e, noLoot)
+    if IF.InCombat() then return end
+    local name = e.link or "item"
+    if DestroyOne(e) then
+        IF.Print("destroyed " .. name .. (e.count > 1 and (" x" .. e.count) or ""))
+        if not noLoot then DS.LootAfter("one") end
+    elseif blocked then
+        IF.Print("the game doesn't let addons destroy items here.")
+    end
+    C_Timer.After(0.2, DS.Refresh)
+end
+
+function DS.DestroyAll()
+    if IF.InCombat() then return end
+    local done = 0
+    for _, e in ipairs(DS.items) do
+        if DestroyOne(e) then
+            done = done + 1
+        elseif blocked then
+            break
+        end
+    end
+    if blocked and done == 0 then
+        IF.Print("the game doesn't let addons destroy items here.")
+    else
+        IF.Print("destroyed " .. done .. (done == 1 and " item." or " items."))
+        if done > 0 then DS.LootAfter("all") end
+    end
+    C_Timer.After(0.3, DS.Refresh)
+end
+
+-- origin: "bags" (default) or "loot", the window it is opened from
+function DS.Open(origin)
+    if IF.InCombat() or panel:IsShown() then return end
+    DS.items, DS.index, DS.top, DS.armed = DS.Scan(), 1, 1, nil
+    DS.focus = "panel"
+    DS.origin = origin or "bags"
+    DS.TakePad(true)
+    -- Beside the loot window or the bags when they are on screen
+    panel:ClearAllPoints()
+    local bags = _G.ContainerFrameCombinedBags
+    local loot = _G.LootFrame
+    if DS.origin == "loot" and loot and loot:IsShown() then
+        panel:SetPoint("TOPLEFT", loot, "TOPRIGHT", 12, 0)
+    elseif bags and bags:IsShown() then
+        panel:SetPoint("TOPRIGHT", bags, "TOPLEFT", -12, 0)
+    else
+        panel:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
+    end
+    panel:Show()
+    Bind()
+    DS.HideNativeFocus(true)
+    DS.Render()
+end
+
+-- While the panel has the pad, the game's own focus (its cursor, the bag or
+-- loot window's glow) is hidden, so only ours shows
+local nativeFocus = {}
+function DS.HideNativeFocus(hide)
+    if hide then
+        wipe(nativeFocus)
+        local nav = _G.SmartNavigation
+        if nav and nav.Pointer then nativeFocus[#nativeFocus + 1] = nav.Pointer end
+        local bags = { _G.ContainerFrameCombinedBags, _G.LootFrame }
+        for i = 1, NUM_CONTAINER_FRAMES or 13 do bags[#bags + 1] = _G["ContainerFrame" .. i] end
+        for _, f in ipairs(bags) do
+            if f and f.FrameGlow then nativeFocus[#nativeFocus + 1] = f.FrameGlow end
+        end
+        for _, f in ipairs(nativeFocus) do f:SetAlpha(0) end
+    else
+        for _, f in ipairs(nativeFocus) do f:SetAlpha(1) end
+        wipe(nativeFocus)
+    end
+end
+
+function DS.Close()
+    if not panel:IsShown() then return end
+    panel:Hide()
+end
+
+panel:SetScript("OnHide", function()
+    DS.TakePad(false)
+    DS.HideNativeFocus(false)
+    DS.holdStart, DS.armed = nil, nil
+    holdBar:Hide()
+    if GameTooltip:GetOwner() == panel then GameTooltip:Hide() end
+    if not IF.InCombat() then ClearOverrideBindings(panel) end
+end)
+
+local events = CreateFrame("Frame")
+events:RegisterEvent("BAG_UPDATE_DELAYED")
+events:RegisterEvent("PLAYER_REGEN_DISABLED")
+events:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+-- (the Sell prompt comes and goes with the vendor's window)
+events:RegisterEvent("MERCHANT_SHOW")
+events:RegisterEvent("MERCHANT_CLOSED")
+events:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+        -- (its bindings can't be cleared once combat starts)
+        panel:Hide()
+    else
+        DS.Refresh()
+    end
+end)
+
+---------------------------------------------------------------------------
+-- Opening: its button (or two: one held, one pressed) while a bag is open.
+-- Watched, not taken over; an R3 combo it uses is left to it by the wheels
+-- while the bags are open.
+---------------------------------------------------------------------------
+function DS.OpenKey()
+    return IF.db and IF.db.bagCleanKey or DEFAULT_KEY
+end
+
+local function Parts(spec)
+    local held, pressed = spec:match("^(.-)%+(.+)$")
+    if held then return held, pressed end
+    return nil, spec
+end
+
+-- Its name: "R2 + R3"; glyphs too with size
+function DS.OpenKeyText(size)
+    local held, pressed = Parts(DS.OpenKey())
+    local function one(key)
+        return (size and (IF.GlyphText(key, size) .. " ") or "") .. IF.ButtonName(key)
+    end
+    return held and (one(held) .. " + " .. one(pressed)) or one(pressed)
+end
+
+function DS.Enabled()
+    return IF.db and IF.db.bagClean ~= false
+end
+
+local function AnyBagOpen()
+    local combined = _G.ContainerFrameCombinedBags
+    if combined and combined:IsShown() then return true end
+    for i = 1, NUM_CONTAINER_FRAMES or 13 do
+        local f = _G["ContainerFrame" .. i]
+        if f and f:IsShown() then return true end
+    end
+    return false
+end
+
+-- The R3 combo its key is, if any ("R2")
+local COMBO_OF = { PADLSHOULDER = "L1", PADLTRIGGER = "L2", PADRSHOULDER = "R1", PADRTRIGGER = "R2" }
+local function Combo(spec)
+    local held, pressed = Parts(spec)
+    if pressed == "PADRSTICK" then return held and COMBO_OF[held] or "R3" end
+end
+
+local suppressed
+local function Suppress()
+    -- (the wheels' R3 combos: only with the Wheel module)
+    if not IF.SuppressCombo then return end
+    local want = DS.Enabled() and AnyBagOpen() and Combo(DS.OpenKey()) or nil
+    if want == suppressed then return end
+    if suppressed and not IF.SuppressCombo(suppressed, false) then return end
+    if want and not IF.SuppressCombo(want, true) then return end
+    suppressed = want
+end
+
+function DS.SetOpenKey(key)
+    IF.db.bagCleanKey = key ~= DEFAULT_KEY and key or nil
+    Suppress()
+end
+
+local watcher = CreateFrame("Frame")
+local wasDown = false
+local tipsBefore      -- the tooltip setting before the opening press
+watcher:SetScript("OnUpdate", function()
+    if not IF.db then return end
+    Suppress()
+    if not DS.Enabled() or panel:IsShown() or IF.InCombat() or not IsKeyDown then
+        wasDown = false
+        return
+    end
+    local held, pressed = Parts(DS.OpenKey())
+    local down = IsKeyDown(pressed) and (not held or IsKeyDown(held))
+    -- The moment the combination is made
+    if down and not wasDown and AnyBagOpen() then
+        -- An R3 in it has also reached the bag window, which turned its
+        -- tooltips over: back as they were
+        if pressed == "PADRSTICK" and tipsBefore ~= nil and TipsOff() ~= tipsBefore then
+            DS.SetTipsOff(tipsBefore)
+        end
+        DS.Open()
+    end
+    wasDown = down
+    if not down then tipsBefore = TipsOff() end
+end)
+
+-- The panel takes the pad's buttons itself while it has the focus: the bag
+-- window's own navigation (Circle: close the bags...) comes before override
+-- bindings, a frame taking the pad comes before both
+local catcher = K.NewFrame("Frame", nil, panel)
+catcher:SetAllPoints(panel)
+local PAD_NAME = {}
+for key, name in pairs(KEYS) do
+    if key ~= "ESCAPE" then PAD_NAME[key] = name end
+end
+if catcher.EnableGamePadButton then
+    catcher:SetScript("OnGamePadButtonDown", function(_, button)
+        if PAD_NAME[button] then DS.Press(PAD_NAME[button], true) end
+    end)
+    catcher:SetScript("OnGamePadButtonUp", function(_, button)
+        if PAD_NAME[button] then DS.Press(PAD_NAME[button], false) end
+    end)
+    -- (setting a gamepad handler switches the frame's input on by itself: off
+    -- until it is wanted, else a frame on screen takes the pad from login)
+    catcher:EnableGamePadButton(false)
+end
+
+function DS.TakePad(on)
+    if catcher.EnableGamePadButton and not IF.InCombat() then catcher:EnableGamePadButton(on and true or false) end
+end
+
+
+---------------------------------------------------------------------------
+-- From the loot window: once the bags are full, Triangle "Destroy" joins
+-- the window's own button legend (Loot, Loot All, Close) and opens the
+-- panel; there, Cross loots in the junk's place. The game's legend and
+-- its bindings are never handed anything of ours (that would carry our
+-- taint into its binding stack): the prompt
+-- is a frame of our own in the game's prompt template, set after Close
+-- inside the legend, whose box is only widened to hold it (and given back
+-- its width after). Triangle is watched, not taken.
+---------------------------------------------------------------------------
+local LOOT_KEY = "PAD4"
+-- The game's legend layout (InputLegendPromptGroup.lua)
+local LEGEND_PAD = 10         -- between the prompts and the box's edge
+local PROMPT_GAP = 15         -- between two prompts
+
+local function FreeSlots()
+    local free = 0
+    for bag = 0, NUM_BAG_SLOTS or 4 do
+        local n = C_Container and C_Container.GetContainerNumFreeSlots and C_Container.GetContainerNumFreeSlots(bag)
+        free = free + (n or 0)
+    end
+    return free
+end
+
+-- The loot window's legend box, while it has the pad
+local function LootLegendBox()
+    local footer = _G.LootFrame and _G.LootFrame.gamepadFooter
+    local legend = footer and footer.isShown and footer.inputLegend
+    local box = legend and legend.promptContainerFrame
+    return box and box:IsVisible() and box or nil
+end
+
+-- Ours, made the first time it is needed (false: the client has no prompts)
+local lootPrompt
+local function LootPrompt()
+    if lootPrompt == nil then
+        lootPrompt = false
+        local loot = _G.LootFrame
+        if not loot then return nil end
+        local holder = K.NewFrame("Frame", nil, loot)
+        local ok, prompt = pcall(function()
+            local p = K.NewFrame("Frame", nil, holder, "InputPromptOneIconWithTextTemplate")
+            p:SetPromptInputIconKey(1, _G.GAMEPAD_FACE_TOP or LOOT_KEY)
+            p:SetPromptText("Destroy")
+            p:EnablePrompt()
+            return p
+        end)
+        if ok and prompt then
+            holder.prompt = prompt
+            holder:Hide()
+            lootPrompt = holder
+        end
+    end
+    return lootPrompt or nil
+end
+
+-- Puts it after the last of the game's prompts, the box widened to hold it
+local function PlaceLootPrompt(holder, box)
+    local width = box:GetWidth()
+    -- The game laid its legend out again (or a new box): that's its width
+    if holder.box ~= box or not holder.setWidth or math.abs(width - holder.setWidth) > 0.5 then
+        holder.box, holder.baseWidth = box, width
+        holder.prompt:ClearAllPoints()
+        holder.prompt:SetPoint("TOPLEFT", box, "TOPLEFT", width - LEGEND_PAD + PROMPT_GAP, -LEGEND_PAD)
+    end
+    holder:SetFrameLevel(box:GetFrameLevel() + 2)
+    holder.setWidth = holder.baseWidth + PROMPT_GAP + holder.prompt:GetWidth()
+    box:SetWidth(holder.setWidth)
+end
+
+local function HideLootPrompt()
+    local holder = lootPrompt
+    if not holder or not holder:IsShown() then return end
+    holder:Hide()
+    -- The box's own width back, unless the game has set it since
+    local box = holder.box
+    if box and holder.setWidth and math.abs(box:GetWidth() - holder.setWidth) <= 0.5 then
+        box:SetWidth(holder.baseWidth)
+    end
+    holder.box, holder.setWidth = nil, nil
+end
+
+local lootFull, freeAtError = false, 0
+local triangleWasDown = false
+
+-- The loot slot last tried, and the one that didn't fit (the bags full)
+local lastLootSlot, failedSlot
+if LootSlot then hooksecurefunc("LootSlot", function(slot) lastLootSlot = slot end) end
+
+local function HasItem(slot)
+    if LootSlotHasItem then return LootSlotHasItem(slot) end
+    return GetLootSlotType and Enum.LootSlotType and GetLootSlotType(slot) == Enum.LootSlotType.Item
+end
+
+-- What needs bag room, in order: the slot that didn't fit, the one the
+-- loot window's cursor is on, then the rest
+local function LootTargets()
+    local list, seen, n = {}, {}, GetNumLootItems and GetNumLootItems() or 0
+    local function add(slot)
+        if slot and not seen[slot] and slot >= 1 and slot <= n and HasItem(slot) then
+            seen[slot] = true
+            list[#list + 1] = slot
+        end
+    end
+    add(failedSlot)
+    pcall(function()
+        local nav = _G.SmartNavigation
+        local button = nav and nav:GetCurrentButton()
+        local element = button and button:GetParent()
+        if element and element.GetSlotIndex then add(element:GetSlotIndex()) end
+    end)
+    for slot = 1, n do add(slot) end
+    return list
+end
+
+-- After a destroy from the loot window: its loot in the junk's place
+-- ("one": the item that didn't fit, "all": everything left), once the
+-- bags have the room (their next update)
+local lootAfter, lootAfterAt
+function DS.LootAfter(what)
+    local loot = _G.LootFrame
+    if DS.origin ~= "loot" or not (loot and loot:IsShown()) then return end
+    if lootAfter ~= "all" then lootAfter = what end
+    lootAfterAt = GetTime()
+end
+
+local function LootNow()
+    local what = lootAfter
+    lootAfter = nil
+    if not what or GetTime() - (lootAfterAt or 0) > 3 or IF.InCombat() then return end
+    local targets = LootTargets()
+    failedSlot = nil
+    for i, slot in ipairs(targets) do
+        if what == "one" and i > 1 then break end
+        LootSlot(slot)
+    end
+end
+
+local lootWatch = CreateFrame("Frame")
+lootWatch:Hide()
+lootWatch:SetScript("OnUpdate", function()
+    local box = DS.Enabled() and not panel:IsShown() and not IF.InCombat()
+        and (lootFull or FreeSlots() == 0) and LootLegendBox()
+    local holder = box and LootPrompt()
+    if holder then
+        PlaceLootPrompt(holder, box)
+        holder:Show()
+    else
+        HideLootPrompt()
+    end
+    -- The moment Triangle goes down, with the prompt up
+    local down = IsKeyDown and IsKeyDown(LOOT_KEY) or false
+    if down and not triangleWasDown and holder then DS.Open("loot") end
+    triangleWasDown = down
+end)
+
+local lootEvents = CreateFrame("Frame")
+lootEvents:RegisterEvent("LOOT_OPENED")
+lootEvents:RegisterEvent("LOOT_CLOSED")
+lootEvents:RegisterEvent("UI_ERROR_MESSAGE")
+lootEvents:RegisterEvent("BAG_UPDATE_DELAYED")
+lootEvents:SetScript("OnEvent", function(_, event, ...)
+    if event == "LOOT_OPENED" then
+        lootFull, lastLootSlot, failedSlot, lootAfter = false, nil, nil, nil
+        -- (a press still held from opening the loot isn't a new one)
+        triangleWasDown = IsKeyDown and IsKeyDown(LOOT_KEY) or false
+        lootWatch:Show()
+    elseif event == "LOOT_CLOSED" then
+        lootFull, failedSlot, lootAfter = false, nil, nil
+        lootWatch:Hide()
+        HideLootPrompt()
+        -- Nothing left to swap for
+        if DS.origin == "loot" then DS.Close() end
+    elseif event == "UI_ERROR_MESSAGE" then
+        -- What the loot window itself listens for (the bags may still have
+        -- room, of the wrong kind: a quiver, a profession bag)
+        -- (errorType, message; older clients: message only)
+        local first, message = ...
+        if (message or first) == ERR_INV_FULL and lootWatch:IsShown() then
+            lootFull, freeAtError = true, FreeSlots()
+            failedSlot = lastLootSlot
+        end
+    else
+        if lootFull and FreeSlots() > freeAtError then
+            -- Room made since: no longer full
+            lootFull = false
+        end
+        LootNow()
+    end
+end)
+
+-- Its binding, on the General tab (Binds.lua)
+local B = IF.Binds
+B.Add({
+    id = "destroy", label = "Destroy", group = "Bags", tab = "controller",
+    icon = IF.TEX .. "ic_emote_no", context = "bags", order = 21,
+    -- Watched, not taken; on an R3 combo the wheels leave it to the panel
+    -- while the bags are open (Destroy.lua)
+    tip = "Opens the panel of what is safe to throw away. Only while a bag is open. With the bags full,"
+        .. " the top face button (Triangle / Y) opens it from the loot window too: there each destroy"
+        .. " loots the item that didn't fit in the junk's place.",
+    accepts = B.NotDouble,
+    specs = function() return IF.Destroy.Enabled() and B.One(IF.Destroy.OpenKey()) or {} end,
+    set = function(spec)
+        IF.db.bagClean = spec ~= nil
+        if spec then IF.Destroy.SetOpenKey(spec) end
+    end,
+})

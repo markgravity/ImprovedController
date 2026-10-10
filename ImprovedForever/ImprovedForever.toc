@@ -1,0 +1,27 @@
+## Interface: 16001, 16002, 16003, 16100, 16101, 16200
+## Title: Improved Forever
+## Notes: Quality-of-life for playing WoW Forever with a controller: the core every Improved Forever module needs.
+## Author: markg
+## Version: 0.3.0
+## X-Website: https://github.com/markgravity/ImprovedForever
+## X-License: MIT
+## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_addon
+## Group: ImprovedForever
+## X-Curse-Project-ID: 1731245
+## SavedVariables: ImprovedForeverDB
+## SavedVariablesPerCharacter: ImprovedForeverCharDB
+
+Core.lua
+Pad.lua
+Actions.lua
+Override.lua
+Probe.lua
+Binds.lua
+Native.lua
+ConfigKit.lua
+Window.lua
+Menu.lua
+Recorder.lua
+SettingsPage.lua
+Upgrades.lua
+Options.lua

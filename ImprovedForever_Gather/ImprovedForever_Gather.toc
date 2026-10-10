@@ -1,0 +1,16 @@
+## Interface: 16001, 16002, 16003, 16100, 16101, 16200
+## Title: Improved Forever: Gather
+## Notes: Names beside the minimap's gathering dots.
+## Author: markg
+## Version: 0.3.0
+## X-Website: https://github.com/markgravity/ImprovedForever
+## X-License: MIT
+## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_addon
+## Group: ImprovedForever
+## Dependencies: ImprovedForever
+## OptionalDeps: ImprovedForever_Vibration
+
+Module.lua
+NodeScan.lua
+Gather.lua
+GatherEditor.lua

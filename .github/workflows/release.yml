@@ -2,7 +2,7 @@
 # create the GitHub release with this version's notes from CHANGELOG.md and,
 # when the CF_API_KEY secret is set, upload the file to CurseForge.
 #
-# CurseForge also needs '## X-Curse-Project-ID' in the TOC. Optional repository
+# CurseForge also needs '## X-Curse-Project-ID' in the core's TOC. Optional repository
 # variables: CF_GAME_VERSION (default 1.60.1) or CF_GAME_VERSION_ID.
 name: Release
 
@@ -43,8 +43,8 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           prerelease=""
           case "$version" in *-*) prerelease="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" dist/ImprovedController-*.zip \
-            --title "Improved Controller $version" --notes-file dist/notes.md $prerelease
+          gh release create "$GITHUB_REF_NAME" dist/ImprovedForever-*.zip \
+            --title "Improved Forever $version" --notes-file dist/notes.md $prerelease
 
       - name: CurseForge
         if: env.CF_API_KEY != ''

@@ -5,9 +5,10 @@ on every version tag (v0.2.0, v0.3.0-beta1...). Python standard library only.
     python tools/release.py notes          this version's CHANGELOG section
     python tools/release.py curseforge     upload the zip to CurseForge
 
-CurseForge needs CF_API_KEY: a GitHub secret in CI, or a line in the local
-.env (git-ignored) when run by hand. The
-project ID comes from the TOC (## X-Curse-Project-ID), the game version from
+The version is the core's TOC's (ImprovedForever/ImprovedForever.toc); every
+module's TOC must say the same. CurseForge needs CF_API_KEY: a GitHub secret
+in CI, or a line in the local .env (git-ignored) when run by hand. The
+project ID comes from the core's TOC (## X-Curse-Project-ID), the game version from
 CF_GAME_VERSION (default 1.60.1, WoW Forever) or CF_GAME_VERSION_ID.
 """
 import json
@@ -20,7 +21,8 @@ import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ADDON = "ImprovedController"
+ADDON = "ImprovedForever"
+TITLE = "Improved Forever"
 API = "https://wow.curseforge.com/api"
 
 
@@ -39,13 +41,22 @@ load_env()
 
 
 def toc_field(name):
-    toc = (ROOT / f"{ADDON}.toc").read_text(encoding="utf-8")
+    toc = (ROOT / ADDON / f"{ADDON}.toc").read_text(encoding="utf-8")
     match = re.search(rf"^## {re.escape(name)}:\s*(\S+)", toc, re.M)
     return match and match.group(1)
 
 
 def version():
     return toc_field("Version")
+
+
+def module_versions():
+    """Each addon folder's TOC version: {folder: version}"""
+    found = {}
+    for toc in sorted(ROOT.glob(f"{ADDON}*/{ADDON}*.toc")):
+        match = re.search(r"^## Version:\s*(\S+)", toc.read_text(encoding="utf-8"), re.M)
+        found[toc.parent.name] = match and match.group(1)
+    return found
 
 
 def notes(ver=None):
@@ -105,7 +116,7 @@ def curseforge():
     metadata = {
         "changelog": notes(ver),
         "changelogType": "markdown",
-        "displayName": f"Improved Controller {ver}",
+        "displayName": f"{TITLE} {ver}",
         "releaseType": release_type(ver),
         "gameVersions": [game_version_id(token)],
     }
@@ -129,6 +140,9 @@ def main():
         tag = sys.argv[2] if len(sys.argv) > 2 else ""
         if tag != f"v{version()}":
             sys.exit(f"The tag {tag} doesn't match the TOC's version {version()} (expected v{version()})")
+        off = {folder: v for folder, v in module_versions().items() if v != version()}
+        if off:
+            sys.exit("Modules on another version: " + ", ".join(f"{f} {v}" for f, v in off.items()))
         notes()
         print(f"Version {version()}: ok")
     elif command == "notes":

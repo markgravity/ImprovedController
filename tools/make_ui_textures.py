@@ -15,7 +15,7 @@ import math
 import os
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-OUT = os.path.join(os.path.dirname(__file__), "..", "textures")
+OUT = os.path.join(os.path.dirname(__file__), "..", "ImprovedForever", "textures")
 SS = 4
 FONT = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
 

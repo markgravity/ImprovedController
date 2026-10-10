@@ -1,0 +1,25 @@
+## Interface: 16001, 16002, 16003, 16100, 16101, 16200
+## Title: Improved Forever: Auction
+## Notes: A controller auction house: prices over time, buy, sell, your auctions, and tasks for what to buy or craft.
+## Author: markg
+## Version: 0.3.0
+## X-Website: https://github.com/markgravity/ImprovedForever
+## X-License: MIT
+## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_addon
+## Group: ImprovedForever
+## Dependencies: ImprovedForever
+## OptionalDeps: ImprovedForever_Vibration
+## SavedVariables: ImprovedForeverAuctionDB
+
+Module.lua
+Auction.lua
+AuctionChart.lua
+AuctionConfirm.lua
+AuctionBuy.lua
+AuctionSellTab.lua
+AuctionOwned.lua
+Tasks.lua
+AuctionTasks.lua
+TaskCraft.lua
+VendorTasks.lua
+AuctionEditor.lua

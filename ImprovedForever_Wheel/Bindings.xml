@@ -1,0 +1,13 @@
+<Bindings>
+	<Binding name="CLICK ImprovedForeverWheel_buffs:LeftButton" header="IMPROVEDFOREVER_WHEEL" category="ADDONS"/>
+	<Binding name="CLICK ImprovedForeverWheel_consumables:LeftButton" category="ADDONS"/>
+	<Binding name="CLICK ImprovedForeverWheel_emotes:LeftButton" category="ADDONS"/>
+	<Binding name="CLICK ImprovedForeverWheel_my1:LeftButton" category="ADDONS"/>
+	<Binding name="CLICK ImprovedForeverWheel_my2:LeftButton" category="ADDONS"/>
+	<Binding name="CLICK ImprovedForeverWheel_my3:LeftButton" category="ADDONS"/>
+	<Binding name="CLICK ImprovedForeverWheel_my4:LeftButton" category="ADDONS"/>
+	<Binding name="CLICK ImprovedForeverWheel_my5:LeftButton" category="ADDONS"/>
+	<Binding name="CLICK ImprovedForeverWheel_my6:LeftButton" category="ADDONS"/>
+	<Binding name="CLICK ImprovedForeverWheel_my7:LeftButton" category="ADDONS"/>
+	<Binding name="CLICK ImprovedForeverWheel_my8:LeftButton" category="ADDONS"/>
+</Bindings>

@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from radial_icon import BLUE, GOLD, GREEN, GREY, LEATHER, RED, STEEL, Icon, preview  # noqa: E402
 from line_icon import render  # noqa: E402
 
-OUT = os.path.join(os.path.dirname(__file__), "..", "textures")
+OUT = os.path.join(os.path.dirname(__file__), "..", "ImprovedForever", "textures")
 icon = Icon()
 
 

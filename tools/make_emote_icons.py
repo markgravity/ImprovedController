@@ -1,6 +1,6 @@
 """The emotes' icons in the addon logo's style (line_icon.py: cream
 outlines, green accents; shapes drawn with radial_icon's helpers):
-textures/ic_emote_<token>.tga, one per emote in RingContent.lua's IC.EMOTES.
+textures/ic_emote_<token>.tga, one per emote in Actions.lua's IF.EMOTES.
 
 Run: python3 tools/make_emote_icons.py   (needs Pillow)
 """
@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from radial_icon import BLUE, GOLD, GREEN, GREY, LEATHER, RED, STEEL, Icon, preview  # noqa: E402
 from line_icon import render  # noqa: E402
 
-OUT = os.path.join(os.path.dirname(__file__), "..", "textures")
+OUT = os.path.join(os.path.dirname(__file__), "..", "ImprovedForever", "textures")
 icon = Icon()
 ALL = []
 

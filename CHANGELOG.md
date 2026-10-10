@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0
+
+Improved Controller is now **Improved Forever**, split into modules: each feature is its own addon,
+enabled or disabled in the AddOns list. The core (ImprovedForever) is needed by all of them.
+
+- **Modules**: Controller (bag clean-up, touchpad corners, every press on one drawing), Wheel,
+  Vibration, Gather, Map, Auction (with Tasks), Destroy and Library.
+- **New configuration panel** in the auction window's look: a tab per loaded module down the right
+  (L1 / R1 or the right stick), each module's sections down the left (the left stick or L2 / R2),
+  its settings as fields in the middle (left / right change them in place, Cross picks from the
+  list on the right).
+- **Destroy** has its own tab: on / off and the press that opens it.
+- `/if` replaces `/ic` (`/if help` lists the commands).
+- Settings start fresh: they're kept in new saved variables (ImprovedForeverDB...).
+
 ## 0.2.0
 
 First public release.

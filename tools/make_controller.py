@@ -9,7 +9,7 @@ Run: python3 tools/make_controller.py   (needs Pillow)
 import os
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
-OUT = os.path.join(os.path.dirname(__file__), "..", "textures")
+OUT = os.path.join(os.path.dirname(__file__), "..", "ImprovedForever", "textures")
 W, H, SS = 512, 256, 4
 
 FILL = (22, 17, 12, 225)

@@ -47,7 +47,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 QDB = ROOT / "vendor" / "QuestieDB"
-OUT = ROOT / "LibraryData.lua"
+OUT = ROOT / "ImprovedForever_Library" / "LibraryData.lua"
 SPAWNS_PER_ZONE = 6
 CMANGOS_DUMP = "https://raw.githubusercontent.com/cmangos/classic-db/master/Full_DB/ClassicDB_1_12_1_z2815.sql.gz"
 WAGO = "https://wago.tools"
@@ -203,7 +203,7 @@ def lua_string(s):
 # its 1st and 6th-9th columns), checked against the client's display table
 # ---------------------------------------------------------------------------
 def fetch(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "ImprovedController-tools"})
+    req = urllib.request.Request(url, headers={"User-Agent": "ImprovedForever-tools"})
     with urllib.request.urlopen(req, timeout=300) as r:
         return r.read()
 
@@ -275,7 +275,7 @@ def trainers(creatures, columns, own, shared):
     recipe spell -> the skill rank trainers ask for it (the lowest), recipe spell ->
     the level they ask (the lowest)"""
     recipes = {}
-    for spell, skill in re.findall(r"^\[(\d+)\]=\{(\d+),", (ROOT / "LibraryRecipes.lua").read_text(), re.M):
+    for spell, skill in re.findall(r"^\[(\d+)\]=\{(\d+),", (ROOT / "ImprovedForever_Library" / "LibraryRecipes.lua").read_text(), re.M):
         recipes[int(spell)] = int(skill)
     teaches = {}
     for row in wago_table("SpellEffect"):
@@ -392,8 +392,8 @@ def main():
         "-- (github.com/Questie/QuestieDB, by the Questie team); creatures' display ids\n"
         "-- from cMaNGOS's Classic database (github.com/cmangos/classic-db, GPL-3.0).\n"
         "-- Do not edit by hand.\n"
-        "local _, IC = ...\n"
-        f"IC.LibraryData = {{ source = {lua_string(source)},\n"
+        "local IF = ImprovedForever\n"
+        f"IF.LibraryData = {{ source = {lua_string(source)},\n"
         + emit("items", item_rows) + emit("npcs", npc_rows) + emit("objects", obj_rows)
         + emit("quests", quest_rows) + f"areaToUi = {{ {zones} }},\n"
         + f"displays = {{ {looks_lua} }},\n"

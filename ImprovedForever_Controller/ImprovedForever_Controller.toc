@@ -1,0 +1,16 @@
+## Interface: 16001, 16002, 16003, 16100, 16101, 16200
+## Title: Improved Forever: Controller
+## Notes: Bag clean-up, touchpad corners and every press on one drawing of the controller.
+## Author: markg
+## Version: 0.3.0
+## X-Website: https://github.com/markgravity/ImprovedForever
+## X-License: MIT
+## IconTexture: Interface\AddOns\ImprovedForever\textures\ic_addon
+## Group: ImprovedForever
+## Dependencies: ImprovedForever
+## OptionalDeps: ImprovedForever_Wheel, ImprovedForever_Map
+
+Module.lua
+Bags.lua
+Touchpad.lua
+BindEditor.lua

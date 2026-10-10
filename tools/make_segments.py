@@ -82,7 +82,7 @@ def glow(d):
 
 
 def main():
-    out = os.path.join(os.path.dirname(__file__), "..", "textures")
+    out = os.path.join(os.path.dirname(__file__), "..", "ImprovedForever", "textures")
     for name, shade in (("ic_seg_fill", fill), ("ic_seg_rim", rim), ("ic_seg_glow", glow)):
         render(shade).save(os.path.join(out, name + ".tga"))
         print("wrote", name)
