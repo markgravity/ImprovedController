@@ -82,6 +82,9 @@ end
 -- The window
 ---------------------------------------------------------------------------
 local win = IF.UI.Window("ImprovedForeverAuctionBuy", W, H)
+-- (in the auction house's place: our side windows sit beside it, as
+-- beside the game's panels: ImprovedForever's Focus.lua)
+IF.Focus.AlongTop(win)
 BY.window = win
 local titleText = win.titleText
 
@@ -1904,6 +1907,10 @@ end
 
 win:SetScript("OnUpdate", function()
     local now = GetTime()
+    -- (its own focus glow while it has the pad, as the game's windows: not
+    -- while the Library or the confirmation over it has it)
+    local library = IF.Library and IF.Library.HasFocus and IF.Library.HasFocus()
+    IF.Focus.Glow(win, not (library or IF.AuctionConfirm.IsShown()))
     LibraryHold(now)
     -- (the Library with the pad: its sticks too)
     if IF.Library and IF.Library.HasFocus and IF.Library.HasFocus() then return end

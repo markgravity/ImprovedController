@@ -37,6 +37,9 @@ panel:EnableMouse(true)
 panel:SetClampedToScreen(true)
 panel:Hide()
 tinsert(UISpecialFrames, panel:GetName())
+-- Where it sits: as the game's own panels, along the top beside the open
+-- windows, again as they come and go (ImprovedForever's Focus.lua)
+IF.Focus.Dock(panel)
 local titleText = panel.TitleContainer and panel.TitleContainer.TitleText
 if not titleText then
     titleText = K.Text(panel, 13, KC.title)
@@ -102,6 +105,9 @@ local PROMPTS = {
     { glyph = "DPAD_UD", text = "5" },
     { "PAD2", "B", "Cancel" },
 }
+-- (with L2 or R2 to the profession window: one table a label, kept by
+-- identity for the legend)
+local withSwitch = {}
 
 ---------------------------------------------------------------------------
 -- What it shows: S = { recipe, count }
@@ -185,7 +191,18 @@ local function Render()
     local fr, fg, fb = 1, 0.9, 0.4
     qtyLeft:SetTextColor(fr, fg, fb)
     qtyRight:SetTextColor(fr, fg, fb)
-    legend:Set(PROMPTS)
+    -- (its own focus glow and legend while it has the pad, as the game's
+    -- windows; L2 or R2, by the side it's on, to the profession window)
+    local ours = TC.switch.focus == "ours"
+    IF.Focus.Glow(panel, ours)
+    legend:SetShown(ours)
+    local hint = TC.switch:Hint()
+    if not hint then return legend:Set(PROMPTS) end
+    local id = hint[1] .. hint[3]
+    if not withSwitch[id] then
+        withSwitch[id] = { PROMPTS[1], PROMPTS[2], PROMPTS[3], hint, PROMPTS[4] }
+    end
+    legend:Set(withSwitch[id])
 end
 
 function TC.Open(recipeID, count)
@@ -195,14 +212,7 @@ function TC.Open(recipeID, count)
         return IF.Print("that recipe needs nothing to buy.")
     end
     S = { recipe = recipe, count = math.max(1, count or 1) }
-    panel:ClearAllPoints()
-    -- (beside the profession window, on its right)
-    local over = _G.ProfessionsFrame
-    if over and over:IsShown() then
-        panel:SetPoint("TOPLEFT", over, "TOPRIGHT", 12, 0)
-    else
-        panel:SetPoint("CENTER")
-    end
+    -- (where: beside the profession window, as the game's panels: IF.Focus.Dock)
     -- (over the game's More options menu, still open beneath it)
     panel:SetFrameLevel(500)
     panel:Show()
@@ -222,9 +232,25 @@ local catcher = K.NewFrame("Frame", nil, panel)
 catcher:SetAllPoints(panel)
 local KEYS = {
     PADDLEFT = "LEFT", PADDRIGHT = "RIGHT", PADDUP = "UP", PADDDOWN = "DOWN",
-    PAD1 = "A", PAD2 = "B",
+    PAD1 = "A", PAD2 = "B", PADLTRIGGER = "LT", PADRTRIGGER = "RT",
 }
 local held
+
+local function TakePad(on)
+    if catcher.EnableGamePadButton and not IF.InCombat() then catcher:EnableGamePadButton(on and true or false) end
+end
+
+-- Which has the pad: the panel or the profession window (L2 / R2 between
+-- them, as the game's windows pass it: ImprovedForever's Focus.lua)
+TC.switch = IF.Focus.Switch(panel, {
+    onChange = function(focus)
+        local ours = focus == "ours"
+        held = nil
+        TakePad(ours)
+        IF.Focus.DimNative(panel, ours)
+        Render()
+    end,
+})
 
 local function Step(name)
     -- (the D-pad: left / right 1, up / down 5)
@@ -244,6 +270,7 @@ end
 
 local function Press(name)
     if not S then return end
+    if name == "LT" or name == "RT" then return TC.switch:Press(name) end
     if name == "A" then
         local task = TK.Add(S.recipe.recipeID, S.count)
         if task then IF.Print("task added: " .. S.recipe.name .. " × " .. S.count .. ".") end
@@ -259,7 +286,7 @@ if catcher.EnableGamePadButton then
         -- (Circle on its release: the press's release would close the profession window)
         if not name or name == "B" then return end
         Press(name)
-        if name ~= "A" then held = { name = name, next = GetTime() + REPEAT_DELAY } end
+        if name ~= "A" and name ~= "LT" and name ~= "RT" then held = { name = name, next = GetTime() + REPEAT_DELAY } end
     end)
     catcher:SetScript("OnGamePadButtonUp", function(_, button)
         local name = KEYS[button]
@@ -271,6 +298,7 @@ if catcher.EnableGamePadButton then
     catcher:EnableGamePadButton(false)
 end
 panel:SetScript("OnUpdate", function()
+    TC.switch:Update()
     if held and GetTime() >= held.next then
         held.next = GetTime() + REPEAT_EVERY
         Step(held.name)
@@ -278,10 +306,14 @@ panel:SetScript("OnUpdate", function()
 end)
 panel:SetScript("OnShow", function()
     -- (R2 that opened it is still down: its release comes here, harmless)
-    if catcher.EnableGamePadButton and not IF.InCombat() then catcher:EnableGamePadButton(true) end
+    TC.switch.focus = "ours"
+    TakePad(true)
+    IF.Focus.DimNative(panel, true)
 end)
 panel:SetScript("OnHide", function()
-    if catcher.EnableGamePadButton and not IF.InCombat() then catcher:EnableGamePadButton(false) end
+    TC.switch.focus = "ours"
+    TakePad(false)
+    IF.Focus.DimNative(panel, false)
     held, S = nil, nil
 end)
 

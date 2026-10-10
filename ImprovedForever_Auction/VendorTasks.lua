@@ -81,6 +81,9 @@ panel:EnableMouse(true)
 panel:SetClampedToScreen(true)
 panel:Hide()
 tinsert(UISpecialFrames, panel:GetName())
+-- Where it sits: as the game's own panels, along the top beside the open
+-- windows, again as they come and go (ImprovedForever's Focus.lua)
+IF.Focus.Dock(panel)
 local titleText = panel.TitleContainer and panel.TitleContainer.TitleText
 if not titleText then
     titleText = K.Text(panel, 13, KC.title)
@@ -187,8 +190,15 @@ function VT.Render()
         end
     end
     RenderHold()
+    -- (its own focus glow and legend while it has the pad, as the game's
+    -- windows; L2 or R2, by the side it's on, to the merchant's window)
+    local ours = VT.switch.focus == "ours"
+    IF.Focus.Glow(panel, ours)
+    legend:SetShown(ours)
+    local label, key = VT.switch:Behind()
     hints:SetText(Glyph("DPAD_LR") .. " Tasks / Items   " .. Glyph("DPAD_UD") .. " Move   "
         .. (#list > 0 and (Glyph("A") .. " Hold to Buy   " .. Glyph("Y") .. " Hold to Buy All   ") or "")
+        .. (label and (Glyph(key) .. " " .. label .. "   ") or "")
         .. Glyph("B") .. " Close")
     legend:SetWidth(math.max(W, hints:GetStringWidth() + 28))
     -- The picked one's tooltip, beside the panel
@@ -254,6 +264,7 @@ local function HoldDrop()
 end
 
 panel:SetScript("OnUpdate", function()
+    VT.switch:Update()
     if holding then
         RenderHold()
         BY.HoldFeel(BY.HoldProgress(holding.start))
@@ -268,11 +279,28 @@ end)
 local catcher = K.NewFrame("Frame", nil, panel)
 catcher:SetAllPoints(panel)
 local KEYS = { PADDUP = "UP", PADDDOWN = "DOWN", PADDLEFT = "LEFT", PADDRIGHT = "RIGHT",
-    PAD1 = "A", PAD2 = "B", PAD4 = "Y" }
+    PAD1 = "A", PAD2 = "B", PAD4 = "Y", PADLTRIGGER = "LT", PADRTRIGGER = "RT" }
+
+local function TakePad(on)
+    if catcher.EnableGamePadButton and not IF.InCombat() then catcher:EnableGamePadButton(on and true or false) end
+end
+
+-- Which has the pad: the panel or the merchant's window (L2 / R2 between
+-- them, as the game's windows pass it: ImprovedForever's Focus.lua)
+VT.switch = IF.Focus.Switch(panel, {
+    onChange = function(focus)
+        local ours = focus == "ours"
+        if not ours then HoldDrop() end
+        TakePad(ours)
+        IF.Focus.DimNative(panel, ours)
+        VT.Render()
+    end,
+})
 
 local function Press(name)
     -- (anything else pressed while holding: dropped)
     if holding and name ~= holding.key then HoldDrop() end
+    if name == "LT" or name == "RT" then return VT.switch:Press(name) end
     if name == "LEFT" or name == "RIGHT" then
         VT.column = name == "LEFT" and "tasks" or "items"
     elseif name == "UP" or name == "DOWN" then
@@ -308,17 +336,13 @@ end
 
 function VT.Open()
     if IF.InCombat() then return end
-    local merchant = _G.MerchantFrame
-    panel:ClearAllPoints()
-    if merchant and merchant:IsShown() then
-        panel:SetPoint("TOPLEFT", merchant, "TOPRIGHT", 12, 0)
-    else
-        panel:SetPoint("CENTER")
-    end
+    -- (where: beside the merchant's window, as the game's panels: IF.Focus.Dock)
     VT.sel, VT.column = 1, "items"
     holding = nil
+    VT.switch.focus = "ours"
     panel:Show()
-    if catcher.EnableGamePadButton then catcher:EnableGamePadButton(true) end
+    TakePad(true)
+    IF.Focus.DimNative(panel, true)
     VT.Render()
 end
 
@@ -329,7 +353,9 @@ end
 panel:SetScript("OnHide", function()
     holding = nil
     BY.HoldFeel(nil)
-    if catcher.EnableGamePadButton and not IF.InCombat() then catcher:EnableGamePadButton(false) end
+    VT.switch.focus = "ours"
+    TakePad(false)
+    IF.Focus.DimNative(panel, false)
     if GameTooltip:GetOwner() == panel then GameTooltip:Hide() end
 end)
 

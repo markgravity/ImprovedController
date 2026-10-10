@@ -35,18 +35,34 @@ end
 
 -- A row's focus: the card stroke, in the focus colour
 -- (a rounded ring, nine-sliced: its corners stay round at any width;
--- under the row's text and icon)
+-- under the row's text and icon), and the game's gamepad cursor at its left
+-- while it's lit in full (dimmed: lit but not where the pad is; Focus.lua)
 function UI.FocusStroke(parent)
     local slice = K.NineSlice(parent, "ic_select", 128, 32, 10, 10, "BORDER")
-    local ring = {}
-    function ring:SetShown(on) slice:SetShown(on and true or false) end
-    function ring:Show() slice:SetShown(true) end
-    function ring:Hide() slice:SetShown(false) end
-    function ring:SetVertexColor(r, g, b)
-        for _, part in ipairs(slice.parts) do part:SetVertexColor(r, g, b) end
+    local ring = { shown = false, alpha = 1, tint = 1 }
+    local cursor
+    local function Cursor()
+        local on = ring.shown and ring.alpha >= 0.99 and ring.tint >= 0.99
+        if on and not cursor and IF.Focus then cursor = IF.Focus.Cursor(parent) end
+        if not cursor then return end
+        if on then cursor:Point(parent) else cursor:Hide() end
+    end
+    function ring:SetShown(on)
+        self.shown = on and true or false
+        slice:SetShown(self.shown)
+        Cursor()
+    end
+    function ring:Show() self:SetShown(true) end
+    function ring:Hide() self:SetShown(false) end
+    function ring:SetVertexColor(r, g, b, a)
+        self.tint = a or 1
+        for _, part in ipairs(slice.parts) do part:SetVertexColor(r, g, b, a or 1) end
+        Cursor()
     end
     function ring:SetAlpha(a)
+        self.alpha = a
         for _, part in ipairs(slice.parts) do part:SetAlpha(a) end
+        Cursor()
     end
     -- On, in the focus colour (dimmed: lit but not where the pad is)
     function ring:Light(on, dim)

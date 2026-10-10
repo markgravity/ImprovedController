@@ -32,6 +32,8 @@ box:SetToplevel(true)
 box:EnableMouse(true)
 box:SetClampedToScreen(true)
 box:Hide()
+-- (its own focus glow, as the game's windows: it has the pad while up)
+IF.Focus.Glow(box, true)
 
 local titleText = box.TitleContainer and box.TitleContainer.TitleText
 if not titleText then

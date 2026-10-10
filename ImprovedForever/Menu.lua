@@ -134,6 +134,8 @@ local function Build()
     f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:ClearAllPoints()
     f:SetPoint("CENTER", UIParent, "CENTER", 0, 22)
+    -- (its own focus glow, as the game's windows: it has the pad while up)
+    IF.Focus.Glow(f, true)
     frame = f
 
     -- The stage: the window under its title; the body in its middle

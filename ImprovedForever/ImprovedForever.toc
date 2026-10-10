@@ -20,6 +20,7 @@ Binds.lua
 Native.lua
 ConfigKit.lua
 Window.lua
+Focus.lua
 Menu.lua
 Recorder.lua
 SettingsPage.lua

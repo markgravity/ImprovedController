@@ -441,29 +441,12 @@ local function ShowLegend(defs, under, gap)
     legend:SetPoint("TOPRIGHT", under or panel, "BOTTOMRIGHT", 0, -(gap or 4))
 end
 
--- The game's own cursor: its large arrow at 80 %, bobbing (its RIGHT
--- anchored at what it points at)
+-- The game's own cursor, as ImprovedForever's Focus.lua copies it (its
+-- RIGHT anchored at what it points at)
 local function NewArrow(parent)
     local arrow = parent:CreateTexture(nil, "OVERLAY", nil, 2)
-    arrow:SetSize(42 * 0.8, 70 * 0.8)
-    if not Atlas(arrow, "gamepad-largecursor-white") then
-        arrow:SetSize(22, 22)
-        arrow:SetTexture("Interface\\AddOns\\ImprovedForever\\textures\\ic_tri")
-        arrow:SetRotation(math.pi / 2)
-    end
-    local bob = arrow:CreateAnimationGroup()
-    bob:SetLooping("REPEAT")
-    local out = bob:CreateAnimation("Translation")
-    out:SetOffset(4, 0)
-    out:SetDuration(1)
-    out:SetSmoothing("IN_OUT")
-    out:SetOrder(1)
-    local back = bob:CreateAnimation("Translation")
-    back:SetOffset(-4, 0)
-    back:SetDuration(1)
-    back:SetSmoothing("IN_OUT")
-    back:SetOrder(2)
-    bob:Play()
+    IF.Focus.CursorTexture(arrow)
+    arrow.cursorAnim:Play()
     return arrow
 end
 

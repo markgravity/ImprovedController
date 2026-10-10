@@ -1,0 +1,87 @@
+# ImprovedForever
+
+## Window focus: look and behave like the game's own windows
+
+Every window of ours that takes the gamepad (Library, Destroy, Add Task, vendor
+Tasks, the auction window, its confirmation, the config window) shows and passes
+focus the way Forever's native windows do. The shared code is
+`ImprovedForever/Focus.lua` (`IF.Focus`). Use it, don't hand-roll a copy.
+
+### Focus ring
+- Use the window's own `FrameGlow`: `IF.Focus.Glow(win, focused)`.
+  `DefaultPanelFlatTemplate` and `PortraitFrameTemplate` already have one, laid
+  out for the template and coloured by the controller options.
+- Never build the glow from the atlas yourself
+  (`gamepad-uiframemetal-*-focus`), and never tint it from
+  `GamepadFocusStateColor`. The game draws its glow untinted until those
+  options change, so a copy never matches.
+- Show the glow only while the window has the pad. Hide our button legend while
+  it doesn't, as native windows do.
+- While ours has the pad, dim the game's focus (cursor, focused window's glow
+  and footer) with `IF.Focus.DimNative(win, true)`, and restore it with
+  `false`. This only changes alpha. Nothing of the game's state is written.
+
+### L2 / R2
+- Build the window's switch with `IF.Focus.Switch(win, { onChange, other?, label? })`:
+  - `sw:Hint()` gives the legend entry.
+  - Call `sw:Press(key)` for LT/RT on our catcher.
+  - Call `sw:Update()` from `OnUpdate`.
+  - Use `sw:Set("ours" | "game")` to switch.
+- The direction follows the screen side. The pad goes to the game window that
+  still has the game's focus (the one ours was opened from): L2 if that window
+  is on our left, R2 if on our right. The other trigger, pressed on that window
+  (or the next one along toward ours), brings the pad back.
+- The legend label is the target's `GetJumpHintLabel()`, else the game's
+  PREVIOUS / NEXT.
+- Never call the frame manager's `Focus*` / `FrameShown` / `ShowUIPanel` from
+  addon code. Only read `GamepadMode.FrameControlsManager`
+  (`shownFrames`, `focusedFrame`, `isUIFocused`). Calling them taints window
+  closing (ADDON_ACTION_BLOCKED on SetPreferredGamepadInteractTarget).
+- Take the pad with a catcher frame (`EnableGamePadButton`). Call
+  `EnableGamePadButton(false)` right after `SetScript`, because setting the
+  handler turns input on.
+
+### Focus indicator (the cursor)
+- The element the pad is on gets the game's gamepad cursor:
+  `SmartNavigation.Pointer`, its large arrow in `GAMEPAD_SMARTNAV_CURSOR_COLOR`,
+  sitting left of the element.
+- Use `IF.Focus.Cursor(parent)`, which gives `cur:Point(target)` and `cur:Hide()`.
+  For a bare texture, use `IF.Focus.CursorTexture(tex)`.
+- These copy the live native cursor: its atlas, its on-screen size, its
+  animation (IntroAnim), and its offset from the button (`cursorOffsetX/Y`).
+- Never hand-build the arrow with your own atlas, scale or bob animation.
+- A cursor shows only in the window that has the pad (the one whose
+  `FrameGlow` is on). Show it on one element only: the lit one.
+- List rows use `IF.UI.FocusStroke`. It adds the cursor by itself while the row
+  is lit at full strength. A dimmed row (alpha or tint under 1, meaning "picked
+  but not where the pad is") gets no cursor. Pass the dim through
+  `SetVertexColor(r, g, b, a)`, `SetAlpha` or `Light(on, dim)`.
+
+### Placement
+- Every side window of ours sits where the game would put a panel. Use
+  `IF.Focus.Dock(win)` and never hand-anchor it to another window.
+- **Vertical:** `TOP_OFFSET`, lifted when there's no room at the bottom.
+- **Horizontal:** beside whatever is already open along the top, the game's
+  spacing between:
+  - the game's panel slots (`GetUIPanel("left"/"center"/"right"/"doublewide")`)
+  - its gamepad window row (`shownFrames`, where Character lives)
+  - windows of ours placed elsewhere but counted (`IF.Focus.AlongTop(win)`,
+    like the auction window)
+  - our docked windows opened earlier
+- **Nothing open:** the first panel slot (`LEFT_OFFSET` + 35, the Professions
+  window's place).
+- **Full width:** count each window's full width, including its UI-panel
+  extra width (Character's side tabs) and parts hanging off its right side.
+- **Not along the top:** the bags and the loot window don't count.
+- **No room past them:** as far right as the window fits.
+- **Re-placed as windows come and go:** every docked window is checked a few
+  times a second while shown.
+- Don't hand placement to the game's panel manager: an addon panel there
+  taints it.
+- Center only modal windows (the config window, confirmations), the way the
+  game centres its dialogs.
+
+## Checks
+- `luajit -bl <file>` for syntax.
+- `luajit -bl <file> | grep -oE 'GGET.*"[A-Za-z_]+"'` for stray globals.
+- `luajit tools/loadcheck.lua each` to load every module alone with the core.

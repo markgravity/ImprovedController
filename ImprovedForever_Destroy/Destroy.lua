@@ -237,10 +237,12 @@ panel:EnableMouse(true)
 panel:SetClampedToScreen(true)
 panel:Hide()
 DS.panel = panel
+-- Where it sits: as the game's own panels, along the top beside the open
+-- windows, again as they come and go (ImprovedForever's Focus.lua)
+IF.Focus.Dock(panel)
 
--- The game's focus look (FocusEffects.lua): the metal frame glow round a
--- focused panel, in the focus colour and opacity set in the game's
--- controller options (GamepadFocusStateColor: gold, black, blue)
+-- The focus colour of the game's controller options (GamepadFocusStateColor:
+-- gold, black, blue), for the picked row
 local function FocusColor()
     local get = C_CVar and C_CVar.GetCVar or GetCVar
     local value = tonumber(get and get("GamepadFocusStateColor") or 1) or 1
@@ -250,14 +252,6 @@ local function FocusColor()
     return 1, 0.9, 0.4, alpha
 end
 
-local glowHolder = K.NewFrame("Frame", nil, panel)
-local glowRoot = panel.NineSlice or panel
-glowHolder:SetPoint("TOPLEFT", glowRoot, "TOPLEFT", -10, 14)
-glowHolder:SetPoint("BOTTOMRIGHT", glowRoot, "BOTTOMRIGHT", 14, -14)
-glowHolder:SetFrameLevel(panel:GetFrameLevel() + 20)
-local glow = glowHolder:CreateTexture(nil, "OVERLAY")
-glow:SetAllPoints()
-glow:SetShown(Atlas(glow, "gamepad-uiframemetal-focus") or false)
 
 local titleText = panel.TitleContainer and panel.TitleContainer.TitleText
 if not titleText then
@@ -327,33 +321,8 @@ for i = 1, ROWS do
     r.name:SetWordWrap(false)
     r.value = K.ChatText(r, 11, KC.help)
     r.value:SetPoint("BOTTOMLEFT", r.icon, "BOTTOMRIGHT", 8, 3)
-    -- The game's own focus cursor (SmartNavigation's pointer): its large
-    -- arrow at 80 %, in the cursor colour, bobbing at the row's left edge
-    local pointer = K.NewFrame("Frame", nil, r)
-    pointer:SetSize(10, 10)
-    pointer:SetPoint("RIGHT", r, "LEFT", 4, 0)
-    pointer:SetFrameLevel(r:GetFrameLevel() + 5)
-    r.arrow = pointer:CreateTexture(nil, "ARTWORK", nil, 2)
-    r.arrow:SetSize(42 * 0.8, 70 * 0.8)
-    r.arrow:SetPoint("RIGHT", pointer, "RIGHT", 0, 0)
-    if not Atlas(r.arrow, "gamepad-largecursor-white") then
-        r.arrow:SetSize(22, 22)
-        r.arrow:SetTexture("Interface\\AddOns\\ImprovedForever\\textures\\ic_tri")
-        r.arrow:SetRotation(math.pi / 2)
-    end
-    local bob = r.arrow:CreateAnimationGroup()
-    bob:SetLooping("REPEAT")
-    local out = bob:CreateAnimation("Translation")
-    out:SetOffset(4, 0)
-    out:SetDuration(1)
-    out:SetSmoothing("IN_OUT")
-    out:SetOrder(1)
-    local back = bob:CreateAnimation("Translation")
-    back:SetOffset(-4, 0)
-    back:SetDuration(1)
-    back:SetSmoothing("IN_OUT")
-    back:SetOrder(2)
-    bob:Play()
+    -- The game's own focus cursor at its left (ImprovedForever's Focus.lua)
+    r.cursor = IF.Focus.Cursor(r)
     r:SetScript("OnClick", function()
         DS.index = DS.top + i - 1
         DS.armed = nil
@@ -429,8 +398,10 @@ function DS.Render()
     local swap = DS.origin == "loot"
     titleText:SetText("Destroy")
     local focused = DS.focus ~= "bags"
-    glow:SetVertexColor(FocusColor())
-    glow:SetShown(focused and IF.HasAtlas("gamepad-uiframemetal-focus"))
+    -- (the panel's own focus glow, as the game's windows; its legend only
+    -- while it has the pad)
+    IF.Focus.Glow(panel, focused)
+    legend:SetShown(focused)
     summary:SetText(n == 0 and "Nothing to throw away" or
         (n .. (n == 1 and " item" or " items") .. " · worth " .. Money(total)))
     more.up:SetShown(DS.top > 1)
@@ -453,17 +424,11 @@ function DS.Render()
             r.tagText:SetText(e.reason)
             r.focus:SetShown(selected)
             r.focusGlow:SetShown(selected)
-            r.arrow:SetShown(selected)
+            if selected then r.cursor:Point(r) else r.cursor:Hide() end
             if selected then
                 local fr, fg, fb = FocusColor()
                 r.focus:SetVertexColor(fr, fg, fb)
                 r.focusGlow:SetVertexColor(fr, fg, fb, 0.35)
-                local cursor = GAMEPAD_SMARTNAV_CURSOR_COLOR
-                if cursor and cursor.GetRGBA then
-                    r.arrow:SetVertexColor(cursor:GetRGBA())
-                else
-                    r.arrow:SetVertexColor(fr, fg, fb)
-                end
             end
             r.stroke:SetAlpha(selected and 0 or 1)
         end
@@ -495,14 +460,10 @@ function DS.Render()
         press = press .. "   " .. Glyph("Y") .. " " .. Armed("Y", "Destroy", "destroy")
     end
     local all = swap and " Swap All (hold)   " or " Destroy All (hold)   "
-    if not focused then
-        hints:SetText(Glyph("LT") .. " / " .. Glyph("RT") .. " Destroy")
-    else
-        -- (L2 / R2 hand the pad to the window it was opened from)
-        local back = DS.origin == "loot" and " Loot   " or " Bags   "
-        hints:SetText((n > 0 and (press .. "   " .. Glyph("X") .. all) or "")
-            .. Glyph("LT") .. " / " .. Glyph("RT") .. back .. Glyph("B") .. " Close")
-    end
+    -- (L2 or R2, by the side it's on: the pad to the window it was opened from)
+    local label, key = DS.switch:Behind()
+    local back = label and (Glyph(key) .. " " .. label .. "   ") or ""
+    hints:SetText((n > 0 and (press .. "   " .. Glyph("X") .. all) or "") .. back .. Glyph("B") .. " Close")
     legend:SetWidth(math.max(PANEL_W, hints:GetStringWidth() + 28))
 end
 
@@ -525,7 +486,7 @@ end
 local KEYS = {
     PADDUP = "UP", PADDDOWN = "DOWN", PADDLEFT = "LEFT", PADDRIGHT = "RIGHT",
     PAD1 = "A", PAD2 = "B", PAD3 = "X", PAD4 = "Y", ESCAPE = "B",
-    PADLTRIGGER = "SWITCH", PADRTRIGGER = "SWITCH", PADRSTICK = "TIP",
+    PADLTRIGGER = "LT", PADRTRIGGER = "RT", PADRSTICK = "TIP",
 }
 -- Kept while the bags have the focus: the way back
 local SWITCH_KEYS = { PADLTRIGGER = true, PADRTRIGGER = true }
@@ -541,9 +502,13 @@ local function Move(step)
 end
 
 function DS.Press(name, down)
-    -- L2 / R2 (L2 is the game's Shift: a quick tap): the focus over to the bag window and back
-    if name == "SWITCH" then
-        if down then DS.SetFocus(DS.focus == "bags" and "panel" or "bags") end
+    -- L2 / R2 (L2 is the game's Shift: a quick tap): the pad to the window
+    -- it was opened from, by the side it's on (bound only on a client
+    -- without the catcher: there, either comes back)
+    if name == "LT" or name == "RT" then
+        if not down then return end
+        if DS.focus == "bags" then return DS.SetFocus("panel") end
+        DS.switch:Press(name)
         return
     end
     if DS.focus == "bags" then return end
@@ -628,33 +593,29 @@ local function Bind()
     end
 end
 
--- L2 / R2 while the bags have the focus (the catcher is off then): watched,
--- a fresh press bringing the focus back (one held from the switch waits
--- for its release)
-local switchHeld = false
-local function SwitchDown()
-    return IsKeyDown and (IsKeyDown("PADLTRIGGER") or IsKeyDown("PADRTRIGGER")) or false
-end
+-- Which has the pad: the panel (ours, the game's focus dimmed) or the
+-- window it was opened from (the game's own navigation; L2 / R2 watched,
+-- the trigger towards the panel bringing it back): as the game's windows
+-- pass it (ImprovedForever's Focus.lua)
+DS.switch = IF.Focus.Switch(panel, {
+    onChange = function(focus)
+        DS.focus = focus == "ours" and "panel" or "bags"
+        DS.armed, DS.holdStart = nil, nil
+        holdBar:Hide()
+        Bind()
+        DS.TakePad(focus == "ours")
+        DS.HideNativeFocus(focus == "ours")
+        DS.Render()
+    end,
+})
 
--- Which has the pad: the panel (ours, the game's focus hidden) or the bag
--- window (the game's own navigation, ours dimmed; L2 / R2 come back)
+-- focus: "panel" or "bags"
 function DS.SetFocus(focus)
-    DS.focus = focus
-    switchHeld = SwitchDown()
-    DS.armed, DS.holdStart = nil, nil
-    holdBar:Hide()
-    Bind()
-    DS.TakePad(focus == "panel")
-    DS.HideNativeFocus(focus == "panel")
-    DS.Render()
+    DS.switch:Set(focus == "panel" and "ours" or "game")
 end
 
 panel:SetScript("OnUpdate", function()
-    if DS.focus == "bags" and panel.EnableGamePadButton then
-        local down = SwitchDown()
-        if down and not switchHeld and not IF.InCombat() then DS.SetFocus("panel") end
-        switchHeld = down
-    end
+    if panel.EnableGamePadButton then DS.switch:Update() end
     if DS.holdStart then
         local p = math.min(1, (GetTime() - DS.holdStart) / HOLD_ALL)
         holdBar:SetWidth(math.max(1, (legend:GetWidth() - 10) * p))
@@ -726,19 +687,11 @@ function DS.Open(origin)
     if IF.InCombat() or panel:IsShown() then return end
     DS.items, DS.index, DS.top, DS.armed = DS.Scan(), 1, 1, nil
     DS.focus = "panel"
+    DS.switch.focus = "ours"
     DS.origin = origin or "bags"
     DS.TakePad(true)
-    -- Beside the loot window or the bags when they are on screen
-    panel:ClearAllPoints()
-    local bags = _G.ContainerFrameCombinedBags
-    local loot = _G.LootFrame
-    if DS.origin == "loot" and loot and loot:IsShown() then
-        panel:SetPoint("TOPLEFT", loot, "TOPRIGHT", 12, 0)
-    elseif bags and bags:IsShown() then
-        panel:SetPoint("TOPRIGHT", bags, "TOPLEFT", -12, 0)
-    else
-        panel:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
-    end
+    -- (where: as the game's panels, along the top beside the open windows:
+    -- IF.Focus.Dock below)
     panel:Show()
     Bind()
     DS.HideNativeFocus(true)
@@ -747,22 +700,8 @@ end
 
 -- While the panel has the pad, the game's own focus (its cursor, the bag or
 -- loot window's glow) is hidden, so only ours shows
-local nativeFocus = {}
 function DS.HideNativeFocus(hide)
-    if hide then
-        wipe(nativeFocus)
-        local nav = _G.SmartNavigation
-        if nav and nav.Pointer then nativeFocus[#nativeFocus + 1] = nav.Pointer end
-        local bags = { _G.ContainerFrameCombinedBags, _G.LootFrame }
-        for i = 1, NUM_CONTAINER_FRAMES or 13 do bags[#bags + 1] = _G["ContainerFrame" .. i] end
-        for _, f in ipairs(bags) do
-            if f and f.FrameGlow then nativeFocus[#nativeFocus + 1] = f.FrameGlow end
-        end
-        for _, f in ipairs(nativeFocus) do f:SetAlpha(0) end
-    else
-        for _, f in ipairs(nativeFocus) do f:SetAlpha(1) end
-        wipe(nativeFocus)
-    end
+    IF.Focus.DimNative(panel, hide)
 end
 
 function DS.Close()
