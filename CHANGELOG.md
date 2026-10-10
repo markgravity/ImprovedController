@@ -16,6 +16,9 @@ enabled or disabled in the AddOns list. The core (ImprovedForever) is needed by 
   in its own tab; `/iqt` is now `/if quests`. Its options are no longer added to the quest's right-click menu.
 - `/if` replaces `/ic` (`/if help` lists the commands).
 - Settings start fresh: they're kept in new saved variables (ImprovedForeverDB...).
+- **Touchpad**: its click is left to the game while one of the game's windows is open.
+- **Recent action slot** sits beside the crossbar's rightmost bar and follows it as the bars move.
+- **Quest Tracker**: reordering watched quests from the gamepad no longer loops.
 
 ## 0.2.0
 

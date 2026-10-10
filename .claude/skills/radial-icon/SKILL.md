@@ -1,6 +1,6 @@
 ---
 name: radial-icon
-description: Draw new icons for the ImprovedController WoW addon in the style of WoW Forever's radial menu icons (painted gold shapes, dark outline, glossy top, soft shadow, transparent background) and wire them in as .tga textures. Use when the user asks for a new icon, an icon "like the native wheel/radial menu icons", or icons for a new feature, event, setting or pattern.
+description: Draw new icons for the Improved Forever WoW addon in the style of WoW Forever's radial menu icons (painted gold shapes, dark outline, glossy top, soft shadow, transparent background) and wire them in as .tga textures. Use when the user asks for a new icon, an icon "like the native wheel/radial menu icons", or icons for a new feature, event, setting or pattern.
 ---
 
 # Radial-menu style icons
@@ -51,7 +51,7 @@ Palettes: `GOLD` (the default, like the native icons), `RED`, `GREY`, `STEEL`,
    and Read the PNG. Fix shapes that read badly (lopsided outlines, thin strokes,
    things touching the edge), regenerate, look again.
 5. **Wire it in**: the texture path in Lua is
-   `"Interface\\AddOns\\ImprovedController\\textures\\ic_<feature>_<name>"`
+   `"Interface\\AddOns\\ImprovedForever\\textures\\ic_<feature>_<name>"`
    (no extension). Pictures go through `K.SetIcon(texture, path)` (ConfigKit) or
    `entry.icon` for pickers / rings.
 6. **Check the Lua parses** (luaparse in the scratchpad) and tell the user to
