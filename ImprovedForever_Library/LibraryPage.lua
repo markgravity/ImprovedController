@@ -158,6 +158,20 @@ page:SetSize(PAGE_W, PAGE_H)
 -- (whose tooltips are the Library's: Library.lua's focus leaves them out)
 LB.panel = page
 
+-- The game's own focus glow: PortraitFrameTemplate has it (FrameGlow, a
+-- FrameGlowTemplate laid out for that template, its colour and opacity from
+-- the controller options); shown while the Library has the pad
+local function Glow(on)
+    if window.FrameGlow then window.FrameGlow:SetShown(on and true or false) end
+end
+
+-- Which has the pad: "library" (ours) or "window" (the one it was opened
+-- from: the bags, the loot window, the auction house; L2 / R2 between them)
+LB.focus = "library"
+function LB.HasFocus()
+    return window:IsShown() and LB.focus == "library"
+end
+
 -- A spellbook icon: the spell's frame round a masked icon (square: an item;
 -- round: a creature, a place, a quest), its hover glow for the focus. f =
 -- IconFrame(parent, size); f:Set(icon, round); f:SetFocus(on)
@@ -1407,7 +1421,7 @@ end
 local function Hints(p, view, line)
     local defs = { { glyph = "DPAD", text = "Move" } }
     if view and #view.pages > 1 then
-        defs[#defs + 1] = { { "PADLTRIGGER", "PADRTRIGGER" }, { "LT", "RT" }, "Turn Page" }
+        defs[#defs + 1] = { { "PADLSHOULDER", "PADRSHOULDER" }, { "LB", "RB" }, "Turn Page" }
     end
     local verb = line and (line.go and "Read"
         or (line.item or line.kind == "npc" or line.kind == "object" or line.kind == "quest") and "Open"
@@ -1417,6 +1431,8 @@ local function Hints(p, view, line)
         defs[#defs + 1] = { "PAD3", "X", "Show on Map" }
     end
     if line and not line.go then defs[#defs + 1] = { "PADRSTICK", "RS", TipsOn() and "Hide Tooltip" or "Tooltip" } end
+    local behind, key = LB.Behind()
+    if behind then defs[#defs + 1] = { key == "LT" and "PADLTRIGGER" or "PADRTRIGGER", key, behind } end
     defs[#defs + 1] = { "PAD2", "B", p.tab ~= "notes" and "Notes" or #LB.stack > 1 and "Back" or "Close" }
     return defs
 end
@@ -1425,7 +1441,7 @@ end
 local hintSets = {}
 local function SetHints(defs)
     local key = {}
-    for _, d in ipairs(defs) do key[#key + 1] = d.text or d[3] end
+    for _, d in ipairs(defs) do key[#key + 1] = tostring(d[1]) .. "=" .. tostring(d.text or d[3]) end
     key = table.concat(key, "|")
     hintSets[key] = hintSets[key] or defs
     legend:Set(hintSets[key])
@@ -1475,8 +1491,10 @@ function LB.Render()
     local nc, nh = 0, 0
     paragraphs:Reset()
     local picked = view.cells[view.sel]
+    local focused = LB.focus == "library"
+    Glow(focused)
     for _, item in ipairs(view.pages[view.page].items) do
-        local on = item == picked
+        local on = focused and item == picked
         if item.doc then
             local fs = paragraphs:Next()
             fs:SetText(item.text)
@@ -1511,9 +1529,14 @@ function LB.Render()
     emptyText:SetText("Nothing is written here yet.")
     pageNo:SetShown(#view.pages > 1)
     pageNo:SetText("Page " .. view.page .. "/" .. #view.pages)
-    local line = picked and picked.page == view.page and picked.line or nil
+    local line = focused and picked and picked.page == view.page and picked.line or nil
     RenderTip(line)
-    SetHints(Hints(p, view, line))
+    if focused then
+        SetHints(Hints(p, view, line))
+    else
+        -- (another window with the pad: no footer, as the game's own)
+        legend:Hide()
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -1522,7 +1545,8 @@ end
 ---------------------------------------------------------------------------
 local KEYS = {
     PADDUP = "UP", PADDDOWN = "DOWN", PADDLEFT = "LEFT", PADDRIGHT = "RIGHT",
-    PAD1 = "A", PAD2 = "B", PAD3 = "X", PADLTRIGGER = "LT", PADRTRIGGER = "RT", PADRSTICK = "RS",
+    PAD1 = "A", PAD2 = "B", PAD3 = "X", PADLSHOULDER = "LB", PADRSHOULDER = "RB",
+    PADLTRIGGER = "LT", PADRTRIGGER = "RT", PADRSTICK = "RS",
 }
 
 function LB.Press(name, down)
@@ -1539,8 +1563,11 @@ function LB.Press(name, down)
     end
     if not down then return end
     if name == "UP" or name == "DOWN" or name == "LEFT" or name == "RIGHT" then Move(name)
-    elseif name == "LT" then Turn(-1)
-    elseif name == "RT" then Turn(1)
+    elseif name == "LB" then Turn(-1)
+    elseif name == "RB" then Turn(1)
+    elseif name == "LT" or name == "RT" then
+        local _, key = LB.Behind()
+        if key == name then LB.SetFocus("window") end
     elseif name == "A" then LB.Activate()
     elseif name == "X" then MapPicked()
     elseif name == "RS" then
@@ -1576,34 +1603,260 @@ function LB.IsShown()
     return window:IsShown()
 end
 
--- Where the spellbook opens (a UI panel, "centerOrLeft", yoffset 75: with
--- nothing else open, the screen's middle at the top, kept 140 above the
--- bottom; UIParentPanelManager.lua), worked out the same way rather than
--- handed to the game's panel manager (an addon's panel there taints it)
-local SPELLBOOK_Y, BOTTOM_CLAMP, MIN_Y = 75, 140, -10
-local function Place()
+-- Where it sits: as the game's own windows (UIParentPanelManager.lua), in
+-- the next free slot along the top. Nothing open: the Professions window's
+-- place ("left", xoffset 35); the game's windows open (Professions,
+-- Character...): beside the last of them, the game's spacing between. Worked
+-- out the same way rather than handed to the game's panel manager (an
+-- addon's panel there taints it), and again as its windows come and go
+local PANEL_X, BOTTOM_CLAMP, MIN_Y = 35, 140, -10
+local SLOTS = { "left", "center", "right", "doublewide" }
+local function Layout(name, default)
     local layout = _G.UIPanelLayoutFrame
-    local top = tonumber(layout and layout:GetAttribute("TOP_OFFSET")) or -116
-    local y = SPELLBOOK_Y + top
-    local bottom = (UIParent:GetTop() or 0) + y - window:GetHeight() * window:GetScale()
+    return tonumber(layout and layout:GetAttribute(name)) or default
+end
+
+-- The right edge of the game's open windows along the top (UIParent's
+-- units), or nil: those in its panel slots and in its gamepad row (where
+-- Forever keeps windows such as Character), not the bags or the loot window
+local MAX_HANG = 400       -- the most a window's side parts reach past it
+local NOT_ALONG_TOP = { ContainerFrameCombinedBags = true, LootFrame = true }
+local function PanelsRight()
+    local right
+    local ui = UIParent:GetEffectiveScale()
+    local function edge(f)
+        if not (f and f ~= window and f.IsShown and f:IsShown() and f.GetRight and f:GetRight()) then return end
+        local name = f.GetName and f:GetName() or ""
+        if NOT_ALONG_TOP[name] or name:find("^ContainerFrame%d") then return end
+        local k = f:GetEffectiveScale() / ui
+        local left, r = f:GetLeft() or 0, f:GetRight()
+        -- (its width as the game lays it out: with its extra width, such as
+        -- Character's side tabs)
+        local ok, w = pcall(function() return GetUIPanelWidth and GetUIPanelWidth(f) end)
+        if ok and type(w) == "number" and w > 0 then r = math.max(r, left + w / f:GetScale()) end
+        local extra = f.GetAttribute and tonumber(f:GetAttribute("UIPanelLayout-extraWidth"))
+        if extra and extra > 0 then r = math.max(r, f:GetRight() + extra / f:GetScale()) end
+        -- (and what hangs off its right side: a stats pane, side tabs)
+        for _, c in ipairs({ f:GetChildren() }) do
+            local cl, cr = c:IsShown() and c:GetLeft(), c:IsShown() and c:GetRight()
+            if cl and cr and cl >= left and cl <= r + 8 and cr > r and cr - r < MAX_HANG
+                and (c:GetHeight() or 0) > 40 and c:GetEffectiveScale() == f:GetEffectiveScale() then
+                r = cr
+            end
+        end
+        right = math.max(right or 0, r * k)
+    end
+    for _, slot in ipairs(SLOTS) do edge(GetUIPanel and GetUIPanel(slot)) end
+    local m = _G.GamepadMode and GamepadMode.FrameControlsManager
+    for _, f in ipairs(m and m.shownFrames or {}) do edge(f) end
+    return right
+end
+
+local placedAt
+local function Place()
+    local scale = window:GetScale()
+    local right = PanelsRight()
+    local x = right and (right + Layout("PANEl_SPACING_X", 32)) or (Layout("LEFT_OFFSET", 16) + PANEL_X)
+    -- (no room past them: as far right as it fits)
+    x = math.min(x, (UIParent:GetWidth() or x) - window:GetWidth() * scale)
+    local y = Layout("TOP_OFFSET", -116)
+    local bottom = (UIParent:GetTop() or 0) + y - window:GetHeight() * scale
     if bottom < BOTTOM_CLAMP then y = y + (BOTTOM_CLAMP - bottom) end
     y = math.min(y, MIN_Y)
+    if placedAt and math.abs(placedAt[1] - x) < 0.5 and math.abs(placedAt[2] - y) < 0.5 then return end
+    placedAt = { x, y }
     window:ClearAllPoints()
-    window:SetPoint("TOP", UIParent, "TOP", 0, y / window:GetScale())
+    window:SetPoint("TOPLEFT", UIParent, "TOPLEFT", x / scale, y / scale)
 end
+
+-- While the Library has the pad the game's own focus is dimmed, its look
+-- only (nothing of its state written: an addon calling its frame manager
+-- taints the gamepad UI, Questie #7968): the cursor, and on the window the
+-- game still counts as focused (and the bags', the loot window's) its glow
+-- (FrameGlow on its focus root) and its footer (an input legend of its own)
+local dimmed = {}
+local function Dim(f)
+    if f and f.SetAlpha and f:GetAlpha() > 0 then
+        dimmed[#dimmed + 1] = f
+        f:SetAlpha(0)
+    end
+end
+
+local function DimWindow(f)
+    if not f then return end
+    local ok, root = pcall(function() return f.GetFocusFrameRoot and f:GetFocusFrameRoot() end)
+    root = ok and root or f
+    Dim(root.FrameGlow)
+    if root ~= f then Dim(f.FrameGlow) end
+    for _, w in ipairs({ f, root }) do
+        for _, child in ipairs({ w:GetChildren() }) do
+            local name = child.GetName and child:GetName()
+            if name and name:find("inputLegend$") and child:IsShown() then Dim(child) end
+        end
+    end
+end
+
+local function NativeFocus(hide)
+    -- (what was dimmed before back first: another window may be focused now)
+    for _, f in ipairs(dimmed) do f:SetAlpha(1) end
+    wipe(dimmed)
+    if not hide then return end
+    local nav = _G.SmartNavigation
+    Dim(nav and nav.Pointer)
+    local m = _G.GamepadMode and GamepadMode.FrameControlsManager
+    DimWindow(m and m.focusedFrame)
+    DimWindow(_G.ContainerFrameCombinedBags)
+    DimWindow(_G.LootFrame)
+    for i = 1, NUM_CONTAINER_FRAMES or 13 do DimWindow(_G["ContainerFrame" .. i]) end
+    if LB.origin == "ui" then DimWindow(LB.originFrame) end
+end
+
+-- The game's windows' row, as its frame manager keeps it (GamepadMode's
+-- FrameControlsManager: shownFrames, left to right; L2 the previous, R2
+-- the next; read only). The Library takes its place in it by where it sits
+-- on screen: the pad goes to the game's window it was opened from (the one
+-- the game still has focused: it can't be handed another without taint) by
+-- L2 when that's to its left, R2 when to its right; and comes back by the
+-- other trigger, pressed on that window or the next one along towards it
+-- (the game has none that way for it: watched, not taken).
+local function Manager()
+    return _G.GamepadMode and GamepadMode.FrameControlsManager or nil
+end
+
+local function Shown(f)
+    return f and f.IsShown and f:IsShown() and f.GetCenter and f:GetCenter() and f or nil
+end
+
+local function InRow(f)
+    local m = Manager()
+    for _, g in ipairs(m and m.shownFrames or {}) do
+        if g == f then return true end
+    end
+    return false
+end
+
+-- (the auction window: ours, not in the game's row; it leaves L2 / R2 to
+-- the Library while it's up)
+local function AuctionBehind()
+    local w = LB.origin == "auction" and IF.AuctionBuy and IF.AuctionBuy.window
+    return w and w:IsShown() and w or nil
+end
+
+-- The window the pad goes to from the Library: the auction window, else the
+-- game's focused one, else the last in its row
+local function Other()
+    local auction = AuctionBehind()
+    if auction then return auction end
+    local m = Manager()
+    local focused = m and Shown(m.focusedFrame)
+    if focused and InRow(focused) then return focused end
+    local frames = m and m.shownFrames
+    return frames and Shown(frames[#frames]) or nil
+end
+
+-- (screen x of a window's centre, in UIParent's units)
+local function CenterX(f)
+    local x = f:GetCenter()
+    return x * f:GetEffectiveScale() / UIParent:GetEffectiveScale()
+end
+
+local function LeftOfLibrary(f)
+    return CenterX(f) < CenterX(window)
+end
+
+-- The trigger from the Library to the other window ("LT" / "RT") and its
+-- label (the window's own jump hint label, else the game's Previous / Next);
+-- nil: none to go to
+function LB.Behind()
+    local f = Other()
+    if not f then return nil end
+    local key = LeftOfLibrary(f) and "LT" or "RT"
+    if f == AuctionBehind() then return "Auction House", key end
+    local ok, label = pcall(function() return f.GetJumpHintLabel and f:GetJumpHintLabel() end)
+    if ok and label then return label, key end
+    if key == "LT" then return _G.PREVIOUS or "Previous", key end
+    return _G.NEXT or "Next", key
+end
+
+-- Whether f is the game window next to the Library on its side (nothing of
+-- the game's row between them)
+local function NextToLibrary(f)
+    if not (Shown(f) and Shown(window)) then return false end
+    local m = Manager()
+    local lx, fx = CenterX(window), CenterX(f)
+    for _, g in ipairs(m and m.shownFrames or {}) do
+        if g ~= f and Shown(g) then
+            local gx = CenterX(g)
+            if (gx > fx and gx < lx) or (gx < fx and gx > lx) then return false end
+        end
+    end
+    return true
+end
+
+local held = { LT = true, RT = true }   -- (a trigger counted only once seen up)
+local before                            -- (the game's focused window before this frame's press)
+local function BindEscape(on)
+    if IF.InCombat() then return end
+    ClearOverrideBindings(window)
+    if on then SetOverrideBindingClick(window, true, "ESCAPE", escape:GetName()) end
+end
+
+function LB.SetFocus(focus)
+    if focus == "window" and not LB.Behind() then return end
+    if IF.InCombat() then return end
+    LB.focus = focus
+    held.LT, held.RT = true, true
+    before = nil
+    local ours = focus == "library"
+    TakePad(ours)
+    BindEscape(ours)
+    if LB.origin ~= "auction" then NativeFocus(ours) end
+    LB.Render()
+end
+
+local nextPlace = 0
+window:SetScript("OnUpdate", function()
+    -- (the game's windows opened or closed: beside them again)
+    local now = GetTime()
+    if now >= nextPlace then
+        nextPlace = now + 0.2
+        Place()
+    end
+    if LB.focus ~= "window" then return end
+    -- (no window left to have the pad: back to the Library)
+    local auction = AuctionBehind()
+    if not Other() then return LB.SetFocus("library") end
+    local m = Manager()
+    -- (the window that had the pad when the trigger went down: the game
+    -- moves its focus on the same press)
+    local was = before
+    before = m and m.isUIFocused and Shown(m.focusedFrame) or nil
+    for key, button in pairs({ LT = "PADLTRIGGER", RT = "PADRTRIGGER" }) do
+        local down = IsKeyDown and IsKeyDown(button) or false
+        local fresh = down and not held[key] and not IF.InCombat()
+        held[key] = down
+        if fresh then
+            local from = auction or was
+            -- (towards the Library: L2 from a window on its right, R2 from
+            -- one on its left)
+            local towards = from and (key == "LT") == not LeftOfLibrary(from)
+            if towards and (from == auction or NextToLibrary(from)) then return LB.SetFocus("library") end
+        end
+    end
+end)
 
 -- item: an id or a link; origin: "bags", "loot", "auction" (where it's opened from)
 function LB.Open(item, origin)
     if IF.InCombat() or not LB.ItemID(item) then return end
     wipe(LB.stack)
     LB.origin = origin
+    LB.focus = "library"
     Place()
+    if not window:IsShown() then Sound("IG_SPELLBOOK_OPEN") end
     window:Show()
-    Sound("IG_SPELLBOOK_OPEN")
     TakePad(true)
-    ClearOverrideBindings(window)
-    SetOverrideBindingClick(window, true, "ESCAPE", escape:GetName())
-    if origin ~= "auction" and IF.Destroy then IF.Destroy.HideNativeFocus(true) end
+    BindEscape(true)
+    if origin ~= "auction" then NativeFocus(true) end
     LB.Push(item)
 end
 
@@ -1624,17 +1877,19 @@ function LB.Resume()
     if not suspended then return end
     suspended = false
     if IF.InCombat() or #LB.stack == 0 then return wipe(LB.stack) end
+    LB.focus = "library"
     window:Show()
     TakePad(true)
-    ClearOverrideBindings(window)
-    SetOverrideBindingClick(window, true, "ESCAPE", escape:GetName())
+    BindEscape(true)
     LB.skipRelease = IsKeyDown and IsKeyDown("PAD2") or nil
     LB.Render()
 end
 
 window:SetScript("OnHide", function()
+    LB.focus = "library"
+    placedAt = nil
     TakePad(false)
-    if LB.origin ~= "auction" and IF.Destroy then IF.Destroy.HideNativeFocus(false) end
+    if LB.origin ~= "auction" then NativeFocus(false) end
     if not suspended then wipe(LB.stack) end
     if GameTooltip:GetOwner() == page then GameTooltip:Hide() end
     if not IF.InCombat() then ClearOverrideBindings(window) end

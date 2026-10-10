@@ -1847,8 +1847,11 @@ end
 if catcher.EnableGamePadButton then
     catcher:SetScript("OnGamePadButtonDown", function(_, button)
         local name = KEYS[button]
-        -- (the Library over the window: the pad is its, the release too)
-        if IF.Library and IF.Library.IsShown() then
+        -- (the Library with the pad: the press is its, the release too; the
+        -- Library up at all: L2 / R2 are its, the pad's way back to it)
+        local library = IF.Library and IF.Library.HasFocus
+        if library and (IF.Library.HasFocus()
+            or IF.Library.IsShown() and (button == "PADLTRIGGER" or button == "PADRTRIGGER")) then
             libraryPress[button] = true
             return
         end
@@ -1876,7 +1879,7 @@ if catcher.EnableGamePadButton then
             return
         end
         -- (a press the Library had: its release too, though it has closed)
-        if libraryPress[button] or (IF.Library and IF.Library.IsShown()) then
+        if libraryPress[button] or (IF.Library and IF.Library.HasFocus and IF.Library.HasFocus()) then
             libraryPress[button] = nil
             return
         end
@@ -1902,8 +1905,8 @@ end
 win:SetScript("OnUpdate", function()
     local now = GetTime()
     LibraryHold(now)
-    -- (the Library over the window: its sticks too)
-    if IF.Library and IF.Library.IsShown() then return end
+    -- (the Library with the pad: its sticks too)
+    if IF.Library and IF.Library.HasFocus and IF.Library.HasFocus() then return end
     if not rightHeld and math.abs(rightY) > STICK_ON then
         rightHeld = true
         BY.StepTab(rightY > 0 and -1 or 1)

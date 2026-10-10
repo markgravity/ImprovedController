@@ -970,7 +970,59 @@ if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum.Too
     end)
 end
 
--- -> the item (link), the frame it's on, where ("bags", "loot")
+-- The item a button of the game's shows, whatever window it's in: an item
+-- location, a link or an item it keeps, a list row's data (a recipe: what
+-- it makes), a character slot, a merchant's item, a quest's reward; nil
+local function ButtonItem(f)
+    local ok, loc = pcall(function() return f.GetItemLocation and f:GetItemLocation() end)
+    if ok and loc and loc.IsValid and loc:IsValid() and C_Item.GetItemLink then
+        local link = C_Item.GetItemLink(loc)
+        if link then return link end
+    end
+    for _, key in ipairs({ "itemLink", "link", "hyperlink" }) do
+        if type(f[key]) == "string" and f[key]:find("item:") then return f[key] end
+    end
+    local item = f.item
+    if type(item) == "table" and item.GetItemLink then
+        local link = item:GetItemLink() or (item.GetItemID and item:GetItemID())
+        if link then return link end
+    end
+    if type(f.itemID) == "number" and f.itemID > 0 then return f.itemID end
+    if f.GetElementData then
+        local okData, data = pcall(f.GetElementData, f)
+        if okData and type(data) == "table" then
+            local recipe = data.recipeInfo and data.recipeInfo.recipeID
+            if recipe and C_TradeSkillUI and C_TradeSkillUI.GetRecipeOutputItemData then
+                local out = C_TradeSkillUI.GetRecipeOutputItemData(recipe)
+                if out and (out.hyperlink or out.itemID) then return out.hyperlink or out.itemID end
+            end
+            if data.itemLink or data.itemID then return data.itemLink or data.itemID end
+        end
+    end
+    local name = f.GetName and f:GetName() or ""
+    if name:find("^Character%a+Slot$") and f.GetID then return GetInventoryItemLink("player", f:GetID()) end
+    if name:find("^MerchantItem%d+ItemButton$") and f.GetID then
+        local merchant = _G.MerchantFrame
+        local buyback = merchant and merchant.selectedTab == 2
+        return buyback and GetBuybackItemLink(f:GetID()) or (not buyback and GetMerchantItemLink(f:GetID()))
+    end
+    if f.objectType == "item" and f.type and f.GetID then
+        local log = _G.QuestInfoFrame and _G.QuestInfoFrame.questLog
+        return log and GetQuestLogItemLink(f.type, f:GetID()) or GetQuestItemLink(f.type, f:GetID())
+    end
+end
+
+-- The game's window a button is in (the frame under UIParent holding it)
+local function WindowOf(f)
+    while f and f.GetParent do
+        local parent = f:GetParent()
+        if not parent or parent == UIParent then return f end
+        f = parent
+    end
+end
+
+-- -> the item (link), the frame it's on, where ("bags", "loot", "ui": any
+-- other window of the game's, LB.originFrame)
 function LB.Focused()
     local item, anchor, origin
     pcall(function()
@@ -997,8 +1049,17 @@ function LB.Focused()
                 end
             end
         end
+        -- (any other window: the button, its parent, theirs)
+        local f = button
+        for _ = 1, 3 do
+            if item or not f then break end
+            local okItem, found = pcall(ButtonItem, f)
+            if okItem and found then item, origin = found, "ui" end
+            f = f.GetParent and f:GetParent()
+        end
+        LB.originFrame = WindowOf(button)
     end)
-    if not item and lastTip and GetTime() - lastTip.at < TIP_KEPT then item = lastTip.item end
+    if not item and lastTip and GetTime() - lastTip.at < TIP_KEPT then item, origin = lastTip.item, origin or "ui" end
     return item, anchor, origin
 end
 
@@ -1081,8 +1142,12 @@ local wasDown = false
 local tipsBefore
 watcher:SetScript("OnUpdate", function()
     if not IF.db or not IsKeyDown then return end
-    local active = LB.Settings().enabled and not LB.IsShown() and not IF.InCombat()
-        and (AnyBagOpen() or LootOpen()) and not (IF.Destroy and IF.Destroy.panel:IsShown())
+    -- (any window of the game's with the pad, the Library up too: another
+    -- item into it; the Destroy panel, the auction window: their own R3)
+    local uiFocus = IF.Binds and IF.Binds.InGame and not IF.Binds.InGame()
+    local active = LB.Settings().enabled and not (LB.HasFocus and LB.HasFocus()) and not IF.InCombat()
+        and (uiFocus or AnyBagOpen() or LootOpen()) and not (IF.Destroy and IF.Destroy.panel:IsShown())
+        and not (IF.AuctionBuy and IF.AuctionBuy.window and IF.AuctionBuy.window:IsShown())
     local down = IsKeyDown("PADRSTICK")
     if not active or not down then
         if hold then LB.HoldHide() end
@@ -1097,7 +1162,8 @@ watcher:SetScript("OnUpdate", function()
             hold = { done = true }
         else
             local item, anchor, origin = LB.Focused()
-            hold = { start = GetTime(), item = item, anchor = anchor, origin = origin or (LootOpen() and "loot" or "bags"),
+            hold = { start = GetTime(), item = item, anchor = anchor,
+                origin = origin or (LootOpen() and "loot" or AnyBagOpen() and "bags" or "ui"),
                 done = item == nil }
         end
     end
