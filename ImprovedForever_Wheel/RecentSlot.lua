@@ -134,17 +134,70 @@ local function Resize(force)
     glyphs:SetScale(math.max(0.3, size / 46 * (Layout().glyphScale or 1)))
 end
 
--- Beside the game's bar (right of it), else bottom right of the middle
+-- The crossbar's right edge and the middle of its rightmost bar, in screen
+-- pixels, or nil. Read from the bars' anchors (fixed in place) and their
+-- expanded half width, not the buttons: those grow and move while L2 / R2
+-- is held. The compact layout stacks every anchor on the bottom one, the
+-- full one spreads them (the right bar past the main frame's edge).
+-- (ActionBarStyles.lua: its one style's expanded size, 266 x 86; the
+-- style table itself is local there, appliedStyle only its id)
+local BAR_EXPANDED_WIDTH = 266
+local ANCHORS = { "TopCenteredAnchor", "BottomCenteredAnchor", "LeftCenteredAnchor", "RightCenteredAnchor" }
+local function BarsRight(main)
+    local unit = main.PageUnit
+    if not unit then return nil end
+    local right, y, n
+    for _, key in ipairs(ANCHORS) do
+        local anchor = unit[key]
+        local shown
+        for _, child in ipairs(anchor and { anchor:GetChildren() } or {}) do
+            if child:IsShown() then shown = child break end
+        end
+        local cx, cy
+        if shown then cx, cy = anchor:GetCenter() end
+        if cx and cy then
+            local s = anchor:GetEffectiveScale()
+            local edge, mid = (cx + BAR_EXPANDED_WIDTH / 2) * s, cy * s
+            if not right or edge > right + 0.5 then
+                right, y, n = edge, mid, 1
+            elseif edge > right - 0.5 then
+                y, n = y + mid, n + 1   -- (level with it: their middle)
+            end
+        end
+    end
+    return right, right and y / n
+end
+
+-- Beside the game's bar (right of its rightmost bar), else bottom right of
+-- the middle. Set again only when it moved (it's checked every update).
+local placed
 local function Place()
-    local bar = _G.GamepadMainActionBarFrame
+    local main = _G.GamepadMainActionBarFrame
     local layout = Layout()
-    slot:ClearAllPoints()
+    local where
     if layout.x then
-        slot:SetPoint("CENTER", UIParent, "BOTTOMLEFT", layout.x, layout.y)
-    elseif bar and bar:IsShown() then
-        slot:SetPoint("LEFT", bar, "RIGHT", 6, -20)
+        where = { "CENTER", "BOTTOMLEFT", layout.x, layout.y }
+    elseif main and main:IsShown() then
+        local right, y = BarsRight(main)
+        if right then
+            local s = slot:GetEffectiveScale()
+            where = { "LEFT", "BOTTOMLEFT", math.floor(right / s + 6.5), math.floor(y / s + 0.5) }
+        else
+            where = { "LEFT", main, 6, -20 }
+        end
     else
-        slot:SetPoint("BOTTOM", UIParent, "BOTTOM", 360, 120)
+        where = { "BOTTOM", "BOTTOM", 360, 120 }
+    end
+    if placed and placed[1] == where[1] and placed[2] == where[2]
+        and placed[3] == where[3] and placed[4] == where[4] then
+        return
+    end
+    placed = where
+    slot:ClearAllPoints()
+    if type(where[2]) == "table" then
+        slot:SetPoint(where[1], where[2], "RIGHT", where[3], where[4])
+    else
+        slot:SetPoint(where[1], UIParent, where[2], where[3], where[4])
     end
 end
 
@@ -218,6 +271,8 @@ slot:SetScript("OnUpdate", function(_, dt)
     if elapsed < 0.05 then return end
     elapsed = 0
     Refresh(false)
+    -- (the game's bars move: its compact layout on / off, a bar shown...)
+    if not slot.editing then Place() end
     -- (another addon may resize the game's buttons any time)
     if sinceResize >= 1 then
         sinceResize = 0
@@ -417,6 +472,7 @@ local downAt
 slot:SetScript("OnMouseDown", function(self, button)
     if not self.editing or button ~= "LeftButton" then return end
     Pin()
+    placed = nil   -- (dragging moves it: set again after)
     downAt = { self:GetCenter() }
     self:StartMoving()
 end)
