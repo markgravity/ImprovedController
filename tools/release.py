@@ -163,13 +163,21 @@ def upload(folder, token, game_version):
         return request(f"{API}/projects/{project}/upload-file", token, body,
                        {"Content-Type": f"multipart/form-data; boundary={boundary}"}, fail)
 
-    try:
-        result = send(metadata, fail="relations" not in metadata)
-    except RequestError as error:
-        # (a related project CurseForge doesn't know yet, e.g. not approved: upload without)
-        print(f"CurseForge: {folder} refused with its relations ({error}), uploading without them")
-        del metadata["relations"]
-        result = send(metadata, fail=True)
+    # A related project CurseForge refuses (not approved yet...): left out, the others kept
+    while True:
+        try:
+            result = send(metadata, fail="relations" not in metadata)
+            break
+        except RequestError as error:
+            message = str(error).replace("\\u0027", "'")
+            projects = metadata["relations"]["projects"]
+            refused = [r["slug"] for r in projects if f"relations: '{r['slug']}'" in message]
+            kept = [r for r in projects if r["slug"] not in refused] if refused else []
+            print(f"CurseForge: {folder}: relation {', '.join(refused) or '(all)'} refused, left out")
+            if kept:
+                metadata["relations"]["projects"] = kept
+            else:
+                del metadata["relations"]
     print(f"CurseForge: {zip_path.name} uploaded ({metadata['releaseType']}), file id {result and result.get('id')}")
 
 
