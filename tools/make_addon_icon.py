@@ -5,6 +5,8 @@ cross), Improved, a green double arrow rising out of its right lobe; on the
 logo's dark rounded square; as textures/ic_addon.tga, 128 x 128.
 
 Run: python3 tools/make_addon_icon.py   (needs Pillow)
+     python3 tools/make_addon_icon.py --logo   also the CurseForge logo, 400 x 400
+     on the same background, as dist/logos/ImprovedForever.png
 """
 import math
 import os
@@ -51,20 +53,30 @@ if __name__ == "__main__":
     arrows, da = new()
     for y in (12, 32):
         icon.stroke(da, [(92, y + 14), (106, y), (120, y + 14)], 9)
-    render_solid(OUT, [(shape, GOLD), (arrows, GREEN)])
+    layers = [(shape, GOLD), (arrows, GREEN)]
+    render_solid(OUT, layers)
 
     # On the logo's background: a dark rounded square, the art inset on it
     from PIL import Image, ImageDraw
-    art = Image.open(OUT).convert("RGBA")
-    size, inset, radius = 128, 12, 22
-    out = Image.new("RGBA", (size * 4, size * 4), (0, 0, 0, 0))
-    ImageDraw.Draw(out).rounded_rectangle((0, 0, size * 4 - 1, size * 4 - 1), radius=radius * 4,
-                                          fill=(70, 70, 70, 255))
-    out = out.resize((size, size), Image.LANCZOS)
-    # (the art's own extent, centred in the square)
-    art = art.crop(art.getbbox())
-    k = (size - 2 * inset) / max(art.size)
-    art = art.resize((round(art.width * k), round(art.height * k)), Image.LANCZOS)
-    out.alpha_composite(art, ((size - art.width) // 2, (size - art.height) // 2))
-    out.save(OUT)
-    print("on its background:", OUT)
+
+    def on_background(path, size, inset, radius):
+        art = Image.open(path).convert("RGBA")
+        out = Image.new("RGBA", (size * 4, size * 4), (0, 0, 0, 0))
+        ImageDraw.Draw(out).rounded_rectangle((0, 0, size * 4 - 1, size * 4 - 1), radius=radius * 4,
+                                              fill=(70, 70, 70, 255))
+        out = out.resize((size, size), Image.LANCZOS)
+        # (the art's own extent, centred in the square)
+        art = art.crop(art.getbbox())
+        k = (size - 2 * inset) / max(art.size)
+        art = art.resize((round(art.width * k), round(art.height * k)), Image.LANCZOS)
+        out.alpha_composite(art, ((size - art.width) // 2, (size - art.height) // 2))
+        out.save(path)
+        print("on its background:", path)
+
+    on_background(OUT, 128, 12, 22)
+    if "--logo" in sys.argv:
+        # (the modules' logos' size and margins: make_module_icons.py --logos)
+        logo = os.path.join(os.path.dirname(__file__), "..", "dist", "logos", "ImprovedForever.png")
+        os.makedirs(os.path.dirname(logo), exist_ok=True)
+        render_solid(logo, layers, out_size=400)
+        on_background(logo, 400, 38, 69)
