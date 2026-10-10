@@ -8,9 +8,11 @@ local strlower = string.lower
 -- WatchFrame (MoP Classic) draws quests in watch-list order: we reorder the
 -- watch list with ShiftQuestWatches, like Blizzard's "Move Up/Down".
 -- ObjectiveTracker (Forever) has no shift API: we re-anchor its quest blocks
--- after each layout, and when the tracker is full (it only lays out the
--- watches that fit, in watch order) we also move watches by remove + re-add
--- (AddQuestWatch appends), so the quests that fit are the top-sorted ones.
+-- after each layout, and we also move watches by remove + re-add
+-- (AddQuestWatch appends) when the watch order matters: the tracker is full
+-- (it only lays out the watches that fit, in watch order), or the gamepad UI
+-- is on (the game's navigation follows watch order: header down and focus
+-- go to its first block, item buttons to the next/previous watch).
 
 local pending = false
 local suppressHooks = false
@@ -238,9 +240,11 @@ local function ReorderWatches(list)
 	end
 	if not first then return end
 
+	-- Each sorted order tried once from each starting order: the game's own
+	-- SortQuestWatches (zone change) reorders the watches again
 	local signature = {}
 	for i, q in ipairs(list) do signature[i] = q.key end
-	signature = table.concat(signature, ",")
+	signature = table.concat(signature, ",") .. "|" .. table.concat(current, ",")
 	if signature == attemptedSignature then return end
 	if IQT.Settings().sort == "distance" and GetTime() - lastWatchMove < DISTANCE_WATCH_MOVE_INTERVAL then
 		return
@@ -320,8 +324,10 @@ function TrackerBackend.Apply(list)
 	IQT.lastOrder = signature
 	IQT.lastFirstBlock = module.firstBlock
 
-	-- Tracker full: make Blizzard lay out the top-sorted quests
-	if IQT.IsActive() and module.hasSkippedBlocks and not module:IsCollapsed() then
+	-- Make Blizzard's own order match: when full, it lays out the top-sorted
+	-- quests; with a gamepad, its navigation goes down the sorted list
+	local gamepad = InputUtil and InputUtil.IsGamepadUIEnabled and InputUtil.IsGamepadUIEnabled()
+	if IQT.IsActive() and (module.hasSkippedBlocks or gamepad) and not module:IsCollapsed() then
 		-- not from inside Blizzard's layout pass
 		C_Timer.After(0, function() ReorderWatches(list) end)
 	end
