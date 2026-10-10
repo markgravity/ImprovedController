@@ -15,4 +15,5 @@ LibraryRecipes.lua
 LibraryData.lua
 Library.lua
 LibraryPage.lua
+LibraryMap.lua
 LibraryEditor.lua

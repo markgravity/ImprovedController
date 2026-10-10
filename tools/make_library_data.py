@@ -48,7 +48,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 QDB = ROOT / "vendor" / "QuestieDB"
 OUT = ROOT / "ImprovedForever_Library" / "LibraryData.lua"
-SPAWNS_PER_ZONE = 6
+SPAWNS_PER_ZONE = 40
 CMANGOS_DUMP = "https://raw.githubusercontent.com/cmangos/classic-db/master/Full_DB/ClassicDB_1_12_1_z2815.sql.gz"
 WAGO = "https://wago.tools"
 

@@ -371,7 +371,7 @@ local function NpcEntry(Q, id, icon)
     local zone = n.zoneID or (spot and spot.area)
     local min, max = n.minLevel, n.maxLevel
     return {
-        kind = "npc", id = id, icon = icon, quality = 1, zone = zone, spot = spot,
+        kind = "npc", id = id, icon = icon, quality = 1, zone = zone, spot = spot, spawns = n.spawns,
         name = n.name, plain = n.name, sub = n.subName,
         level = min and max and math.floor((min + max) / 2) or min,
         -- "Level 20 Elite - Cooking Supplies"
@@ -396,7 +396,8 @@ local function SpawnPlaces(spawns)
             if pt[1] and pt[1] >= 0 then real = real + 1 end
         end
         local spot = NearestSpawn({ [area] = points }, area)
-        places[#places + 1] = { kind = "place", zone = area, spot = spot, plain = ZoneName(area),
+        places[#places + 1] = { kind = "place", zone = area, spot = spot, spawns = { [area] = points },
+            plain = ZoneName(area),
             name = ZoneName(area) .. (area == here and "  (here)" or ""), icon = ICON .. "INV_Misc_Map_01",
             line = real > 0 and Plural(real, "spot", "spots") or "Inside an instance", here = area == here }
     end
@@ -570,14 +571,25 @@ function LB.Drops(itemID)
             local spot = NearestSpawn(o.spawns, PlayerArea())
             local zone = o.zoneID or (spot and spot.area)
             local key = o.name .. "|" .. tostring(zone)
-            if not seen[key] then
-                seen[key] = true
+            local same = seen[key]
+            if same then
+                -- (the same thing under another id: its spawns too, for the map)
+                for area, points in pairs(o.spawns or {}) do
+                    local into = same.spawns[area] or {}
+                    same.spawns[area] = into
+                    for _, pt in ipairs(points) do into[#into + 1] = pt end
+                end
+            else
                 local how = Gathered(o.name)
                 local list = how and gathered[how] or chests
                 if #list < MAX_READ then
-                    list[#list + 1] = { kind = "object", how = how, id = id, quality = 1, name = o.name,
-                        plain = o.name, zone = zone, spot = spot,
+                    local spawns = {}
+                    for area, points in pairs(o.spawns or {}) do spawns[area] = { unpack(points) } end
+                    local e = { kind = "object", how = how, id = id, quality = 1, name = o.name,
+                        plain = o.name, zone = zone, spot = spot, spawns = spawns,
                         icon = how and GATHER[how].icon or ICONS.object, line = how and GATHER[how].line or nil }
+                    list[#list + 1] = e
+                    seen[key] = e
                 end
             end
         end
@@ -855,13 +867,11 @@ function LB.SpotText(spot)
     return ZoneName(spot.area) .. format("  %.1f, %.1f", spot.x, spot.y)
 end
 
--- A waypoint at the line's spawn (the map's own pin, tracked)
+-- A waypoint at the line's nearest spawn (the map's own pin, tracked): true
+-- when set
 function LB.Waypoint(line)
     local spot = line.spot
-    if not spot then
-        IF.Print((line.plain or "it") .. ": no spawn point known (an instance?)")
-        return
-    end
+    if not spot then return false end
     ZoneMaps()
     local map = areaToUi[spot.area]
     local point = map and map ~= 0 and UiMapPoint and UiMapPoint.CreateFromCoordinates(map, spot.x / 100, spot.y / 100)
@@ -870,11 +880,16 @@ function LB.Waypoint(line)
         if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
             C_SuperTrack.SetSuperTrackedUserWaypoint(true)
         end
-        if IF.Vibe and IF.Vibe.Confirm then IF.Vibe.Confirm() end
-        IF.Print("waypoint: " .. (line.plain or "") .. ", " .. LB.SpotText(spot))
-    else
-        IF.Print((line.plain or "it") .. ": " .. LB.SpotText(spot))
+        return true
     end
+    return false
+end
+
+-- A zone's (an area id's) world map, or nil
+function LB.UiMap(area)
+    ZoneMaps()
+    local map = area and areaToUi[area]
+    return map and map ~= 0 and map or nil
 end
 
 ---------------------------------------------------------------------------

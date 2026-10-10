@@ -8,6 +8,7 @@ the controller button glyphs used when the client has no atlas for one.
   ic_diamond, ic_tri, ic_dot, ic_chip              marks
   ic_slot, ic_disc, ic_hatch, ic_ring_dash, ic_slot_glow   the round slot
   ic_g_<a|b|x|y|lb|rb|lt|rt|ls|rs|dpad|dpad_lr|dpad_up>    button glyphs
+  ic_area                      a map area (the Library's): a soft fill, a lit rim
 
 Run: python3 tools/make_ui_textures.py   (needs Pillow)
 """
@@ -167,7 +168,28 @@ def glyphs():
         done(img, 64, 64, "ic_g_" + key)
 
 
+# A map area, as the quest areas are drawn: a soft see-through fill and a
+# brighter rim fading out; white, tinted and stretched in game ------------
+def area():
+    n = 128
+    img = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    px = img.load()
+    c, r = (n - 1) / 2, n / 2 - 2
+    for y in range(n):
+        for x in range(n):
+            t = math.hypot(x - c, y - c) / r          # 0 centre .. 1 edge
+            if t > 1.04:
+                continue
+            fill = 0.32 + 0.18 * t * t                # a little denser outwards
+            rim = math.exp(-((t - 0.93) / 0.045) ** 2)  # the lit edge
+            a = min(1.0, fill + 0.75 * rim) if t <= 1 else 0.75 * rim
+            px[x, y] = (255, 255, 255, int(255 * a))
+    img.save(os.path.join(OUT, "ic_area.tga"))
+    print("wrote ic_area")
+
+
 if __name__ == "__main__":
+    area()
     boxes()
     buttons()
     marks()

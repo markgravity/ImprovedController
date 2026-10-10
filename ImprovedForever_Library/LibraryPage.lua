@@ -1209,16 +1209,16 @@ function LB.Activate()
     if line.go then return LB.OpenList(line.go) end
     if line.item then return LB.Push(line.item) end
     if line.kind == "npc" or line.kind == "object" then return LB.PushCreature(line.kind, line.id) end
-    if line.kind == "place" then return LB.Waypoint(line) end
+    if line.kind == "place" then return LB.ShowOnMap(line) end
 end
 
--- Square: a waypoint at the picked entry's nearest spawn (a creature, a
--- person, a chest, a node, a place)
-local function WaypointPicked()
+-- Square: the picked entry on the map (a creature, a person, a chest, a
+-- node, a place: LibraryMap.lua)
+local function MapPicked()
     local p = Top()
     local view = p and View(p)
     local c = view and view.cells[view.sel]
-    if c and c.line and c.line.spot then LB.Waypoint(c.line) end
+    if c and c.line and c.line.spot then LB.ShowOnMap(c.line) end
 end
 
 -- kind: "npc" (a creature, a person) or "object" (a chest, a node)
@@ -1316,7 +1316,7 @@ local function RenderTip(line)
         GameTooltip:SetText(line.plain or "")
         if line.sub then GameTooltip:AddLine("<" .. line.sub .. ">", 1, 1, 1) end
         if line.spot then GameTooltip:AddLine(LB.SpotText(line.spot), 1, 1, 1) end
-        GameTooltip:AddLine(Glyph("A", 16) .. " Waypoint", 0.6, 0.6, 0.6)
+        GameTooltip:AddLine(Glyph(line.kind == "place" and "A" or "X", 16) .. " Show on Map", 0.6, 0.6, 0.6)
         GameTooltip:Show()
     elseif tip then
         PlaceTip()
@@ -1332,10 +1332,10 @@ local function Hints(p, view, line)
         defs[#defs + 1] = { { "PADLTRIGGER", "PADRTRIGGER" }, { "LT", "RT" }, "Turn Page" }
     end
     local verb = line and (line.go and "Read" or (line.item or line.kind == "npc" or line.kind == "object") and "Open"
-        or line.kind == "place" and "Waypoint")
+        or line.kind == "place" and "Show on Map")
     if verb then defs[#defs + 1] = { "PAD1", "A", verb } end
     if line and (line.kind == "npc" or line.kind == "object") and line.spot then
-        defs[#defs + 1] = { "PAD3", "X", "Waypoint" }
+        defs[#defs + 1] = { "PAD3", "X", "Show on Map" }
     end
     if line and not line.go then defs[#defs + 1] = { "PADRSTICK", "RS", TipsOn() and "Hide Tooltip" or "Tooltip" } end
     defs[#defs + 1] = { "PAD2", "B", p.tab ~= "notes" and "Notes" or #LB.stack > 1 and "Back" or "Close" }
@@ -1450,6 +1450,11 @@ function LB.Press(name, down)
     -- Circle on its release: closing on the press would hand the release to
     -- the window under it (the bags: closed)
     if name == "B" then
+        -- (Circle let go after closing the map: not ours)
+        if not down and LB.skipRelease then
+            LB.skipRelease = nil
+            return
+        end
         if not down then LB.Back() end
         return
     end
@@ -1458,7 +1463,7 @@ function LB.Press(name, down)
     elseif name == "LT" then Turn(-1)
     elseif name == "RT" then Turn(1)
     elseif name == "A" then LB.Activate()
-    elseif name == "X" then WaypointPicked()
+    elseif name == "X" then MapPicked()
     elseif name == "RS" then
         ToggleTips()
         LB.Render()
@@ -1528,10 +1533,30 @@ function LB.Close()
     window:Hide()
 end
 
+-- Out of the way while the map is up (LibraryMap.lua), its pages kept; back
+-- once it's closed (in combat: gone)
+local suspended = false
+function LB.Suspend()
+    suspended = true
+    window:Hide()
+end
+
+function LB.Resume()
+    if not suspended then return end
+    suspended = false
+    if IF.InCombat() or #LB.stack == 0 then return wipe(LB.stack) end
+    window:Show()
+    TakePad(true)
+    ClearOverrideBindings(window)
+    SetOverrideBindingClick(window, true, "ESCAPE", escape:GetName())
+    LB.skipRelease = IsKeyDown and IsKeyDown("PAD2") or nil
+    LB.Render()
+end
+
 window:SetScript("OnHide", function()
     TakePad(false)
     if LB.origin ~= "auction" and IF.Destroy then IF.Destroy.HideNativeFocus(false) end
-    wipe(LB.stack)
+    if not suspended then wipe(LB.stack) end
     if GameTooltip:GetOwner() == page then GameTooltip:Hide() end
     if not IF.InCombat() then ClearOverrideBindings(window) end
     if LB.origin == "auction" and BY and BY.Render then BY.Render() end
